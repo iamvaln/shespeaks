@@ -236,3 +236,5 @@ table.t td.num, table.t th.num { text-align: center; }
 .countdown { font-weight: 800; font-stretch: 112%; font-size: 28px; }
 @media (max-width: 640px) { .kv, .qa { grid-template-columns: 1fr; } .kv dt, .qa dt { margin-top: 8px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+html:has(.admin-root), body:has(.admin-root) { background: #F4F3F7; }
+.admin-root { background: var(--surface); color: var(--ink); min-height: 100vh; }

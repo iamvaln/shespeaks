@@ -21,40 +21,45 @@ Hosting note: SQLite + uploads on disk need a host with a persistent volume (VPS
 
 ### Phase 0 — Foundations
 - [x] Read spec, charte, tokens, speaker template
-- [ ] Scaffold project (package.json, tsconfig, next.config, .gitignore, .env.example)
-- [ ] Design tokens → `globals.css` (Nuit + Clair), fonts, logo assets in `public/`
-- [ ] DB schema + seed (DevFest calendar, settings, bootstrap coach from env)
-- [ ] i18n dictionary (FR/EN) + language switch
-- [ ] Mailer + email templates (FR/EN) + `email_log`
+- [x] Scaffold project (package.json, tsconfig, next.config, .gitignore, .env.example)
+- [x] Design tokens → `globals.css` (Nuit + Clair), fonts, logo assets in `public/`
+- [x] DB schema + seed (DevFest calendar, settings, bootstrap coach from env)
+- [x] i18n dictionary (FR/EN) + language switch
+- [x] Mailer + email templates (FR/EN) + `email_log`
 
 ### Phase 1 — FRONT OFFICE (candidate)
-- [ ] Home: presentation, 5 steps, 8–10 min, DevFest cities, CTA « Commencer mon diagnostic »
-- [ ] Wizard shell: progress bar, back without losing answers, autosave at each screen, resume (cookie + emailed link `/reprendre/<token>`)
-- [ ] Bloc 1 Profil (P1–P7) with validation (WhatsApp, email, « Autre » ville)
-- [ ] Bloc 2 Diagnostic (D1–D6, pivot question)
-- [ ] Branch A (A1–A7) · Branch B (B1–B5) · Branch C (C1, C2 draft summary w/ word counter, no overwrite once hand-edited) · Branch D (D1 proposition, D2 8-criteria grid: 4 auto + 4 checkboxes)
-- [ ] Photo screen (1–3 JPG/PNG ≤10 Mo, tips, ring preview, mandatory consent, « Ajouter plus tard »)
-- [ ] Completion: record recap, status « Diagnostic reçu », generate 5 topic tracks (A/B), notify coach
-- [ ] Confirmation + Plan de route: badge, next action by branch, 5 steps with ★ personalised actions, DevFest dates of the city, add photo later
-- [ ] **Emails (candidate)**: start/resume link, reception confirmation (with plan link), reminder(s) if unfinished
-- [ ] **Emails (coach/admin)**: diagnostic received (name, city, start point, direct link), stalled-candidate alert/digest
-- [ ] Reminder engine (configurable delay / max count), idempotent, scheduler + cron endpoint
+- [x] Home: presentation, 5 steps, 8–10 min, DevFest cities, CTA « Commencer mon diagnostic »
+- [x] Wizard shell: progress bar, back without losing answers, autosave at each screen, resume (cookie + emailed link `/reprendre/<token>`)
+- [x] Bloc 1 Profil (P1–P7) with validation (WhatsApp, email, « Autre » ville)
+- [x] Bloc 2 Diagnostic (D1–D6, pivot question)
+- [x] Branch A (A1–A7) · Branch B (B1–B5) · Branch C (C1, C2 draft summary w/ word counter, no overwrite once hand-edited) · Branch D (D1 proposition, D2 8-criteria grid: 4 auto + 4 checkboxes)
+- [x] Photo screen (1–3 JPG/PNG ≤10 Mo, tips, ring preview, mandatory consent, « Ajouter plus tard »)
+- [x] Completion: record recap, status « Diagnostic reçu », generate 5 topic tracks (A/B), notify coach
+- [x] Confirmation + Plan de route: badge, next action by branch, 5 steps with ★ personalised actions, DevFest dates of the city, add photo later
+- [x] **Emails (candidate)**: start/resume link, reception confirmation (with plan link), reminder(s) if unfinished
+- [x] **Emails (coach/admin)**: diagnostic received (name, city, start point, direct link), stalled-candidate alert/digest
+- [x] Reminder engine (configurable delay / max count), idempotent, scheduler + cron endpoint
 
 ### Phase 2 — ADMIN (coach)
-- [ ] Passwordless login (email link), session, logout, route protection
-- [ ] Tableau de bord: counts by status × city, diagnostics to process, countdown to internal deadline (26 Oct 2026) & CFP closings, stalled « En cours » list
-- [ ] Candidates list: filters (city/status/coach), search, sort, columns per spec
-- [ ] Fiche candidate: identity/contact, answers, tracks (edit/discard/add/regenerate/mark chosen), subject (title, abstract, level, format, application state), review grid, roadmap as seen by candidate, status + history, assign coach, notes + next point date, photos (mark retained)
-- [ ] Calendrier des DevFest (add city, edit dates/links)
-- [ ] Coachs (invite by email, deactivate, load per coach)
-- [ ] Paramètres (notification email, internal deadline, reminder rules, domain/angle referentials, show tracks to candidates toggle — off)
-- [ ] Email log screen (what was sent / logged)
+- [x] Passwordless login (email link), session, logout, route protection
+- [x] Tableau de bord: counts by status × city, diagnostics to process, countdown to internal deadline (26 Oct 2026) & CFP closings, stalled « En cours » list
+- [x] Candidates list: filters (city/status/coach), search, sort, columns per spec
+- [x] Fiche candidate: identity/contact, answers, tracks (edit/discard/add/regenerate/mark chosen), subject (title, abstract, level, format, application state), review grid, roadmap as seen by candidate, status + history, assign coach, notes + next point date, photos (mark retained)
+- [x] Calendrier des DevFest (add city, edit dates/links)
+- [x] Coachs (invite by email, deactivate, load per coach)
+- [x] Paramètres (notification email, internal deadline, reminder rules, domain/angle referentials, show tracks to candidates toggle — off)
+- [x] Email log screen (what was sent / logged)
 
 ### Phase 3 — Quality
-- [ ] Unit tests for pure logic (topic generation, review grid, roadmap rules, abstract assembly)
-- [ ] End-to-end smoke run (all four branches, reminders, admin flows) in a real browser
-- [ ] README (setup, env vars, SMTP, deploy, cron), spec-compliance notes
-- [ ] Commit + push + draft PR
+- [x] Unit tests for pure logic (topic generation, review grid, roadmap rules, abstract assembly)
+- [x] End-to-end smoke run (all four branches, reminders, admin flows) in a real browser
+- [x] README (setup, env vars, SMTP, deploy, cron), spec-compliance notes
+- [x] Commit + push + draft PR
+
+## Not in this version (spec "évolutions")
+- Mur des speakers (public page after the DevFests)
+- LLM-generated topic tracks (fixed templates for the test phase, as specified)
+- Admin UI is French only (coach-facing); the candidate site is FR/EN
 
 ## Open point from spec
 DevFest Bamenda dates unknown → shown as « À confirmer »; editable in admin Calendrier.

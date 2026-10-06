@@ -10,7 +10,7 @@ export function RoadmapView({
   const ev = rm.calendar.event;
   return (
     <div className="stack">
-      <section className="badge-card" aria-label="Badge speaker">
+      <section className="badge-card" data-theme="nuit" aria-label="Badge speaker">
         <div className="ring" style={{ ['--size' as string]: '168px' }}>
           <div>{/* eslint-disable-next-line @next/next/no-img-element */}{photoUrl ? <img src={photoUrl} alt="" /> : <span>SHE</span>}</div>
         </div>
