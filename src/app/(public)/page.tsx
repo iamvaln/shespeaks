@@ -9,7 +9,7 @@ export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const events = listEvents();
+  const events = await listEvents();
   const cta = c ? (c.completed_at ? { href: '/plan', label: d.seePlan } : { href: '/diagnostic', label: d.resume }) : { href: '/diagnostic', label: d.cta };
 
   return (

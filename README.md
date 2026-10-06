@@ -6,20 +6,37 @@ Diagnostic journey for women in tech (front office) + coach follow-up space (adm
 - **Front office** (`/`): home → diagnostic (profile, diagnostic, branch A/B/C/D, speaker photo) → confirmation + personalised roadmap. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
 - **Admin** (`/admin`): passwordless coach login, dashboard, candidates list + fiche (answers, topic tracks review, subject, review grid, roadmap preview, status history, notes, photos), DevFest calendar, coaches, settings, email log.
 
-## Run
+## Stack
+
+Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driver) · **Supabase Storage** for speaker photos · nodemailer (SMTP) · deployed on **Vercel**.
+
+## Deploy: Supabase + Vercel
+
+1. **Supabase** → create a project. Copy:
+   - the **Transaction pooler** connection string (Project Settings → Database → Connection pooling, port 6543) → `DATABASE_URL`
+   - the project URL → `SUPABASE_URL`, and the `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (server-side only).
+2. **Create the schema** (once, then after each new file in `supabase/migrations/`):
+   ```bash
+   DATABASE_URL="postgresql://…" ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" npm run db:migrate
+   ```
+   (or paste `supabase/migrations/0001_init.sql` in the Supabase SQL editor). It seeds the DevFest calendar, enables Row Level Security on every table with no policy (the public Supabase API can't read any candidate data; the app uses the database role), and creates the first coach.
+3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `SMTP_*`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
+4. **Reminders** run from **Vercel Cron** (`vercel.json`, daily at 07:00 UTC; Vercel sends `Authorization: Bearer $CRON_SECRET` itself). Hobby plans only allow daily crons; on Pro, change the schedule to hourly (`0 * * * *`) for finer reminder timing.
+
+Photos: browsers upload **directly to Supabase Storage** through a short-lived signed URL (Vercel functions cap request bodies at ~4.5 MB; photos can be 10 Mo). The server then re-checks what landed (magic bytes, size, count) before registering it. Photos are shown through an authenticated route that redirects to a 5-minute signed URL.
+
+## Run locally
 
 ```bash
-cp .env.example .env.local   # edit: APP_URL, SESSION_SECRET, ADMIN_EMAIL, SMTP_*
+cp .env.example .env.local      # set DATABASE_URL (any Postgres, e.g. a local one or a Supabase project), SESSION_SECRET, ADMIN_EMAIL…
 npm install
-npm run dev                  # http://localhost:3000  — admin: /admin
-npm test                     # unit tests (pure logic)
-node scripts/smoke.mjs       # API journey for the 4 branches (server must be running)
-npm run build && npm start   # production
+npm run db:migrate              # creates tables + first coach
+npm run dev                     # http://localhost:3000  — admin: /admin
+npm test                        # unit tests (pure logic)
+node scripts/smoke.mjs          # API journey for the 4 branches (server must be running)
 ```
 
-Requires Node ≥ 22.18 (uses built-in `node:sqlite`). Data lives in `DATA_DIR` (default `./data`: `shespeaks.db` + `uploads/`) — **back this folder up** and host on a machine with a persistent disk (VPS, Fly.io volume, Railway/Render disk).
-
-The first coach is created from `ADMIN_EMAIL` / `ADMIN_NAME` on first start. She logs in at `/admin/login` with an emailed one-time link and can then invite other coaches.
+Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `SMTP_HOST`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without SMTP, the link is shown on screen).
 
 ## Emails
 
@@ -34,8 +51,7 @@ The first coach is created from `ADMIN_EMAIL` / `ADMIN_NAME` on first start. She
 
 Without `SMTP_HOST`, emails are only recorded in **Admin → Emails** (nothing is sent) — handy for local testing. Delay, interval, max count, extra recipients: **Admin → Paramètres**.
 
-Reminders run from an in-process scheduler (every 10 min, started by `instrumentation.ts`). To drive them externally instead, set `ENABLE_SCHEDULER=false` and call
-`curl -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/reminders`. Runs are idempotent.
+Reminders are driven by `/api/cron/reminders` (Vercel Cron, or any scheduler: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/reminders`). Runs are idempotent: each candidate is claimed before any email is sent.
 
 ## Notes on spec interpretation
 
@@ -46,4 +62,5 @@ Reminders run from an in-process scheduler (every 10 min, started by `instrument
 - Candidate-side tracks are hidden by default (setting), as specified for the test phase.
 - Bamenda dates are "À confirmer" until edited in **Admin → Calendrier DevFest**.
 - The internal deadline (26 Oct 2026) is shown to coaches on the dashboard and as a note in the candidate's calendar card.
+- Emails are awaited before responding (serverless functions can be frozen once a response is sent).
 - Contact details are only visible to signed-in coaches; photos are served only to their owner (cookie) or a coach.

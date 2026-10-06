@@ -21,10 +21,26 @@ export function PhotoManager({
     for (const file of Array.from(files)) {
       if (list.length >= max) { setError(d.errors.too_many); break; }
       if (file.size > 10 * 1024 * 1024) { setError(d.errors.too_big); continue; }
-      const fd = new FormData();
-      fd.append('file', file);
       try {
-        const r = await fetch('/api/diag/photo', { method: 'POST', body: fd });
+        // 1) ask the server for an upload target (it also validates size / type / count)
+        const sr = await fetch('/api/diag/photo/sign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ size: file.size, type: file.type }) });
+        const target = await sr.json();
+        if (!sr.ok) { setError(d.errors[target.error as string] ?? d.errors.network); continue; }
+        let r: Response;
+        if (target.mode === 'supabase') {
+          // 2) browser → Supabase Storage directly (no 4.5 MB function limit)
+          const fd = new FormData();
+          fd.append('cacheControl', '3600');
+          fd.append('', file);
+          const up = await fetch(target.signedUrl, { method: 'PUT', body: fd });
+          if (!up.ok) { setError(d.errors.network); continue; }
+          // 3) tell the server, which re-validates what landed in Storage
+          r = await fetch('/api/diag/photo/commit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: target.path }) });
+        } else {
+          const fd = new FormData();
+          fd.append('file', file);
+          r = await fetch('/api/diag/photo', { method: 'POST', body: fd });
+        }
         const j = await r.json();
         if (!r.ok) { setError(d.errors[j.error as string] ?? d.errors.network); continue; }
         list = j.photos as PhotoItem[];

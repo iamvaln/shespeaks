@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Personal resume link (sent by email): restores the session cookie on any device, then goes to the right place.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
-  const c = getCandidateByToken(token);
+  const c = await getCandidateByToken(token);
   const base = process.env.APP_URL || req.nextUrl.origin;
   if (!c) return NextResponse.redirect(new URL('/', base));
   const res = NextResponse.redirect(new URL(c.completed_at ? '/plan' : '/diagnostic', base));

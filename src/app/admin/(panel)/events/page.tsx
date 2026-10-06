@@ -3,7 +3,7 @@ import { saveEventAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
-function EventFields({ e }: { e?: ReturnType<typeof listEvents>[number] }) {
+function EventFields({ e }: { e?: Awaited<ReturnType<typeof listEvents>>[number] }) {
   return (
     <div className="grid grid-3">
       <label className="small">Ville<input className="input" name="name" defaultValue={e?.name} required /></label>
@@ -19,7 +19,7 @@ function EventFields({ e }: { e?: ReturnType<typeof listEvents>[number] }) {
 
 export default async function Events({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   const sp = await searchParams;
-  const events = listEvents();
+  const events = await listEvents();
   return (
     <>
       <h1>Calendrier des DevFest</h1>

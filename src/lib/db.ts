@@ -1,10 +1,6 @@
-// SQLite (node:sqlite) connection, schema and seed. One file DB under DATA_DIR.
-import { DatabaseSync } from 'node:sqlite';
-import fs from 'node:fs';
-import path from 'node:path';
-
-export const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
-export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+// Postgres (Supabase) connection and tiny query helpers. Schema: supabase/migrations/*.sql
+import postgres from 'postgres';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export const STATUSES = [
   { id: 'en_cours', label: 'En cours' },
@@ -20,166 +16,61 @@ export const STATUSES = [
 export type StatusId = (typeof STATUSES)[number]['id'];
 export const statusLabel = (id: string) => STATUSES.find((s) => s.id === id)?.label ?? id;
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS coaches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  whatsapp TEXT,
-  email TEXT NOT NULL UNIQUE,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS candidates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  token TEXT NOT NULL UNIQUE,
-  name TEXT, city TEXT, city_other TEXT, whatsapp TEXT, email TEXT,
-  locale TEXT NOT NULL DEFAULT 'fr',
-  talk_language TEXT, role TEXT, seniority TEXT,
-  branch TEXT,
-  status TEXT NOT NULL DEFAULT 'en_cours',
-  coach_id INTEGER REFERENCES coaches(id),
-  current_screen TEXT NOT NULL DEFAULT 'profile',
-  consent_photo INTEGER NOT NULL DEFAULT 0,
-  selected_photo_id INTEGER,
-  next_point_date TEXT,
-  completed_at TEXT,
-  reminders_sent INTEGER NOT NULL DEFAULT 0,
-  last_reminder_at TEXT,
-  last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_cand_status ON candidates(status);
-CREATE TABLE IF NOT EXISTS answers (
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  code TEXT NOT NULL,
-  value TEXT NOT NULL,            -- JSON
-  PRIMARY KEY (candidate_id, code)
-);
-CREATE TABLE IF NOT EXISTS tracks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  title TEXT NOT NULL, angle TEXT, format TEXT, domain TEXT, hook TEXT,
-  origin TEXT NOT NULL DEFAULT 'croisement',   -- personnelle | croisement | coach
-  state TEXT NOT NULL DEFAULT 'generee',       -- generee | retenue_coach | ecartee | choisie
-  position INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS subjects (
-  candidate_id INTEGER PRIMARY KEY REFERENCES candidates(id) ON DELETE CASCADE,
-  title TEXT, abstract TEXT, audience TEXT, format TEXT,
-  application_state TEXT NOT NULL DEFAULT 'a_soumettre',
-  abstract_edited INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS review_items (
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  criterion TEXT NOT NULL,
-  result TEXT NOT NULL,           -- ok | a_revoir | coche | non_coche
-  value TEXT,
-  PRIMARY KEY (candidate_id, criterion)
-);
-CREATE TABLE IF NOT EXISTS status_history (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  old_status TEXT, new_status TEXT NOT NULL, author TEXT NOT NULL,
-  at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS notes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  coach_id INTEGER REFERENCES coaches(id),
-  text TEXT NOT NULL, next_point_date TEXT,
-  at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS photos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
-  filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
-  width INTEGER, height INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS devfest_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  city TEXT NOT NULL UNIQUE,      -- slug: douala, yaounde, bamenda, ...
-  name TEXT NOT NULL,
-  cfp_close_date TEXT, cfp_close_note TEXT,
-  event_date TEXT, venue TEXT,
-  submission_url TEXT, submission_label TEXT
-);
-CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS login_tokens (
-  token_hash TEXT PRIMARY KEY, coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE CASCADE,
-  expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS email_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL, to_addr TEXT NOT NULL, subject TEXT NOT NULL, body_text TEXT NOT NULL,
-  status TEXT NOT NULL,           -- sent | logged | failed
-  error TEXT, candidate_id INTEGER,
-  at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-`;
+type Sql = postgres.Sql;
+const g = globalThis as unknown as { __shespeaksSql?: Sql };
 
-const SEED_EVENTS = [
-  {
-    city: 'yaounde', name: 'Yaoundé', cfp_close_date: '2026-10-31', cfp_close_note: 'à 23 h 59 (heure de Yaoundé)',
-    event_date: '2026-11-21', venue: null, submission_url: 'https://devfest.gdgyaounde.com/speakers',
-    submission_label: 'Sessionize, via devfest.gdgyaounde.com/speakers',
-  },
-  {
-    city: 'douala', name: 'Douala', cfp_close_date: '2026-11-01', cfp_close_note: 'heure non précisée',
-    event_date: '2026-11-28', venue: 'Majestic Cinéma', submission_url: 'https://devfest.gdgdouala.org/cfp',
-    submission_label: 'devfest.gdgdouala.org/cfp (affiche : bit.ly/speakersdevfest26)',
-  },
-  { city: 'bamenda', name: 'Bamenda', cfp_close_date: null, cfp_close_note: null, event_date: null, venue: null, submission_url: null, submission_label: null },
-];
-
-function init(db: DatabaseSync) {
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-  db.exec(SCHEMA);
-  const ev = db.prepare(
-    `INSERT OR IGNORE INTO devfest_events (city,name,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label)
-     VALUES (?,?,?,?,?,?,?,?)`,
-  );
-  for (const e of SEED_EVENTS) ev.run(e.city, e.name, e.cfp_close_date, e.cfp_close_note, e.event_date, e.venue, e.submission_url, e.submission_label);
-  // Bootstrap the first coach from the environment.
-  const n = (db.prepare('SELECT COUNT(*) c FROM coaches').get() as { c: number }).c;
-  if (n === 0 && process.env.ADMIN_EMAIL) {
-    db.prepare('INSERT INTO coaches (name,email) VALUES (?,?)').run(process.env.ADMIN_NAME || 'Coach', process.env.ADMIN_EMAIL.trim().toLowerCase());
+/** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
+export function sql(): Sql {
+  if (!g.__shespeaksSql) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('DATABASE_URL is not set');
+    const local = /localhost|127\.0\.0\.1/.test(url);
+    g.__shespeaksSql = postgres(url, {
+      max: 3,
+      prepare: false, // required behind pgbouncer / Supabase pooler
+      ssl: local ? false : 'require',
+      idle_timeout: 20,
+      connect_timeout: 10,
+      onnotice: () => {},
+      // keep timestamps as 'YYYY-MM-DD HH:MM:SS' UTC strings (the app treats them as text)
+      types: { ts: { to: 1114, from: [1114], serialize: (x: unknown) => String(x), parse: (x: string) => x.slice(0, 19) } },
+    });
   }
+  return g.__shespeaksSql;
 }
 
-const g = globalThis as unknown as { __shespeaksDb?: DatabaseSync };
+// Statements inside tx() automatically run on the transaction's connection.
+const als = new AsyncLocalStorage<Sql>();
+const conn = (): Sql => als.getStore() ?? sql();
+const toPg = (text: string) => {
+  let i = 0;
+  return text.replace(/\?/g, () => `$${++i}`);
+};
 
-export function db(): DatabaseSync {
-  if (!g.__shespeaksDb) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    const d = new DatabaseSync(path.join(DATA_DIR, 'shespeaks.db'));
-    init(d);
-    g.__shespeaksDb = d;
-  }
-  return g.__shespeaksDb;
+type Param = string | number | null;
+export async function all<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T[]> {
+  return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+}
+export async function get<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T | undefined> {
+  return (await all<T>(text, ...p))[0];
+}
+/** Returns the number of affected rows. */
+export async function run(text: string, ...p: Param[]): Promise<number> {
+  const r = await conn().unsafe(toPg(text), p);
+  return r.count;
+}
+/** INSERT … returning the new row id. */
+export async function insert(text: string, ...p: Param[]): Promise<number> {
+  const r = await all<{ id: number }>(`${text} RETURNING id`, ...p);
+  return r[0].id;
 }
 
-// ---- small typed helpers -------------------------------------------------
-type Param = string | number | null | bigint | Uint8Array;
-export const all = <T = Record<string, unknown>>(sql: string, ...p: Param[]): T[] => db().prepare(sql).all(...p) as T[];
-export const get = <T = Record<string, unknown>>(sql: string, ...p: Param[]): T | undefined => db().prepare(sql).get(...p) as T | undefined;
-export const run = (sql: string, ...p: Param[]) => db().prepare(sql).run(...p);
-
-export function tx<T>(fn: () => T): T {
-  const d = db();
-  d.exec('BEGIN IMMEDIATE');
-  try {
-    const r = fn();
-    d.exec('COMMIT');
-    return r;
-  } catch (e) {
-    d.exec('ROLLBACK');
-    throw e;
-  }
+export async function tx<T>(fn: () => Promise<T>): Promise<T> {
+  if (als.getStore()) return fn(); // already inside a transaction
+  return (await sql().begin((t) => als.run(t as unknown as Sql, fn))) as T;
 }
 
-export const nowSql = () => new Date().toISOString().replace('T', ' ').slice(0, 19); // UTC, same format as datetime('now')
+export const nowSql = () => new Date().toISOString().replace('T', ' ').slice(0, 19); // UTC
 
 // ---- settings --------------------------------------------------------------
 export const SETTING_DEFAULTS = {
@@ -195,10 +86,10 @@ export const SETTING_DEFAULTS = {
 } as const;
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
 
-export function getSetting(key: SettingKey): string {
-  const r = get<{ value: string }>('SELECT value FROM settings WHERE key=?', key);
+export async function getSetting(key: SettingKey): Promise<string> {
+  const r = await get<{ value: string }>('SELECT value FROM settings WHERE key=?', key);
   return r ? r.value : SETTING_DEFAULTS[key];
 }
-export function setSetting(key: SettingKey, value: string) {
-  run('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, value);
+export async function setSetting(key: SettingKey, value: string) {
+  await run('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, value);
 }

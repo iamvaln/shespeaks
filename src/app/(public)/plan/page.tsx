@@ -19,15 +19,13 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   if (!c) redirect('/');
   if (!c.completed_at || !c.branch) redirect('/diagnostic');
   const d = t(locale).plan;
-  const answers = getAnswers(c.id);
-  const sub = getSubject(c.id);
-  const photos = getPhotos(c.id);
+  const [answers, sub, photos] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id)]);
   const rm = buildRoadmap({
     answers, branch: c.branch, locale,
-    subjectTitle: sub?.title, event: eventFor(c), cityName: cityLabel(c, locale),
+    subjectTitle: sub?.title, event: await eventFor(c), cityName: cityLabel(c, locale),
   });
-  const show = getSetting('show_tracks_to_candidates') === 'true';
-  const tracks = show ? getTracks(c.id).filter((x) => x.state !== 'ecartee') : [];
+  const show = (await getSetting('show_tracks_to_candidates')) === 'true';
+  const tracks = show ? (await getTracks(c.id)).filter((x) => x.state !== 'ecartee') : [];
   const photo = photos.find((p) => p.id === c.selected_photo_id) ?? photos[0];
 
   return (
@@ -43,7 +41,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           </div>
         </div>
 
-        <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={getSetting('internal_deadline')} />
+        <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
 
         {tracks.length > 0 && (
           <section className="card card-lg stack-sm">

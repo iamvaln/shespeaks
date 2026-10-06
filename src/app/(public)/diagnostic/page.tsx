@@ -14,11 +14,11 @@ export default async function DiagnosticPage() {
   if (c?.completed_at) redirect('/plan');
   let init: WizardInit;
   if (c) {
-    const s = wizardState(c);
+    const s = await wizardState(c);
     init = { candidate: s.candidate, answers: s.answers, refs: s.refs, photos: s.photos, consent: s.consent };
     if (s.draft && c.branch === 'C' && s.answers['C-abstract'] === undefined) init.answers = { ...s.answers, 'C-abstract': s.draft };
   } else {
-    init = { candidate: null, answers: {}, refs: getRefs(), photos: [], consent: false };
+    init = { candidate: null, answers: {}, refs: await getRefs(), photos: [], consent: false };
   }
   return <Wizard key={c?.token ?? 'new'} init={init} locale={locale} />;
 }

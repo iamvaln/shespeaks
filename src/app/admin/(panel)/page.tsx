@@ -8,10 +8,10 @@ const daysUntil = (iso: string | null) => (iso ? Math.ceil((new Date(iso + 'T23:
 const idleH = (s: string) => Math.round((Date.now() - new Date(s.replace(' ', 'T') + 'Z').getTime()) / 3_600_000);
 const idleLabel = (h: number) => (h < 48 ? `${h} h` : `${Math.round(h / 24)} j`);
 
-export default function Dashboard() {
-  const rows = candidateRows();
-  const events = listEvents();
-  const deadline = getSetting('internal_deadline');
+export default async function Dashboard() {
+  const rows = await candidateRows();
+  const events = await listEvents();
+  const deadline = await getSetting('internal_deadline');
   const left = daysUntil(deadline);
   const cities = [...new Set(rows.map((r) => r.city_label))].sort();
   const received = rows.filter((r) => r.status === 'diagnostic_recu');

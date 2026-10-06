@@ -8,14 +8,15 @@ Order requested: **front office first, then admin**. Email notifications through
 | Concern | Choice | Why |
 |---|---|---|
 | App | Next.js 15 (App Router) + TypeScript | One codebase for public site, admin, API, scheduler |
-| DB | SQLite via Node built-in `node:sqlite` | Spec: "plateforme dédiée avec sa propre base"; zero native deps; one file to back up (`data/shespeaks.db`) |
+| DB | **Postgres on Supabase** (`postgres` driver, pooler) | Deployed on Vercel (serverless) → managed Postgres; schema in `supabase/migrations/` |
 | Email | `nodemailer` (SMTP). No SMTP configured → mails are logged to the `email_log` table (visible in admin) | Works in dev with no setup, real mail in prod via env |
-| Reminders | In-process scheduler (`instrumentation.ts`) + secured `/api/cron/reminders` endpoint | Works on a single server; endpoint lets any external cron drive it |
+| Reminders | Vercel Cron → secured `/api/cron/reminders` | No long-lived process on serverless |
+| Photos | Supabase Storage, direct browser upload via signed URL | Vercel 4.5 MB body limit |
 | Auth (admin) | Passwordless: emailed one-time login link → signed session cookie | Spec: "coachs … se connectent avec leur email" |
 | Style | Plain CSS with brand tokens (Nuit theme public, Clair theme admin), Archivo (112 % width) + IBM Plex Mono | Charte graphique |
 | i18n | FR / EN, cookie-based switch from any screen | Spec: Bamenda is anglophone → EN is a launch prerequisite |
 
-Hosting note: SQLite + uploads on disk need a host with a persistent volume (VPS, Fly.io, Railway, Render disk).
+Hosting: Vercel + Supabase (see README).
 
 ## Phases & checklist
 

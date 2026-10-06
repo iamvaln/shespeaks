@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function Coaches({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   const sp = await searchParams;
   const me = await requireCoach();
-  const coaches = listCoaches();
+  const coaches = await listCoaches();
   return (
     <>
       <h1>Coachs</h1>

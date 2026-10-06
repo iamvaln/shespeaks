@@ -39,7 +39,7 @@ export async function getSessionCoach(): Promise<Coach | null> {
   const jar = await cookies();
   const id = readSessionValue(jar.get(COOKIE)?.value);
   if (!id) return null;
-  const coach = get<Coach>('SELECT * FROM coaches WHERE id=?', id);
+  const coach = await get<Coach>('SELECT * FROM coaches WHERE id=?', id);
   return coach && coach.active ? coach : null;
 }
 
@@ -59,46 +59,49 @@ export async function clearSession() {
   (await cookies()).delete(COOKIE);
 }
 
-// naive in-memory throttle: 5 link requests / 10 min / key
-const hits = new Map<string, number[]>();
-function throttled(key: string): boolean {
-  const now = Date.now();
-  const arr = (hits.get(key) ?? []).filter((t) => now - t < 600_000);
-  arr.push(now);
-  hits.set(key, arr);
-  return arr.length > 5;
+// DB-backed throttle (works across serverless instances): max 5 login links per address per 10 minutes
+async function throttled(email: string): Promise<boolean> {
+  const r = await get<{ c: number }>(
+    `SELECT COUNT(*)::int AS c FROM email_log WHERE kind='coach_login' AND to_addr=? AND at > (now() at time zone 'utc') - interval '10 minutes'`,
+    email,
+  );
+  return (r?.c ?? 0) >= 5;
 }
 
-function createLoginLink(coachId: number): string {
+async function createLoginLink(coachId: number): Promise<string> {
   const token = crypto.randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + 15 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
-  run('INSERT INTO login_tokens (token_hash,coach_id,expires_at) VALUES (?,?,?)', sha(token), coachId, expires);
+  await run('INSERT INTO login_tokens (token_hash,coach_id,expires_at) VALUES (?,?,?)', sha(token), coachId, expires);
   return `${appUrl()}/admin/verify?token=${token}`;
 }
 
 /** Always behaves the same from the outside (no account enumeration). Returns the link only for the dev console. */
-export async function requestLogin(email: string, ip: string): Promise<{ devLink?: string }> {
+export async function requestLogin(email: string): Promise<{ devLink?: string }> {
   const e = email.trim().toLowerCase();
-  if (!e || throttled(`${ip}|${e}`)) return {};
-  const coach = get<Coach>('SELECT * FROM coaches WHERE email=? AND active=1', e);
+  if (!e || (await throttled(e))) return {};
+  // First start: the very first login is allowed for ADMIN_EMAIL when no coach exists yet.
+  if (process.env.ADMIN_EMAIL && e === process.env.ADMIN_EMAIL.trim().toLowerCase() && !(await get('SELECT 1 FROM coaches LIMIT 1'))) {
+    await run('INSERT INTO coaches (name,email) VALUES (?,?)', process.env.ADMIN_NAME || 'Coach', e);
+  }
+  const coach = await get<Coach>('SELECT * FROM coaches WHERE email=? AND active=1', e);
   if (!coach) return {};
-  const link = createLoginLink(coach.id);
+  const link = await createLoginLink(coach.id);
   const m = coachLogin(coach.name, link);
   const status = await sendMail({ ...m, to: coach.email, kind: 'coach_login' });
   return process.env.NODE_ENV !== 'production' && status === 'logged' ? { devLink: link } : {};
 }
 
 export async function inviteCoach(coach: Coach, invitedBy: string) {
-  const link = createLoginLink(coach.id);
+  const link = await createLoginLink(coach.id);
   const m = coachInvite(coach.name, invitedBy, link);
   await sendMail({ ...m, to: coach.email, kind: 'coach_invite' });
 }
 
-export function consumeLoginToken(token: string): Coach | null {
-  const row = get<{ coach_id: number; expires_at: string; used: number }>('SELECT * FROM login_tokens WHERE token_hash=?', sha(token));
+export async function consumeLoginToken(token: string): Promise<Coach | null> {
+  const row = await get<{ coach_id: number; expires_at: string; used: number }>('SELECT * FROM login_tokens WHERE token_hash=?', sha(token));
   if (!row || row.used) return null;
   if (new Date(row.expires_at.replace(' ', 'T') + 'Z').getTime() < Date.now()) return null;
-  run('UPDATE login_tokens SET used=1 WHERE token_hash=?', sha(token));
-  const coach = get<Coach>('SELECT * FROM coaches WHERE id=? AND active=1', row.coach_id);
+  if ((await run('UPDATE login_tokens SET used=1 WHERE token_hash=? AND used=0', sha(token))) === 0) return null; // already consumed (race-safe)
+  const coach = await get<Coach>('SELECT * FROM coaches WHERE id=? AND active=1', row.coach_id);
   return coach ?? null;
 }

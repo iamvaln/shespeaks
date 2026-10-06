@@ -27,20 +27,17 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const { id: rawId } = await params;
   const sp = await searchParams;
   const id = Number(rawId);
-  const c = getCandidate(id);
+  const c = await getCandidate(id);
   if (!c || !c.name) notFound();
-  const a = getAnswers(id);
-  const refs = getRefs();
-  const subject = getSubject(id);
-  const tracks = getTracks(id);
-  const photos = getPhotos(id);
-  const coaches = listCoaches().filter((x) => x.active || x.id === c.coach_id);
-  const history = all<{ old_status: string | null; new_status: string; author: string; at: string }>('SELECT * FROM status_history WHERE candidate_id=? ORDER BY id DESC', id);
-  const notes = all<{ text: string; at: string; next_point_date: string | null; coach: string | null }>(
+  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, showTracks] = await Promise.all([
+    getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
+    getSetting('show_tracks_to_candidates'),
+  ]);
+  const coaches = allCoaches.filter((x) => x.active || x.id === c.coach_id);
+  const history = await all<{ old_status: string | null; new_status: string; author: string; at: string }>('SELECT * FROM status_history WHERE candidate_id=? ORDER BY id DESC', id);
+  const notes = await all<{ text: string; at: string; next_point_date: string | null; coach: string | null }>(
     `SELECT n.text, n.at, n.next_point_date, co.name AS coach FROM notes n LEFT JOIN coaches co ON co.id=n.coach_id WHERE n.candidate_id=? ORDER BY n.id DESC`, id);
-  const review = all<{ criterion: string; result: string; value: string | null }>('SELECT * FROM review_items WHERE candidate_id=?', id);
-  const ev = eventFor(c);
-  const coach = getCoach(c.coach_id);
+  const review = await all<{ criterion: string; result: string; value: string | null }>('SELECT * FROM review_items WHERE candidate_id=?', id);
   const rm = c.branch && c.completed_at ? buildRoadmap({ answers: a, branch: c.branch, locale: c.locale, subjectTitle: subject?.title, event: ev, cityName: cityLabel(c, c.locale) }) : null;
   const selPhoto = photos.find((p) => p.id === c.selected_photo_id);
   const wa = (c.whatsapp ?? '').replace(/[^\d]/g, '');
@@ -118,7 +115,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               </div>
               <p className="small" style={{ margin: '8px 0 16px' }}>
                 Relis chaque piste, ajuste le titre, écarte ou ajoute la tienne. « Choisir » fait de la piste le sujet de la candidate.
-                {getSetting('show_tracks_to_candidates') === 'true' ? ' Les pistes non écartées sont visibles par la candidate.' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
+                {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate.' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
               </p>
               <div className="stack-sm">
                 {tracks.length === 0 && <p className="muted">Aucune piste.</p>}

@@ -24,12 +24,12 @@ export function screenProgress(c: Candidate) {
 
 export async function runReminders(now = new Date()): Promise<ReminderReport> {
   const report: ReminderReport = { checked: 0, candidateEmails: 0, coachAlerts: 0, due: [] };
-  if (getSetting('reminders_enabled') !== 'true') return report;
-  const first = Number(getSetting('reminder_first_hours')) || 24;
-  const interval = Number(getSetting('reminder_interval_hours')) || 48;
-  const max = Number(getSetting('reminder_max')) || 2;
+  if ((await getSetting('reminders_enabled')) !== 'true') return report;
+  const first = Number(await getSetting('reminder_first_hours')) || 24;
+  const interval = Number(await getSetting('reminder_interval_hours')) || 48;
+  const max = Number(await getSetting('reminder_max')) || 2;
 
-  const rows = all<Candidate>(`SELECT * FROM candidates WHERE status='en_cours' AND completed_at IS NULL AND name IS NOT NULL AND name <> ''`);
+  const rows = await all<Candidate>(`SELECT * FROM candidates WHERE status='en_cours' AND completed_at IS NULL AND name IS NOT NULL AND name <> ''`);
   report.checked = rows.length;
   const byRecipient = new Map<string, { name: string; items: StalledItem[] }>();
 
@@ -41,11 +41,11 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
     // claim first (idempotency)
     const tier = c.reminders_sent + 1;
-    const claimed = run(
+    const claimed = await run(
       `UPDATE candidates SET reminders_sent=?, last_reminder_at=? WHERE id=? AND reminders_sent=?`,
       tier, nowSql(), c.id, c.reminders_sent,
     );
-    if (claimed.changes === 0) continue;
+    if (claimed === 0) continue;
     report.due.push({ id: c.id, name: c.name ?? '', tier });
 
     const prog = screenProgress(c);
@@ -58,7 +58,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
       name: c.name ?? '', cityLabel: cityLabel(c), whatsapp: c.whatsapp ?? '', email: c.email, screenLabel: prog.label,
       hoursIdle: Math.round(hoursBetween(now, toDate(c.last_activity_at))), tier, url: `${appUrl()}/admin/candidates/${c.id}`,
     };
-    for (const r of coachRecipients(c)) {
+    for (const r of await coachRecipients(c)) {
       const g = byRecipient.get(r.email) ?? { name: r.name, items: [] };
       g.items.push(item);
       byRecipient.set(r.email, g);
@@ -74,7 +74,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
 /** Manual reminder from the coach's fiche (does not touch the automatic counter). */
 export async function sendReminderNow(candidateId: number): Promise<boolean> {
-  const c = getCandidate(candidateId);
+  const c = await getCandidate(candidateId);
   if (!c || !c.email || c.completed_at) return false;
   const m = candidateReminder({ name: c.name ?? '' }, `${appUrl()}/reprendre/${c.token}`, c.locale, screenProgress(c));
   await sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });

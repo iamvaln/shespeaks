@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     creations.set(ip, recent);
   }
   const locale = await getLocale();
-  const res = submitScreen(token, body.screen, body.values, locale);
+  const res = await submitScreen(token, body.screen, body.values, locale);
   if (!res.ok) return NextResponse.json(res, { status: res.fatal ? 409 : 422 });
   const out = NextResponse.json({ ok: true, next: res.next, completed: res.completed });
   if (res.created) out.cookies.set(TOKEN_COOKIE, res.token, tokenCookieOptions);

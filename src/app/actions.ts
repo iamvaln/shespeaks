@@ -10,7 +10,7 @@ export async function setLocaleAction(locale: string) {
   const jar = await cookies();
   jar.set(LANG_COOKIE, locale, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' });
   const token = jar.get(TOKEN_COOKIE)?.value;
-  const c = token ? getCandidateByToken(token) : undefined;
-  if (c) run('UPDATE candidates SET locale=? WHERE id=?', locale, c.id);
+  const c = token ? await getCandidateByToken(token) : undefined;
+  if (c) await run('UPDATE candidates SET locale=? WHERE id=?', locale, c.id);
   revalidatePath('/', 'layout');
 }

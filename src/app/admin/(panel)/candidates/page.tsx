@@ -7,7 +7,7 @@ import { norm } from '@/lib/text';
 
 type SP = { q?: string; city?: string; status?: string; coach?: string; sort?: string; dir?: string; msg?: string };
 
-const SORTS: Record<string, (r: ReturnType<typeof candidateRows>[number]) => string> = {
+const SORTS: Record<string, (r: Awaited<ReturnType<typeof candidateRows>>[number]) => string> = {
   name: (r) => norm(r.name ?? ''),
   city: (r) => r.city_label,
   status: (r) => String(STATUSES.findIndex((s) => s.id === r.status)).padStart(2, '0'),
@@ -20,9 +20,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  const all = candidateRows();
+  const all = await candidateRows();
   const cities = [...new Set(all.map((r) => r.city_label))].sort();
-  const coaches = listCoaches();
+  const coaches = await listCoaches();
   const q = norm(sp.q ?? '');
   let rows = all.filter(
     (r) =>

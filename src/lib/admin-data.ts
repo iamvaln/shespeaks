@@ -11,11 +11,11 @@ export interface Row extends Candidate {
   topic: string;
 }
 
-export function candidateRows(): Row[] {
-  const rows = all<Omit<Row, 'city_label' | 'topic'>>(
+export async function candidateRows(): Promise<Row[]> {
+  const rows = await all<Omit<Row, 'city_label' | 'topic'>>(
     `SELECT c.*, co.name AS coach_name, s.title AS subject_title,
        (SELECT value FROM answers a WHERE a.candidate_id=c.id AND a.code IN ('C1','D1-a') ORDER BY a.code LIMIT 1) AS a_title,
-       (SELECT COUNT(*) FROM notes n WHERE n.candidate_id=c.id) AS note_count
+       (SELECT COUNT(*)::int FROM notes n WHERE n.candidate_id=c.id) AS note_count
      FROM candidates c LEFT JOIN coaches co ON co.id=c.coach_id LEFT JOIN subjects s ON s.candidate_id=c.id
      WHERE c.name IS NOT NULL AND c.name <> ''`,
   );

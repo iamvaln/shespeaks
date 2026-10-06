@@ -13,7 +13,7 @@ const KINDS: Record<string, string> = {
 
 export default async function Emails({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const sp = await searchParams;
-  const rows = all<{ id: number; kind: string; to_addr: string; subject: string; status: string; error: string | null; at: string; body_text: string; candidate_id: number | null }>(
+  const rows = await all<{ id: number; kind: string; to_addr: string; subject: string; status: string; error: string | null; at: string; body_text: string; candidate_id: number | null }>(
     'SELECT * FROM email_log ORDER BY id DESC LIMIT 200');
   const open = rows.find((r) => String(r.id) === sp.id);
   return (

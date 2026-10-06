@@ -48,7 +48,7 @@ export async function sendMail(m: Mail): Promise<'sent' | 'logged' | 'failed'> {
   } else {
     console.log(`[mail:logged] ${m.kind} → ${m.to}\n  ${m.subject}\n  ${m.text.split('\n').join('\n  ')}`);
   }
-  run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id) VALUES (?,?,?,?,?,?,?)', m.kind, m.to, m.subject, m.text, status, error, m.candidateId ?? null);
+  await run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id) VALUES (?,?,?,?,?,?,?)', m.kind, m.to, m.subject, m.text, status, error, m.candidateId ?? null);
   return status;
 }
 
