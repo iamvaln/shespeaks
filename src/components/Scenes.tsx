@@ -12,12 +12,12 @@ const MUTED = '#9AA0B8';
 export type SceneKind = 'talk' | 'lightning' | 'workshop' | 'demo' | 'rehearsal' | 'dayd';
 
 // Charte: "un seul des deux par visuel" (anneau OU ellipse), une seule zone de lumière dominante.
-// So the amber ring is lit only where the person is the subject; the stage is amber only in the Day D scene.
+// So each scene has ONE amber element: a lit ring on the person who is the subject, or the stage ellipse on the talk day.
 function Person({ x, y, size, lit = false }: { x: number; y: number; size: number; lit?: boolean }) {
   const k = size / 100;
   return (
     <g transform={`translate(${x} ${y}) scale(${k})`}>
-      <circle cx="50" cy="50" r="47" fill={NIGHT} stroke={lit ? AMBER : '#4A5070'} strokeWidth="5" />
+      <circle cx="50" cy="50" r="47" fill={NIGHT} stroke={lit ? AMBER : LINE} strokeWidth="5" />
       <clipPath id={`clip-${x}-${y}-${size}`}><circle cx="50" cy="50" r="39" /></clipPath>
       <g clipPath={`url(#clip-${x}-${y}-${size})`}>
         <rect x="0" y="0" width="100" height="100" fill={SUNKEN} />
@@ -60,9 +60,9 @@ export function Scene({ kind }: { kind: SceneKind }) {
       {kind === 'talk' && (
         <g>
           <rect x="300" y="62" width="400" height="236" rx="12" fill={RAISED} stroke={LINE} strokeWidth="2" />
-          <rect x="332" y="96" width="170" height="16" rx="8" fill={AMBER} />
+          <rect x="332" y="96" width="170" height="16" rx="8" fill={INK} />
           {[132, 156, 180].map((y, i) => (<rect key={y} x="332" y={y} width={[300, 262, 220][i]} height="9" rx="4.5" fill={MUTED} opacity=".55" />))}
-          {[0, 1, 2, 3].map((i) => (<rect key={i} x={540 + i * 30} y={262 - [40, 70, 52, 96][i]} width="20" height={[40, 70, 52, 96][i]} rx="3" fill={i === 3 ? AMBER : INK} opacity={i === 3 ? 1 : 0.85} />))}
+          {[0, 1, 2, 3].map((i) => (<rect key={i} x={540 + i * 30} y={262 - [40, 70, 52, 96][i]} width="20" height={[40, 70, 52, 96][i]} rx="3" fill={INK} opacity={i === 3 ? 0.95 : 0.55} />))}
           <Stage /><Person x={96} y={160} size={176} lit /><Crowd />
         </g>
       )}
@@ -71,7 +71,7 @@ export function Scene({ kind }: { kind: SceneKind }) {
         <g>
           <circle cx="470" cy="190" r="128" fill="none" stroke={LINE} strokeWidth="16" />
           <circle cx="470" cy="190" r="128" fill="none" stroke={AMBER} strokeWidth="16" strokeLinecap="round" strokeDasharray="804" strokeDashoffset="598" transform="rotate(-90 470 190)" />
-          <path d="M486 106 L428 204 L468 204 L452 280 L520 172 L480 172 Z" fill={AMBER} />
+          <path d="M486 106 L428 204 L468 204 L452 280 L520 172 L480 172 Z" fill={INK} />
           <rect x="330" y="26" width="28" height="12" rx="6" fill={MUTED} />
           <Stage /><Person x={120} y={176} size={160} /><Crowd />
         </g>
@@ -79,17 +79,17 @@ export function Scene({ kind }: { kind: SceneKind }) {
 
       {kind === 'workshop' && (
         <g>
-          <ellipse cx="400" cy="300" rx="250" ry="78" fill={RAISED} stroke={LINE} strokeWidth="2" />
+          <rect x="150" y="226" width="500" height="150" rx="30" fill={RAISED} stroke={LINE} strokeWidth="2" />
           {[250, 330, 470, 550].map((x, i) => (
             <g key={x} transform={`translate(${x - 38} ${i % 2 ? 270 : 284})`}>
-              <rect width="76" height="46" rx="5" fill={SUNKEN} stroke={AMBER} strokeWidth="2.5" />
-              <rect x="10" y="12" width="34" height="5" rx="2.5" fill={AMBER} />
+              <rect width="76" height="46" rx="5" fill={SUNKEN} stroke={MUTED} strokeWidth="2" />
+              <rect x="10" y="12" width="34" height="5" rx="2.5" fill={INK} />
               <rect x="10" y="24" width="52" height="5" rx="2.5" fill={MUTED} opacity=".7" />
               <rect x="-6" y="46" width="88" height="7" rx="3.5" fill={LINE} />
             </g>
           ))}
-          <Person x={92} y={120} size={116} lit /><Person x={236} y={30} size={116} lit /><Person x={448} y={30} size={116} lit /><Person x={592} y={120} size={116} lit />
-          <Person x={342} y={372} size={116} lit /><Person x={150} y={332} size={96} lit /><Person x={554} y={332} size={96} lit />
+          <Person x={92} y={120} size={116} /><Person x={236} y={30} size={116} /><Person x={448} y={30} size={116} /><Person x={592} y={120} size={116} />
+          <Person x={342} y={372} size={116} lit /><Person x={150} y={332} size={96} /><Person x={554} y={332} size={96} />
           <Stage cy={520} rx={360} />
         </g>
       )}
@@ -98,7 +98,7 @@ export function Scene({ kind }: { kind: SceneKind }) {
         <g>
           <rect x="190" y="52" width="420" height="262" rx="14" fill={RAISED} stroke={LINE} strokeWidth="2" />
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-            <rect key={i} x={222 + [0, 24, 24, 48, 24, 0, 0][i]} y={86 + i * 28} width={[120, 170, 120, 150, 90, 70, 50][i]} height="10" rx="5" fill={[AMBER, INK, MUTED, INK, MUTED, AMBER, MUTED][i]} opacity={i === 0 || i === 5 ? 1 : 0.8} />
+            <rect key={i} x={222 + [0, 24, 24, 48, 24, 0, 0][i]} y={86 + i * 28} width={[120, 170, 120, 150, 90, 70, 50][i]} height="10" rx="5" fill={[INK, INK, MUTED, INK, MUTED, INK, MUTED][i]} opacity={i === 0 || i === 5 ? 0.95 : 0.7} />
           ))}
           <rect x="450" y="86" width="132" height="170" rx="8" fill={SUNKEN} />
           <circle cx="516" cy="150" r="30" fill="none" stroke={AMBER} strokeWidth="6" />
@@ -112,7 +112,7 @@ export function Scene({ kind }: { kind: SceneKind }) {
       {kind === 'rehearsal' && (
         <g>
           <circle cx="672" cy="112" r="44" fill="none" stroke={LINE} strokeWidth="10" />
-          <path d="M672 112 L672 80" stroke={AMBER} strokeWidth="8" strokeLinecap="round" /><path d="M672 112 L692 124" stroke={INK} strokeWidth="6" strokeLinecap="round" />
+          <path d="M672 112 L672 80" stroke={INK} strokeWidth="8" strokeLinecap="round" /><path d="M672 112 L692 124" stroke={INK} strokeWidth="6" strokeLinecap="round" />
           <rect x="660" y="52" width="24" height="10" rx="4" fill={LINE} />
           <Stage cy={330} rx={300} /><Person x={304} y={104} size={192} lit />
           {[88, 196, 304, 412, 520, 628].map((x, i) => (<Person key={x} x={x} y={i % 2 ? 392 : 410} size={92} />))}
@@ -124,7 +124,7 @@ export function Scene({ kind }: { kind: SceneKind }) {
           <polygon points="400,0 560,392 240,392" fill={`url(#beam-${kind})`} />
           <Stage lit /><Person x={290} y={128} size={220} />
           <Crowd />
-          {[110, 262, 566, 718].map((x) => (<g key={x}><path d={`M${x - 18} 460 l-8 -34 M${x + 18} 460 l8 -34`} stroke={AMBER} strokeWidth="6" strokeLinecap="round" /></g>))}
+          {[110, 262, 566, 718].map((x) => (<g key={x}><path d={`M${x - 18} 460 l-8 -34 M${x + 18} 460 l8 -34`} stroke={MUTED} strokeWidth="6" strokeLinecap="round" /></g>))}
         </g>
       )}
     </svg>

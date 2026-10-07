@@ -77,7 +77,7 @@ test('roadmap: personalised actions and next action', () => {
   assert.equal(stars(1), 2);
   assert.equal(stars(2), 2);
   assert.equal(stars(3), 1);
-  assert.equal(stars(4), 2);
+  assert.equal(stars(4), 3); // filming and the 2-minute pitch are two separate actions + the extra first-time rehearsal
   assert.equal(stars(5), 1);
   assert.equal(r.steps.length, 5);
   assert.match(r.nextAction, /Ta coach, notifiée automatiquement/);

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
 import { fmtDate, t } from '@/lib/i18n';
 import { eventName, listEvents } from '@/lib/data';
+import { getSetting } from '@/lib/db';
 import { SLIDES } from '@/content/slides';
 import { HeroSlider } from '@/components/HeroSlider';
 import { EventCard } from '@/components/EventCard';
@@ -10,10 +11,11 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = {
-  title: "SheSpeaks · Prends la parole sur les scènes de la tech",
-  description: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech. · SheSpeaks supports young professionals and students in tech so they speak at tech events.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const d = t(locale).home;
+  return { title: { absolute: d.metaTitle }, description: d.metaDescription };
+}
 
 const Check = () => (
   <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="11" fill="var(--amber)" /><path d="M6.2 11.4l3.2 3.1 6.4-6.6" fill="none" stroke="var(--on-amber)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -28,10 +30,11 @@ export default async function Home() {
   const c = await getCandidateFromCookie();
   const today = new Date().toISOString().slice(0, 10);
   const events = (await listEvents()).filter((e) => !e.event_date || e.event_date >= today);
+  const internalDeadline = await getSetting('internal_deadline');
 
   const daysLeft = (iso: string) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86_400_000);
   const next = events.filter((e) => e.cfp_close_date && daysLeft(e.cfp_close_date) >= 0).sort((a, b) => a.cfp_close_date!.localeCompare(b.cfp_close_date!))[0];
-  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta };
+  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
   const slides = SLIDES.map((s) => ({
     id: s.id, scene: s.scene, photo: s.photo, alt: s.alt?.[locale] ?? s.title[locale], title: s.title[locale], caption: s.caption[locale],
   }));
@@ -40,7 +43,7 @@ export default async function Home() {
     <>
       <SiteHeader locale={locale} variant="landing" cta={cta} />
       <main id="main">
-        {/* ---------- Hero + slider (night) ---------- */}
+        {/* ---------- Hero (night) ---------- */}
         <section className="band hero" aria-labelledby="h1">
           <div className="container hero-grid">
             <div>
@@ -56,27 +59,22 @@ export default async function Home() {
             {next && (
               <aside className="deadline" aria-label={d.hero.next.label}>
                 <p className="label-s">{d.hero.next.label}</p>
-                <p className="deadline-days"><span>{daysLeft(next.cfp_close_date!)}</span> {d.hero.next.days(daysLeft(next.cfp_close_date!))}</p>
+                <p className="deadline-days">
+                  {daysLeft(next.cfp_close_date!) === 0
+                    ? <span className="deadline-today">{d.hero.next.days(0)}</span>
+                    : <><span>{daysLeft(next.cfp_close_date!)}</span> {d.hero.next.days(daysLeft(next.cfp_close_date!))}</>}
+                </p>
                 <p className="deadline-event">{eventName(next)}</p>
                 <p className="deadline-until">{d.hero.next.until} {fmtDate(next.cfp_close_date, locale)}</p>
+                {internalDeadline && <p className="deadline-until">{d.hero.next.internal} : <strong>{fmtDate(internalDeadline, locale)}</strong></p>}
                 <a className="deadline-link" href="#evenements">{d.hero.next.see} →</a>
               </aside>
             )}
           </div>
-          <div className="container stage-intro">
-            <h2 className="stage-title">{d.stage.title}</h2>
-            <p>{d.stage.lead}</p>
-          </div>
-          <div className="container slider-wrap">
-            <HeroSlider
-              slides={slides}
-              labels={{ region: d.stage.region, prev: d.stage.prev, next: d.stage.next, pause: d.stage.pause, play: d.stage.play, goTo: d.stage.goTo }}
-            />
-          </div>
         </section>
 
-        {/* ---------- Upcoming events (light) ---------- */}
-        <section id="evenements" className="band band-light" data-theme="clair" aria-labelledby="h-events">
+        {/* ---------- Upcoming events (night: the posters sit on their own colours) ---------- */}
+        <section id="evenements" className="band band-alt" aria-labelledby="h-events">
           <div className="container">
             <p className="label-s">{d.events.eyebrow}</p>
             <h2 id="h-events" className="h2">{d.events.title}</h2>
@@ -88,6 +86,22 @@ export default async function Home() {
                 {events.map((e) => <EventCard key={e.id} e={e} locale={locale} today={today} interestHref={cta.href} />)}
               </div>
             )}
+            {internalDeadline && <p className="note">{d.events.sheDeadline.replace('{date}', fmtDate(internalDeadline, locale))}</p>}
+          </div>
+        </section>
+
+        {/* ---------- Ways to take the floor (night) ---------- */}
+        <section className="band stage" aria-labelledby="h-stage">
+          <div className="container">
+            <p className="label-s">{d.stage.eyebrow}</p>
+            <h2 id="h-stage" className="h2">{d.stage.title}</h2>
+            <p className="section-lead">{d.stage.lead}</p>
+          </div>
+          <div className="container slider-wrap">
+            <HeroSlider
+              slides={slides}
+              labels={{ region: d.stage.region, prev: d.stage.prev, next: d.stage.next, pause: d.stage.pause, play: d.stage.play, goTo: d.stage.goTo, announce: d.stage.announce }}
+            />
           </div>
         </section>
 

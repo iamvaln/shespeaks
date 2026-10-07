@@ -12,6 +12,7 @@ export interface SlideView {
 }
 export interface SliderLabels {
   region: string; prev: string; next: string; pause: string; play: string; goTo: string; // goTo contains "{n}"
+  announce: string; // contains "{title}", "{n}" and "{total}"
 }
 
 const INTERVAL = 5500;
@@ -24,6 +25,7 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
   const [hold, setHold] = useState(false);
   const [reduced, setReduced] = useState(false);
   const indexRef = useRef(0);
+  const [announce, setAnnounce] = useState('');
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -38,10 +40,12 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
     if (!el) return;
     const n = slides.length;
     const target = ((i % n) + n) % n;
+    // wrapping around (last → first or first → last): jump instead of sweeping across every slide
+    const rewind = i < 0 || i >= n;
     const child = el.children[target] as HTMLElement | undefined;
     const first = el.children[0] as HTMLElement | undefined;
     if (!child || !first) return;
-    el.scrollTo({ left: child.offsetLeft - first.offsetLeft, behavior: smooth && !reduced ? 'smooth' : 'auto' });
+    el.scrollTo({ left: child.offsetLeft - first.offsetLeft, behavior: smooth && !reduced && !rewind ? 'smooth' : 'auto' });
   }, [slides.length, reduced]);
 
   // keep `index` in sync with manual swipes
@@ -65,6 +69,14 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
     return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
   }, [slides.length]);
 
+  /** Moves the slider because the person asked to: announce the new slide to screen readers. */
+  const userGo = (i: number) => {
+    const n = slides.length;
+    const target = ((i % n) + n) % n;
+    setAnnounce(labels.announce.replace('{title}', slides[target].title).replace('{n}', String(target + 1)).replace('{total}', String(n)));
+    goTo(i);
+  };
+
   useEffect(() => {
     if (!playing || hold || reduced) return;
     const id = window.setInterval(() => { if (!document.hidden) goTo(indexRef.current + 1); }, INTERVAL);
@@ -82,7 +94,7 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
       onFocus={() => setHold(true)}
       onBlur={() => setHold(false)}
     >
-      <ul className="slider-track" ref={track} aria-live={playing && !hold ? 'off' : 'polite'}>
+      <ul className="slider-track" ref={track}>
         {slides.map((s, i) => (
           <li key={s.id} className="slide" role="group" aria-roledescription="slide" aria-label={`${i + 1} / ${slides.length}`}>
             <figure>
@@ -103,10 +115,11 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
         ))}
       </ul>
 
+      <p className="sr-only" role="status" aria-live="polite">{announce}</p>
       <div className="slider-controls">
         <div className="slider-dots">
           {slides.map((s, i) => (
-            <button key={s.id} type="button" className="dot" aria-label={labels.goTo.replace('{n}', String(i + 1))} aria-current={i === index ? 'true' : undefined} onClick={() => goTo(i)} />
+            <button key={s.id} type="button" className="dot" aria-label={labels.goTo.replace('{n}', String(i + 1))} aria-current={i === index ? 'true' : undefined} onClick={() => userGo(i)} />
           ))}
         </div>
         <div className="slider-buttons">
@@ -119,10 +132,10 @@ export function HeroSlider({ slides, labels }: { slides: SlideView[]; labels: Sl
               )}
             </button>
           )}
-          <button type="button" className="icon-btn" onClick={() => goTo(index - 1)} aria-label={labels.prev}>
+          <button type="button" className="icon-btn" onClick={() => userGo(index - 1)} aria-label={labels.prev}>
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
-          <button type="button" className="icon-btn" onClick={() => goTo(index + 1)} aria-label={labels.next}>
+          <button type="button" className="icon-btn" onClick={() => userGo(index + 1)} aria-label={labels.next}>
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>

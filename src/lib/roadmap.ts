@@ -51,7 +51,7 @@ const STEP_TITLES: T[] = [
   t('Préparation', 'Preparation'),
   t('Slides', 'Slides'),
   t('Répétition générale', 'Dress rehearsal'),
-  t('Jour J', 'Day D'),
+  t('Jour J', 'Talk day'),
 ];
 
 const COMMON: T[][] = [
@@ -115,9 +115,9 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
   if (has('D3', 'candidature') && !submitted) extra[1].push(t('Relecture de ta candidature par ta coach avant envoi', 'Your coach reviews your application before you send it'));
   if (has('D3', 'temps') || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
   if (a['D4'] === 'atelier') extra[2].push(t('Préparer les prérequis participants et un environnement prêt à l’emploi', 'Prepare participant prerequisites and a ready-to-use environment'));
-  if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un storyboard papier', 'Start from a clean template and a paper storyboard'));
+  if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un plan de tes slides dessiné sur papier', 'Start from a clean template and a paper sketch of your slides (storyboard)'));
   if (has('D3', 'anglais') || a['P5'] === 'en') extra[3].push(t('Relecture en anglais des slides et du script', 'English proofreading of the slides and script'));
-  if (has('D3', 'trac') || d2 <= 2) extra[4].push(t('Te filmer en répétition · Pitcher ton sujet en 2 minutes devant trois proches', 'Film yourself rehearsing · Pitch your topic in 2 minutes to three people close to you'));
+  if (has('D3', 'trac') || d2 <= 2) extra[4].push(t('Te filmer en répétition', 'Film yourself while rehearsing'), t('Présenter ton sujet en 2 minutes devant trois proches', 'Present your topic in 2 minutes to three people close to you'));
   if (a['D1'] === 'premiere') extra[4].push(t('Une répétition supplémentaire en conditions réelles (debout, micro, projecteur)', 'One extra rehearsal in real conditions (standing, mic, projector)'));
   if (has('D3', 'trac')) extra[5].push(t('Routine de respiration de 3 minutes avant de monter sur scène', 'A 3-minute breathing routine before going on stage'));
 

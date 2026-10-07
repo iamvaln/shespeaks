@@ -6,7 +6,9 @@ import { getRefs } from '@/lib/data';
 import { Wizard, type WizardInit } from '@/components/Wizard';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Soumettre mon intérêt' };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getLocale()) === 'fr' ? 'Soumettre mon intérêt' : 'Submit my interest' };
+}
 
 export default async function InteretPage() {
   const locale = await getLocale();

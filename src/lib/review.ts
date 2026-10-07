@@ -10,12 +10,12 @@ export interface AutoCheck {
 }
 
 const AUDIENCE_KW = [
-  'debutant', 'developpeu', 'etudiant', "s'adresse", 'public', 'intermediaire', 'confirme', 'designer', 'professionnel',
-  'beginner', 'student', 'developer', 'aimed at', 'audience', 'is for', 'junior', 'engineer', 'practitioner', 'anyone',
+  'debutant', 'developpeu', 'etudiant', "s'adresse", 'intermediaire', 'confirme', 'designer', 'professionnel',
+  'beginner', 'student', 'developer', 'aimed at', 'is for', 'junior', 'engineer', 'practitioner', 'anyone',
 ];
 const BENEFIT_KW = [
   'repartir', 'repartez', 'apprendr', 'appris', 'decouvr', 'saurez', 'maitris', 'comprendr', 'serez capable', 'gagn', 'emporter',
-  'learn', 'discover', 'take away', 'walk away', 'leave with', 'by the end', 'understand', 'master', 'be able to',
+  'discover', 'take away', 'walk away', 'leave with', 'by the end', 'understand', 'master', 'be able to',
 ];
 
 export function autoChecks(title: string, abstract: string): AutoCheck[] {

@@ -179,7 +179,7 @@ export function candidateConfirmation(c: { name: string }, planUrl: string, loc:
     ? build('Ta coach a bien reçu ton formulaire d’intérêt', {
         heading: `C’est reçu, ${first(c.name)} !`,
         paragraphs: [
-          'Ta coach SheSpeaks a bien reçu ton formulaire d’intérêt. Elle le relit et revient vers toi très vite sur WhatsApp pour la suite.',
+          'Ta coach SheSpeaks a bien reçu ton formulaire d’intérêt. Elle le relit et revient vers toi sur WhatsApp pour la suite.',
           'Ton plan de route personnalisé est prêt : retrouve-le quand tu veux avec le lien ci-dessous.',
         ],
         cta: { label: 'Voir mon plan de route', url: planUrl },
@@ -187,7 +187,7 @@ export function candidateConfirmation(c: { name: string }, planUrl: string, loc:
     : build('Your coach has received your interest form', {
         heading: `Got it, ${first(c.name)}!`,
         paragraphs: [
-          'Your SheSpeaks coach has received your interest form. She is reading it and will get back to you very soon on WhatsApp.',
+          'Your SheSpeaks coach has received your interest form. She is reading it and will get back to you on WhatsApp.',
           'Your personalised roadmap is ready: come back to it anytime with the link below.',
         ],
         cta: { label: 'See my roadmap', url: planUrl },

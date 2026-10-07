@@ -22,5 +22,5 @@ export const SLIDES: Slide[] = [
   { id: 'workshop', scene: 'workshop', title: { fr: 'Atelier', en: 'Workshop' }, caption: { fr: 'Les participantes pratiquent avec toi', en: 'Participants practise along with you' } },
   { id: 'demo', scene: 'demo', title: { fr: 'Démo en direct', en: 'Live demo' }, caption: { fr: 'Montre ce que tu as construit', en: 'Show what you built' } },
   { id: 'rehearsal', scene: 'rehearsal', title: { fr: 'Répétition générale', en: 'Dress rehearsal' }, caption: { fr: 'Devant le groupe, avant l’événement', en: 'In front of the group, before the event' } },
-  { id: 'dayd', scene: 'dayd', title: { fr: 'Jour J', en: 'Day D' }, caption: { fr: 'Le groupe est dans la salle pour t’encourager', en: 'The group is in the room to cheer you on' } },
+  { id: 'dayd', scene: 'dayd', title: { fr: 'Jour J', en: 'Talk day' }, caption: { fr: 'Le groupe est dans la salle pour t’encourager', en: 'The group is in the room to cheer you on' } },
 ];

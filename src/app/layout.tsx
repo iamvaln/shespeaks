@@ -2,11 +2,16 @@ import type { Metadata, Viewport } from 'next';
 import { getLocale } from '@/lib/locale';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: { default: "SheSpeaks by Techies Connect'", template: "%s · SheSpeaks" },
-  description: 'SheSpeaks accompagne des femmes de la tech au Cameroun jusqu’à la scène des DevFest. · SheSpeaks supports women in tech in Cameroon all the way to the DevFest stage.',
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: { default: "SheSpeaks by Techies Connect'", template: '%s · SheSpeaks' },
+    description: locale === 'en'
+      ? 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events, starting with DevFest 2026.'
+      : 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
+    robots: { index: true, follow: true },
+  };
+}
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#111528' };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

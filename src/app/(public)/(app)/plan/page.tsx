@@ -10,7 +10,9 @@ import { t } from '@/lib/i18n';
 import { appUrl } from '@/lib/mail';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Plan de route · Roadmap' };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getLocale()) === 'fr' ? 'Ton plan de route' : 'Your roadmap' };
+}
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<{ done?: string }> }) {
   const sp = await searchParams;
@@ -38,6 +40,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           <div>
             <h2>{d.confirmH}</h2>
             <p>{d.confirmP}{sp.done && c.email ? ` ${d.emailSent}` : ''}</p>
+            {c.branch !== 'D' || sub?.application_state === 'a_soumettre' ? <p style={{ marginTop: 6 }}>{d.notYetApplication}</p> : null}
           </div>
         </div>
 
@@ -53,7 +56,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
         <PlanPhotos initial={photos.map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }))} consent={!!c.consent_photo} locale={locale} />
 
-        <p className="small">{d.bookmark} <span className="muted" style={{ wordBreak: 'break-all' }}>{c.email ? '' : `${appUrl()}/reprendre/${c.token}`}</span></p>
+        {c.email ? (
+          <p className="small">{d.bookmarkEmail}</p>
+        ) : (
+          <p className="small">{d.bookmark} <span className="muted" style={{ wordBreak: 'break-all' }}>{`${appUrl()}/reprendre/${c.token}`}</span></p>
+        )}
       </div>
     </div>
   );
