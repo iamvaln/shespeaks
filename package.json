@@ -12,9 +12,14 @@
     "start": "next start",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/migrate.mjs",
+    "db:migrate": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs migrate",
     "check:env": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs --strict",
-    "prebuild": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs"
+    "prebuild": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs && npm run db:deploy",
+    "db:seed": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs seed",
+    "db:setup": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs setup",
+    "db:status": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs status",
+    "db:deploy": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs deploy",
+    "test:db": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings --test tests/db/*.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

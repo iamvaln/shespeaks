@@ -2,6 +2,7 @@ import { getSetting } from '@/lib/db';
 import { getRefs, refsToText } from '@/lib/data';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
+import { all } from '@/lib/db';
 import { saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +10,12 @@ export const dynamic = 'force-dynamic';
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const sp = await searchParams;
   const refs = await getRefs();
+  let migrations: string[] | null = null;
+  try {
+    migrations = (await all<{ filename: string }>('SELECT filename FROM schema_migrations ORDER BY filename')).map((r) => r.filename);
+  } catch {
+    migrations = null; // table absent: migrations were never run through the tracked runner
+  }
   const issues = checkEnv(process.env, { production: process.env.NODE_ENV === 'production' });
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
@@ -21,6 +28,11 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       {sp.msg && <div className="flash">{sp.msg}</div>}
       <section className="card stack-sm" style={{ maxWidth: 820, marginBottom: 24 }} aria-label="Configuration du serveur">
         <h2 style={{ margin: 0 }}>Configuration du serveur</h2>
+        {migrations && migrations.length > 0 ? (
+          <p className="small"><span className="pill ok">OK</span> Base de données : {migrations.length} migration{migrations.length > 1 ? 's' : ''} appliquée{migrations.length > 1 ? 's' : ''}, dernière : <code>{migrations[migrations.length - 1]}</code></p>
+        ) : (
+          <p className="small"><span className="pill bad">Erreur</span> Aucune migration enregistrée : lance <code>npm run db:setup</code> sur cette base (ou redéploie : les migrations s’exécutent pendant le build).</p>
+        )}
         {issues.length === 0 ? (
           <p className="small"><span className="pill ok">OK</span> Toutes les variables d’environnement attendues sont renseignées.</p>
         ) : (

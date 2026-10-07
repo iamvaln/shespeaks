@@ -49,16 +49,38 @@ const toPg = (text: string) => {
 };
 
 type Param = string | number | null;
+
+/** Turn "table/column does not exist" into something an operator reading the Vercel logs can act on. */
+function explain(e: unknown): unknown {
+  const code = (e as { code?: string })?.code;
+  if (code === '42P01' || code === '42703') {
+    const err = new Error(
+      `Database schema is missing or out of date (${(e as Error).message}). Apply the migrations: run "npm run db:setup" ` +
+        'against this database, or redeploy on Vercel (migrations run during the build unless MIGRATE_ON_BUILD=false).',
+    );
+    (err as Error & { cause?: unknown }).cause = e;
+    return err;
+  }
+  return e;
+}
+
 export async function all<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T[]> {
-  return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+  try {
+    return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+  } catch (e) {
+    throw explain(e);
+  }
 }
 export async function get<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T | undefined> {
   return (await all<T>(text, ...p))[0];
 }
 /** Returns the number of affected rows. */
 export async function run(text: string, ...p: Param[]): Promise<number> {
-  const r = await conn().unsafe(toPg(text), p);
-  return r.count;
+  try {
+    return (await conn().unsafe(toPg(text), p)).count;
+  } catch (e) {
+    throw explain(e);
+  }
 }
 /** INSERT … returning the new row id. */
 export async function insert(text: string, ...p: Param[]): Promise<number> {
