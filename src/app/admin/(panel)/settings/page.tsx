@@ -1,6 +1,7 @@
 import { getSetting } from '@/lib/db';
 import { getRefs, refsToText } from '@/lib/data';
 import { mailConfigured } from '@/lib/mail';
+import { checkEnv } from '@/lib/env';
 import { saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const sp = await searchParams;
   const refs = await getRefs();
+  const issues = checkEnv(process.env, { production: process.env.NODE_ENV === 'production' });
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
     first: await getSetting('reminder_first_hours'), interval: await getSetting('reminder_interval_hours'), max: await getSetting('reminder_max'),
@@ -17,6 +19,24 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     <>
       <h1>Paramètres</h1>
       {sp.msg && <div className="flash">{sp.msg}</div>}
+      <section className="card stack-sm" style={{ maxWidth: 820, marginBottom: 24 }} aria-label="Configuration du serveur">
+        <h2 style={{ margin: 0 }}>Configuration du serveur</h2>
+        {issues.length === 0 ? (
+          <p className="small"><span className="pill ok">OK</span> Toutes les variables d’environnement attendues sont renseignées.</p>
+        ) : (
+          <>
+            <p className="small">Variables d’environnement à corriger dans Vercel (Project Settings → Environment Variables), puis redéployer. Seuls les noms sont affichés, jamais les valeurs.</p>
+            <ul className="checklist">
+              {issues.map((i) => (
+                <li key={i.vars.join()}>
+                  <span className={`pill ${i.level === 'error' ? 'bad' : ''}`}>{i.level === 'error' ? 'Erreur' : 'Attention'}</span>
+                  <div><strong style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>{i.vars.join(' + ')}</strong><div className="small">{i.message}</div></div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
       <form action={saveSettingsAction} className="stack" style={{ maxWidth: 820 }}>
         <section className="card stack">
           <h2>Notifications</h2>

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,9 @@
     "start": "next start",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "check:env": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs --strict",
+    "prebuild": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

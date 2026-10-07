@@ -38,6 +38,17 @@ node scripts/smoke.mjs          # API journey for the 4 branches (server must be
 
 Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `SMTP_HOST`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without SMTP, the link is shown on screen).
 
+## Environment check
+
+The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):
+
+- **At build time on Vercel** (`prebuild` → `scripts/check-env.mjs`): a missing or placeholder required variable fails the deploy with a clear list, instead of surfacing in front of candidates.
+- **At server start in production** (`src/instrumentation.ts`): errors are logged and the server refuses to boot. Warnings (e.g. no SMTP, so emails are not sent) are logged but don't block.
+- **In the admin**: Admin → Paramètres → *Configuration du serveur* shows what is still wrong.
+- **On demand**: `npm run check:env` (strict, reads `.env.local`).
+
+Errors: `DATABASE_URL`, `APP_URL` (not localhost), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `SMTP_HOST` / `MAIL_FROM`, `ADMIN_EMAIL`, pooler port. Escape hatch: `SKIP_ENV_CHECK=true`.
+
 ## Emails
 
 | Event | To | Content |

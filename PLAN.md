@@ -64,3 +64,6 @@ Hosting: Vercel + Supabase (see README).
 
 ## Open point from spec
 DevFest Bamenda dates unknown → shown as « À confirmer »; editable in admin Calendrier.
+
+## Follow-ups
+- [x] Startup / build-time / admin environment check (`src/lib/env.ts`)
