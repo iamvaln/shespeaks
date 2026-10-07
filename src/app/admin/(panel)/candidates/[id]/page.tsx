@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { all } from '@/lib/db';
 import { STATUSES, getSetting, statusLabel } from '@/lib/db';
 import {
-  cityLabel, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
+  eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
 } from '@/lib/data';
 import {
   APPLICATION_STATES, AUDIENCES, FORMATS, SCREENS, SELF_CHECKS, flowFor, labelOf, resolveOptions, visibleQuestions, type Answer, type Question,
@@ -33,12 +33,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
     getSetting('show_tracks_to_candidates'),
   ]);
+  const evLabel = await eventLabelFor(c, c.locale);
   const coaches = allCoaches.filter((x) => x.active || x.id === c.coach_id);
   const history = await all<{ old_status: string | null; new_status: string; author: string; at: string }>('SELECT * FROM status_history WHERE candidate_id=? ORDER BY id DESC', id);
   const notes = await all<{ text: string; at: string; next_point_date: string | null; coach: string | null }>(
     `SELECT n.text, n.at, n.next_point_date, co.name AS coach FROM notes n LEFT JOIN coaches co ON co.id=n.coach_id WHERE n.candidate_id=? ORDER BY n.id DESC`, id);
   const review = await all<{ criterion: string; result: string; value: string | null }>('SELECT * FROM review_items WHERE candidate_id=?', id);
-  const rm = c.branch && c.completed_at ? buildRoadmap({ answers: a, branch: c.branch, locale: c.locale, subjectTitle: subject?.title, event: ev, cityName: cityLabel(c, c.locale) }) : null;
+  const rm = c.branch && c.completed_at ? buildRoadmap({ answers: a, branch: c.branch, locale: c.locale, subjectTitle: subject?.title, event: ev, eventName: evLabel }) : null;
   const selPhoto = photos.find((p) => p.id === c.selected_photo_id);
   const wa = (c.whatsapp ?? '').replace(/[^\d]/g, '');
 
@@ -59,7 +60,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           <h1 style={{ marginBottom: 6 }}>{c.name}</h1>
           <div className="row" style={{ gap: 12 }}>
             <span className={`status s-${c.status}`}>{statusLabel(c.status)}</span>
-            <span className="small">{cityLabel(c)} · départ {c.branch ?? '—'} · {c.locale === 'en' ? 'interface en anglais' : 'interface en français'}</span>
+            <span className="small">{evLabel} · départ {c.branch ?? '—'} · {c.locale === 'en' ? 'interface en anglais' : 'interface en français'}</span>
           </div>
         </div>
       </div>
@@ -73,12 +74,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             <dl className="kv">
               <dt>WhatsApp</dt><dd>{wa ? <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer">{c.whatsapp}</a> : '—'}</dd>
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}</dd>
-              <dt>Ville</dt><dd>{cityLabel(c)}</dd>
+              <dt>Événement</dt><dd>{evLabel}</dd>
               <dt>Rôle</dt><dd>{c.role}</dd>
               <dt>Ancienneté tech</dt><dd>{String(a['P7'] ?? '—').replace('lt1', 'Moins d’un an')}</dd>
               <dt>Langue du talk</dt><dd>{labelOf(resolveOptions(SCREENS.profile.questions.find((q) => q.code === 'P5')!, refs), String(a['P5'] ?? ''), 'fr')}</dd>
               <dt>Inscrite le</dt><dd>{fmtDate(c.created_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
-              <dt>Diagnostic terminé</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : <>Non — écran « {SCREENS[c.current_screen]?.title.fr ?? c.current_screen} », {c.reminders_sent} relance(s) auto</>}</dd>
+              <dt>Formulaire terminé</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : <>Non — écran « {SCREENS[c.current_screen]?.title.fr ?? c.current_screen} », {c.reminders_sent} relance(s) auto</>}</dd>
             </dl>
             {!c.completed_at && c.email && (
               <form action={remindNowAction} style={{ marginTop: 16 }}>
@@ -170,7 +171,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           )}
 
           <section className="card">
-            <h2>Réponses au diagnostic</h2>
+            <h2>Réponses au formulaire</h2>
             <div className="stack">
               {screens.map((sid) => {
                 const s = SCREENS[sid];

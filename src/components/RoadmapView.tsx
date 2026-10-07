@@ -15,7 +15,7 @@ export function RoadmapView({
           <div>{/* eslint-disable-next-line @next/next/no-img-element */}{photoUrl ? <img src={photoUrl} alt="" /> : <span>SHE</span>}</div>
         </div>
         <div>
-          <p className="label-s">{d.badge} · DEVFEST {rm.badge.devfest.toUpperCase()}</p>
+          <p className="label-s">{d.badge} · {rm.badge.devfest.toUpperCase()}</p>
           <p className="name">{rm.badge.name}</p>
           <p className="talk">{rm.badge.title === 'à définir' || rm.badge.title === 'to be defined' ? d.toDefine : rm.badge.title}</p>
           <p className="meta">{[rm.badge.role, rm.badge.format].filter(Boolean).join(' · ')}</p>

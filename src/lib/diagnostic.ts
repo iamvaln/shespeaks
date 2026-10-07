@@ -2,7 +2,7 @@
 import { get, getSetting, run, tx } from './db.ts';
 import { SCREENS, SELF_CHECKS, flowFor, profileColumns, validateScreen, visibleQuestions, type Answers, type Branch, type FieldErrors, type Locale } from './questions.ts';
 import {
-  cityLabel, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, setAnswers,
+  eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, setAnswers,
   setStatus, touchCandidate, type Candidate,
 } from './data.ts';
 import { assembleAbstract } from './abstract.ts';
@@ -219,7 +219,7 @@ async function notifyCompletion(id: number) {
   // coach(es) / admin: new diagnostic, with direct link to the fiche
   const m = coachNewDiagnostic(
     {
-      name: c.name ?? '', cityLabel: cityLabel(c), branchLabel: c.branch ? BRANCH_LABEL[c.branch] : '—',
+      name: c.name ?? '', eventLabel: await eventLabelFor(c), branchLabel: c.branch ? BRANCH_LABEL[c.branch] : '—',
       whatsapp: c.whatsapp ?? '', email: c.email, subject: sub?.title || String(a['C1'] ?? a['D1-a'] ?? '') || null,
     },
     `${appUrl()}/admin/candidates/${id}`,

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
-import { cityLabel, eventFor, getAnswers, getPhotos, getSubject, getTracks } from '@/lib/data';
+import { eventLabelFor, eventFor, getAnswers, getPhotos, getSubject, getTracks } from '@/lib/data';
 import { buildRoadmap } from '@/lib/roadmap';
 import { RoadmapView } from '@/components/RoadmapView';
 import { PlanPhotos } from '@/components/PlanPhotos';
@@ -17,12 +17,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const locale = await getLocale();
   const c = await getCandidateFromCookie();
   if (!c) redirect('/');
-  if (!c.completed_at || !c.branch) redirect('/diagnostic');
+  if (!c.completed_at || !c.branch) redirect('/interet');
   const d = t(locale).plan;
   const [answers, sub, photos] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id)]);
   const rm = buildRoadmap({
     answers, branch: c.branch, locale,
-    subjectTitle: sub?.title, event: await eventFor(c), cityName: cityLabel(c, locale),
+    subjectTitle: sub?.title, event: await eventFor(c), eventName: await eventLabelFor(c, locale),
   });
   const show = (await getSetting('show_tracks_to_candidates')) === 'true';
   const tracks = show ? (await getTracks(c.id)).filter((x) => x.state !== 'ecartee') : [];

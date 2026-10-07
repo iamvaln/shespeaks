@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { after } from 'next/server';
 import { run } from './db.ts';
 import { resolveAppUrl } from './env.ts';
+import { typoFr } from './text.ts';
 import type { Locale } from './questions.ts';
 
 export const appUrl = () => resolveAppUrl(process.env).url;
@@ -113,7 +114,8 @@ interface Layout {
   footer?: string;
 }
 
-function render(l: Layout): { html: string; text: string } {
+function render(l0: Layout): { html: string; text: string } {
+  const l: Layout = { ...l0, heading: typoFr(l0.heading), paragraphs: l0.paragraphs.map(typoFr), facts: l0.facts?.map(([k, v]) => [typoFr(k), v] as [string, string]) };
   const logo = `${appUrl()}/brand/shespeaks-logo-nuit.png`;
   const html = `<!doctype html><html><body style="margin:0;background:#F4F3F7;font-family:Archivo,'Helvetica Neue',Arial,sans-serif;color:#111528">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F3F7"><tr><td align="center" style="padding:24px 12px">
@@ -154,38 +156,38 @@ const first = (name: string | null | undefined) => (name ?? '').trim().split(/\s
 // ---------------------------------------------------------------------------
 export function candidateStarted(c: { name: string }, resumeUrl: string, loc: Locale): Built {
   return loc === 'fr'
-    ? build('Ton diagnostic SheSpeaks est commencé', {
+    ? build('Ton formulaire SheSpeaks est commencé', {
         heading: `Bienvenue ${first(c.name)} !`,
         paragraphs: [
           'Tes réponses sont enregistrées au fur et à mesure. Si tu t’interromps, tu pourras reprendre exactement là où tu t’es arrêtée, depuis n’importe quel appareil, avec ce lien personnel.',
           'Le parcours prend 8 à 10 minutes.',
         ],
-        cta: { label: 'Reprendre mon diagnostic', url: resumeUrl },
+        cta: { label: 'Reprendre mon formulaire', url: resumeUrl },
       })
-    : build('Your SheSpeaks diagnostic has started', {
+    : build('Your SheSpeaks interest form has started', {
         heading: `Welcome ${first(c.name)}!`,
         paragraphs: [
           'Your answers are saved as you go. If you get interrupted, you can pick up exactly where you left off, from any device, using this personal link.',
           'The journey takes 8 to 10 minutes.',
         ],
-        cta: { label: 'Resume my diagnostic', url: resumeUrl },
+        cta: { label: 'Resume my form', url: resumeUrl },
       });
 }
 
 export function candidateConfirmation(c: { name: string }, planUrl: string, loc: Locale): Built {
   return loc === 'fr'
-    ? build('Ta coach a bien reçu ton diagnostic', {
+    ? build('Ta coach a bien reçu ton formulaire d’intérêt', {
         heading: `C’est reçu, ${first(c.name)} !`,
         paragraphs: [
-          'Ta coach SheSpeaks a bien reçu ton diagnostic. Elle le relit et revient vers toi très vite sur WhatsApp pour la suite.',
+          'Ta coach SheSpeaks a bien reçu ton formulaire d’intérêt. Elle le relit et revient vers toi très vite sur WhatsApp pour la suite.',
           'Ton plan de route personnalisé est prêt : retrouve-le quand tu veux avec le lien ci-dessous.',
         ],
         cta: { label: 'Voir mon plan de route', url: planUrl },
       })
-    : build('Your coach has received your diagnostic', {
+    : build('Your coach has received your interest form', {
         heading: `Got it, ${first(c.name)}!`,
         paragraphs: [
-          'Your SheSpeaks coach has received your diagnostic. She is reading it and will get back to you very soon on WhatsApp.',
+          'Your SheSpeaks coach has received your interest form. She is reading it and will get back to you very soon on WhatsApp.',
           'Your personalised roadmap is ready: come back to it anytime with the link below.',
         ],
         cta: { label: 'See my roadmap', url: planUrl },
@@ -194,18 +196,18 @@ export function candidateConfirmation(c: { name: string }, planUrl: string, loc:
 
 export function candidateReminder(c: { name: string }, resumeUrl: string, loc: Locale, step: { done: number; total: number }): Built {
   return loc === 'fr'
-    ? build('Il te reste peu de chose pour finir ton diagnostic', {
+    ? build('Il te reste peu de chose pour finir ton formulaire', {
         heading: `${first(c.name)}, ta scène t’attend`,
         paragraphs: [
-          `Tu as commencé ton diagnostic SheSpeaks (écran ${step.done} sur ${step.total}) mais tu ne l’as pas terminé. Il te reste quelques minutes : tes réponses sont déjà enregistrées.`,
+          `Tu as commencé ton formulaire d’intérêt SheSpeaks (écran ${step.done} sur ${step.total}) mais tu ne l’as pas terminé. Il te reste quelques minutes : tes réponses sont déjà enregistrées.`,
           'Une fois terminé, ta coach reçoit ton dossier et tu obtiens ton plan de route personnalisé.',
         ],
         cta: { label: 'Reprendre là où je me suis arrêtée', url: resumeUrl },
       })
-    : build('Just a little left to finish your diagnostic', {
+    : build('Just a little left to finish your interest form', {
         heading: `${first(c.name)}, your stage is waiting`,
         paragraphs: [
-          `You started your SheSpeaks diagnostic (screen ${step.done} of ${step.total}) but haven’t finished it. It only takes a few minutes: your answers are already saved.`,
+          `You started your SheSpeaks interest form (screen ${step.done} of ${step.total}) but haven’t finished it. It only takes a few minutes: your answers are already saved.`,
           'Once you’re done, your coach receives your file and you get your personalised roadmap.',
         ],
         cta: { label: 'Pick up where I left off', url: resumeUrl },
@@ -216,15 +218,15 @@ export function candidateReminder(c: { name: string }, resumeUrl: string, loc: L
 // Coach / admin emails (admin space is in French)
 // ---------------------------------------------------------------------------
 export function coachNewDiagnostic(
-  c: { name: string; cityLabel: string; branchLabel: string; whatsapp: string; email: string | null; subject?: string | null },
+  c: { name: string; eventLabel: string; branchLabel: string; whatsapp: string; email: string | null; subject?: string | null },
   ficheUrl: string,
 ): Built {
-  return build(`Nouveau diagnostic reçu : ${c.name} (${c.cityLabel})`, {
-    heading: 'Un diagnostic vient d’être terminé',
+  return build(`Nouvel intérêt reçu : ${c.name} (${c.eventLabel})`, {
+    heading: 'Un formulaire d’intérêt vient d’être soumis',
     paragraphs: ['Une candidate a terminé son parcours. Sa fiche récapitulative est prête à être relue ; reprends contact avec elle pour la suite.'],
     facts: [
       ['Candidate', c.name],
-      ['Ville', c.cityLabel],
+      ['Événement', c.eventLabel],
       ['Point de départ', c.branchLabel],
       ...(c.subject ? ([['Sujet', c.subject]] as [string, string][]) : []),
       ['WhatsApp', c.whatsapp],
@@ -238,7 +240,7 @@ export function coachNewDiagnostic(
 
 export interface StalledItem {
   name: string;
-  cityLabel: string;
+  eventLabel: string;
   whatsapp: string;
   email: string | null;
   screenLabel: string;
@@ -248,13 +250,13 @@ export interface StalledItem {
 }
 export function coachStalledDigest(recipientName: string, items: StalledItem[]): Built {
   const n = items.length;
-  return build(n === 1 ? `Relance à faire : ${items[0].name} n’a pas fini son diagnostic` : `Relances à faire : ${n} candidates n’ont pas fini leur diagnostic`, {
-    heading: n === 1 ? 'Une candidate n’a pas terminé son diagnostic' : `${n} candidates n’ont pas terminé leur diagnostic`,
+  return build(n === 1 ? `Relance à faire : ${items[0].name} n’a pas fini son formulaire` : `Relances à faire : ${n} candidates n’ont pas fini leur formulaire`, {
+    heading: n === 1 ? 'Une candidate n’a pas terminé son formulaire' : `${n} candidates n’ont pas terminé leur formulaire`,
     paragraphs: [
       `Bonjour ${first(recipientName)}, ces candidates ont commencé le parcours puis se sont arrêtées. Un message WhatsApp personnel est souvent le meilleur coup de pouce${items.some((i) => i.email) ? ' ; un email de rappel leur a été envoyé lorsqu’elles avaient laissé une adresse' : ''}.`,
       ...items.map(
         (i) =>
-          `• ${i.name} — ${i.cityLabel} — arrêtée à « ${i.screenLabel} » depuis ${i.hoursIdle < 48 ? `${i.hoursIdle} h` : `${Math.round(i.hoursIdle / 24)} jours`} (relance n° ${i.tier})\n  WhatsApp : ${i.whatsapp}${i.email ? ` · ${i.email}` : ''}\n  Fiche : ${i.url}`,
+          `• ${i.name} — ${i.eventLabel} — arrêtée à « ${i.screenLabel} » depuis ${i.hoursIdle < 48 ? `${i.hoursIdle} h` : `${Math.round(i.hoursIdle / 24)} jours`} (relance n° ${i.tier})\n  WhatsApp : ${i.whatsapp}${i.email ? ` · ${i.email}` : ''}\n  Fiche : ${i.url}`,
       ),
     ],
     cta: { label: 'Voir les candidates en cours', url: `${appUrl()}/admin/candidates?status=en_cours` },

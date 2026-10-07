@@ -1,4 +1,4 @@
-// Diagnostic definition: blocks, screens, questions, validation. Pure data + pure functions
+// Interest-form definition: blocks, screens, questions, validation. Pure data + pure functions
 // (no framework imports) so it can be shared by the client wizard, the API and the tests.
 
 export type Locale = 'fr' | 'en';
@@ -19,7 +19,7 @@ export interface Question {
   help?: Loc;
   placeholder?: Loc;
   /** static options, or a referential resolved at runtime */
-  options?: Option[] | 'domains' | 'angles';
+  options?: Option[] | 'domains' | 'angles' | 'events';
   required: boolean;
   /** multi: min/max selected */
   min?: number;
@@ -45,9 +45,12 @@ export interface Screen {
 export interface Refs {
   domains: Option[];
   angles: Option[];
+  /** events candidates can take part in (from the admin calendar) + "another event" */
+  events: Option[];
 }
 
-export const L = (fr: string, en: string): Loc => ({ fr, en });
+import { typoFr } from './text.ts';
+export const L = (fr: string, en: string): Loc => ({ fr: typoFr(fr), en });
 const opt = (value: string, fr: string, en: string): Option => ({ value, label: L(fr, en) });
 
 export const DEFAULT_DOMAINS: Option[] = [
@@ -78,14 +81,8 @@ export const DEFAULT_ANGLES: Option[] = [
   opt('enjeux', 'Enjeux et opportunités au Cameroun', 'Challenges and opportunities in Cameroon'),
 ];
 
-export const DEFAULT_REFS: Refs = { domains: DEFAULT_DOMAINS, angles: DEFAULT_ANGLES };
-
-export const CITIES: Option[] = [
-  opt('douala', 'Douala', 'Douala'),
-  opt('yaounde', 'Yaoundé', 'Yaoundé'),
-  opt('bamenda', 'Bamenda', 'Bamenda'),
-  opt('autre', 'Autre', 'Other'),
-];
+export const OTHER_EVENT: Option = opt('autre', 'Autre événement', 'Another event');
+export const DEFAULT_REFS: Refs = { domains: DEFAULT_DOMAINS, angles: DEFAULT_ANGLES, events: [OTHER_EVENT] };
 
 export const AUDIENCES: Option[] = [
   opt('debutant', 'Débutant·es', 'Beginners'),
@@ -114,10 +111,10 @@ const profile: Screen = {
   id: 'profile',
   kind: 'form',
   block: L('Bloc 1 · Profil', 'Block 1 · Profile'),
-  title: L('Faisons connaissance', "Let's get to know you"),
+  title: L('Faisons connaissance', 'Let’s get to know you'),
   intro: L(
-    'Ces infos permettent à ta coach de te contacter et de t’orienter vers le bon DevFest.',
-    'This helps your coach reach you and point you to the right DevFest.',
+    'Ces infos permettent à ta coach de te contacter et de préparer avec toi ta prise de parole à l’événement de ton choix.',
+    'This helps your coach reach you and prepare, with you, your talk at the event of your choice.',
   ),
   questions: [
     { code: 'P1', type: 'text', required: true, maxLength: 120, label: L('Ton nom complet', 'Your full name') },
@@ -125,15 +122,17 @@ const profile: Screen = {
       code: 'P2',
       type: 'single',
       required: true,
-      label: L('Dans quelle ville veux-tu prendre la parole ?', 'In which city do you want to speak?'),
-      options: CITIES,
+      label: L('À quel événement veux-tu participer ?', 'Which event do you want to take part in?'),
+      help: L('Choisis l’événement tech où tu aimerais prendre la parole.', 'Pick the tech event where you would like to speak.'),
+      options: 'events',
     },
     {
       code: 'P2o',
       type: 'text',
       required: true,
-      maxLength: 80,
-      label: L('Précise ta ville', 'Tell us the city'),
+      maxLength: 120,
+      label: L('Quel est cet événement ?', 'Which event is it?'),
+      placeholder: L('Nom de l’événement et ville', 'Event name and city'),
       showIf: (a) => a['P2'] === 'autre',
     },
     {
@@ -166,14 +165,15 @@ const profile: Screen = {
       type: 'text',
       required: true,
       maxLength: 120,
-      label: L('Ton métier ou ton rôle actuel', 'Your job or current role'),
-      placeholder: L('développeuse mobile, étudiante, designer UX', 'mobile developer, student, UX designer'),
+      label: L('Tu étudies ou tu travailles dans la tech ? Précise ta filière ou ton poste', 'Do you study or work in tech? Tell us your field of study or your job'),
+      placeholder: L('étudiante en informatique, développeuse mobile, designer UX', 'computer science student, mobile developer, UX designer'),
     },
     {
       code: 'P7',
       type: 'single',
       required: true,
       label: L('Depuis combien de temps es-tu dans la tech ?', 'How long have you been in tech?'),
+      help: L('Études comprises.', 'Studies included.'),
       options: [
         opt('lt1', 'Moins d’un an', 'Less than a year'),
         opt('1-3', '1 à 3 ans', '1 to 3 years'),
@@ -187,7 +187,7 @@ const profile: Screen = {
 const diag1: Screen = {
   id: 'diag1',
   kind: 'form',
-  block: L('Bloc 2 · Diagnostic', 'Block 2 · Diagnostic'),
+  block: L('Bloc 2 · Ton expérience', 'Block 2 · Your experience'),
   title: L('Ton aisance à l’oral', 'Your comfort with public speaking'),
   intro: L('Pas de bonne ou mauvaise réponse : ça nous aide à personnaliser ton accompagnement.', 'No right or wrong answers: it helps us tailor your support.'),
   questions: [
@@ -231,7 +231,7 @@ const diag1: Screen = {
 const diag2: Screen = {
   id: 'diag2',
   kind: 'form',
-  block: L('Bloc 2 · Diagnostic', 'Block 2 · Diagnostic'),
+  block: L('Bloc 2 · Ton projet', 'Block 2 · Your project'),
   title: L('Ton projet de talk', 'Your talk project'),
   questions: [
     {
@@ -395,7 +395,7 @@ const d1: Screen = {
     { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title') },
     { code: 'D1-b', type: 'longtext', required: true, maxLength: 3000, label: L('Le résumé (abstract)', 'The abstract') },
     { code: 'D1-c', type: 'single', required: true, label: L('Niveau du public visé', 'Target audience level'), options: AUDIENCES },
-    { code: 'D1-d', type: 'single', required: true, label: L('Où en est ta candidature ?', 'Where is your application?'), options: APPLICATION_STATES },
+    { code: 'D1-d', type: 'single', required: true, label: L('Où en est ta candidature à l’appel à speakers ?', 'Where is your application to the call for speakers?'), options: APPLICATION_STATES },
   ],
 };
 
@@ -452,6 +452,7 @@ export function visibleQuestions(screen: Screen, a: Answers): Question[] {
 export function resolveOptions(q: Question, refs: Refs): Option[] {
   if (q.options === 'domains') return refs.domains;
   if (q.options === 'angles') return refs.angles;
+  if (q.options === 'events') return refs.events;
   return q.options ?? [];
 }
 

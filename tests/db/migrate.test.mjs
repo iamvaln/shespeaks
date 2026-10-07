@@ -128,3 +128,35 @@ test('app runtime: a missing table gives an actionable message, not a bare Postg
   await assert.rejects(() => db.get('select * from devfest_events'), (e) => /npm run db:setup/.test(e.message) && /redeploy on Vercel/.test(e.message));
   await db.sql().end();
 });
+
+test('0003: existing events get a public title; the Douala link is only replaced if nobody edited it', { skip }, async () => {
+  const { url } = await freshDb();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-'));
+  for (const f of ['0001_init.sql', '0002_email_provider_id.sql']) fs.copyFileSync(path.join('supabase/migrations', f), path.join(dir, f));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0); // database as it was before 0003
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  await s`insert into devfest_events (city,name,event_date,submission_url) values ('kribi','Kribi','2027-03-01',null), ('douala','Douala','2026-11-28','https://devfest.gdgdouala.org/cfp'), ('yaounde','Yaoundé','2026-11-21','https://my-own-link.example')`;
+  fs.copyFileSync('supabase/migrations/0003_events_title_poster.sql', path.join(dir, '0003_events_title_poster.sql'));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0);
+  const rows = Object.fromEntries((await s`select city, title, submission_url from devfest_events`).map((r) => [r.city, r]));
+  await s.end();
+  assert.equal(rows.kribi.title, 'DevFest Kribi 2027');
+  assert.equal(rows.douala.title, 'DevFest Douala 2026');
+  assert.equal(rows.douala.submission_url, 'https://bit.ly/speakersdevfest26', 'untouched default is replaced by the official link');
+  assert.equal(rows.yaounde.submission_url, 'https://my-own-link.example', 'an edited link is left alone');
+});
+
+test('seed gives every event its public title and never overwrites an edited one', { skip }, async () => {
+  const { url } = await freshDb();
+  assert.equal(cli(url, ['setup']).status, 0);
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  const titles = (await s`select title from devfest_events order by city`).map((r) => r.title);
+  assert.deepEqual(titles, ['DevFest Bamenda 2026', 'DevFest Douala 2026', 'DevFest Yaoundé 2026']);
+  await s`update devfest_events set title='DevFest Douala (édition 2026)', poster_url='/events/douala.jpg' where city='douala'`;
+  await s.end();
+  assert.equal(cli(url, ['seed']).status, 0);
+  const t = postgres(url, { max: 1, onnotice: () => {} });
+  const [d] = await t`select title, poster_url from devfest_events where city='douala'`;
+  await t.end();
+  assert.deepEqual({ ...d }, { title: 'DevFest Douala (édition 2026)', poster_url: '/events/douala.jpg' });
+});

@@ -1,10 +1,17 @@
 # SheSpeaks platform
 
-Diagnostic journey for women in tech (front office) + coach follow-up space (admin), per
+Interest form and coaching platform for women in tech (front office) + coach follow-up space (admin), per
 `SheSpeaks-Specification-plateforme.pdf` and the brand guide. See [`PLAN.md`](PLAN.md) for the build checklist.
 
 - **Front office** (`/`): home → diagnostic (profile, diagnostic, branch A/B/C/D, speaker photo) → confirmation + personalised roadmap. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
 - **Admin** (`/admin`): passwordless coach login, dashboard, candidates list + fiche (answers, topic tracks review, subject, review grid, roadmap preview, status history, notes, photos), DevFest calendar, coaches, settings, email log.
+
+## Public site
+
+- **Landing page** (`/`): what SheSpeaks is, **upcoming events** (from Admin → Événements, with the event's poster when one is set), who can join, how it works, how to join, FAQ. The call to action is **« Soumettre mon intérêt »** (no "diagnostic" wording anywhere user-facing).
+- **Slider**: on-brand illustrations until real photos exist. To use photos, drop them in `public/slider/` and set `photo` on the slide in `src/content/slides.ts`.
+- **Event posters**: drop the image in `public/events/` and set it in Admin → Événements (field *Affiche*).
+- **Form** (`/interet`, old `/diagnostic` redirects): regular light-theme form. Candidates choose an **event** (DevFest Douala 2026, DevFest Yaoundé 2026, …, or another event), not a city; the list comes from the events calendar.
 
 ## Stack
 

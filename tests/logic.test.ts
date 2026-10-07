@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_REFS, SCREENS, flowFor, totalSteps, validateScreen } from '../src/lib/questions.ts';
+import { DEFAULT_REFS, OTHER_EVENT, SCREENS, flowFor, totalSteps, validateScreen } from '../src/lib/questions.ts';
 import { generateTracks } from '../src/lib/topics.ts';
 import { assembleAbstract } from '../src/lib/abstract.ts';
 import { autoChecks } from '../src/lib/review.ts';
@@ -13,12 +13,14 @@ test('flow: 3 common screens, branch screens, photo', () => {
   assert.equal(totalSteps('D'), 7);
 });
 
-test('validation: required, phone, email, "Autre" city', () => {
-  const e = validateScreen(SCREENS.profile, { P1: 'Aïcha', P2: 'autre', P3: 'abc', P4: 'nope', P5: 'fr', P6: 'dev', P7: '1-3' }, DEFAULT_REFS);
+const EVENT_REFS = { ...DEFAULT_REFS, events: [{ value: 'douala', label: { fr: 'DevFest Douala 2026', en: 'DevFest Douala 2026' } }, OTHER_EVENT] };
+
+test('validation: required, phone, email, "Autre" event', () => {
+  const e = validateScreen(SCREENS.profile, { P1: 'Aïcha', P2: 'autre', P3: 'abc', P4: 'nope', P5: 'fr', P6: 'dev', P7: '1-3' }, EVENT_REFS);
   assert.equal(e.P3, 'invalid_phone');
   assert.equal(e.P4, 'invalid_email');
   assert.equal(e.P2o, 'required');
-  const ok = validateScreen(SCREENS.profile, { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P5: 'fr', P6: 'dev', P7: '1-3' }, DEFAULT_REFS);
+  const ok = validateScreen(SCREENS.profile, { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P5: 'fr', P6: 'dev', P7: '1-3' }, EVENT_REFS);
   assert.deepEqual(ok, {});
 });
 
@@ -70,7 +72,7 @@ test('review grid automatic checks', () => {
 
 test('roadmap: personalised actions and next action', () => {
   const a = { P1: 'Aïcha', P2: 'douala', P5: 'en', P6: 'dev', D1: 'premiere', D2: 2, D3: ['legitime', 'trac', 'candidature'], D4: 'atelier', D5: '1-2', D6: 'A' };
-  const r = buildRoadmap({ answers: a, branch: 'A', locale: 'fr', event: null, cityName: 'Douala' });
+  const r = buildRoadmap({ answers: a, branch: 'A', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
   const stars = (n: number) => r.steps[n - 1].actions.filter((x) => x.personalized).length;
   assert.equal(stars(1), 2);
   assert.equal(stars(2), 2);
@@ -79,7 +81,7 @@ test('roadmap: personalised actions and next action', () => {
   assert.equal(stars(5), 1);
   assert.equal(r.steps.length, 5);
   assert.match(r.nextAction, /Ta coach, notifiée automatiquement/);
-  const d = buildRoadmap({ answers: { ...a, 'D1-d': 'retenue' }, branch: 'D', locale: 'fr', event: null, cityName: 'Douala' });
+  const d = buildRoadmap({ answers: { ...a, 'D1-d': 'retenue' }, branch: 'D', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
   assert.equal(d.steps[0].done, true);
   assert.match(d.nextAction, /Félicitations/);
   assert.equal(stars(1), 2); // not affected

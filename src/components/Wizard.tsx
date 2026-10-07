@@ -99,18 +99,19 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   const pct = Math.round(((idx + 1) / total) * 100);
 
   return (
-    <div className="wizard">
-      <div className="container narrow">
+    <div className="form-shell">
+      <div className="container form-container">
         <div className="progress" role="group" aria-label={d.screenOf(idx + 1, total)}>
-          <p className="label-s">{d.screenOf(idx + 1, total)} · {screen.block[locale]}</p>
+          <p className="label-s muted">{d.screenOf(idx + 1, total)}</p>
           <div className="progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><div style={{ width: `${pct}%` }} /></div>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); if (!isPhoto) submit(); }} noValidate>
-          <div className="screen-head">
-            <h1 className="display-l" ref={head} tabIndex={-1}>{screen.title[locale]}</h1>
-            {screen.intro && <p className="lead">{screen.intro[locale]}</p>}
-          </div>
+        <form className="form-card" onSubmit={(e) => { e.preventDefault(); if (!isPhoto) submit(); }} noValidate>
+          <header className="form-head">
+            <p className="form-block">{screen.block[locale]}</p>
+            <h1 className="form-title" ref={head} tabIndex={-1}>{screen.title[locale]}</h1>
+            {screen.intro && <p className="form-intro">{screen.intro[locale]}</p>}
+          </header>
 
           {banner && <div className="banner" role="alert">{banner}</div>}
 
@@ -142,8 +143,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
             </div>
           )}
 
-          <div className="wiz-actions">
-            <button type="button" className="btn btn-ghost" onClick={back} disabled={idx === 0 || busy}>{d.back}</button>
+          <div className="form-actions">
+            {idx > 0 ? <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>{d.back}</button> : <span />}
             <div className="grow">
               {isPhoto ? (
                 <>
@@ -155,7 +156,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
               )}
             </div>
           </div>
-          <p className="small" style={{ marginTop: 16 }}>{d.saved}</p>
+          <p className="small form-note">{d.saved}</p>
         </form>
       </div>
     </div>
@@ -184,17 +185,17 @@ function Field({ q, locale, refs, value, error, onChange }: {
   if (q.type === 'single' || q.type === 'multi' || q.type === 'scale') {
     const selected = q.type === 'multi' ? ((value as string[] | undefined) ?? []) : value === undefined ? [] : [String(value)];
     const items = q.type === 'scale' ? [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) })) : opts.map((o) => ({ value: o.value, label: o.label[locale] }));
-    const long = q.type !== 'scale' && items.some((o) => o.label.length > 34);
+    const short = q.type !== 'scale' && items.length >= 4 && items.every((o) => o.label.length <= 22);
     return (
       <fieldset className="q" aria-describedby={error ? errId : undefined}>
         <legend>{label}</legend>
         {help}
-        <div className={q.type === 'scale' ? 'scale' : `chips${long ? ' stack-chips' : ''}`} role={q.type === 'multi' ? 'group' : 'radiogroup'}>
+        <div className={q.type === 'scale' ? 'scale' : `opts${short ? ' cols' : ''}`} role={q.type === 'multi' ? 'group' : 'radiogroup'}>
           {items.map((o, i) => {
             const checked = selected.includes(o.value);
             const atMax = q.type === 'multi' && !!q.max && selected.length >= q.max && !checked;
             return (
-              <label className="chip" key={o.value}>
+              <label className={q.type === 'scale' ? 'scale-opt' : 'opt'} key={o.value}>
                 <input
                   id={i === 0 ? id : undefined}
                   type={q.type === 'multi' ? 'checkbox' : 'radio'}

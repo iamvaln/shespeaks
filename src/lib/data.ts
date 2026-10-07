@@ -1,7 +1,7 @@
 // Data access for candidates, answers, tracks, subjects, events, refs.
 import crypto from 'node:crypto';
 import { all, get, getSetting, insert, run } from './db.ts';
-import { DEFAULT_ANGLES, DEFAULT_DOMAINS, labelOf, CITIES, type Answers, type Answer, type Option, type Refs, type Locale, type Branch } from './questions.ts';
+import { DEFAULT_ANGLES, DEFAULT_DOMAINS, OTHER_EVENT, type Answers, type Answer, type Option, type Refs, type Locale, type Branch } from './questions.ts';
 import { norm } from './text.ts';
 import type { DevfestEvent } from './roadmap.ts';
 
@@ -88,7 +88,9 @@ export async function getRefs(): Promise<Refs> {
   // Angle ids are fixed (tied to title templates): keep only known ids, fill missing from defaults.
   const custom = parseRef(await getSetting('angles'), DEFAULT_ANGLES);
   const angles = DEFAULT_ANGLES.map((d) => custom.find((c) => c.value === d.value) ?? d);
-  return { domains, angles };
+  // Events come from the admin calendar (value = event slug). Past events stay selectable until a coach removes them.
+  const events: Option[] = (await listEvents()).map((e) => ({ value: e.city, label: { fr: eventName(e), en: eventName(e) } }));
+  return { domains, angles, events: [...events, OTHER_EVENT] };
 }
 
 // ---- candidates --------------------------------------------------------------
@@ -147,18 +149,26 @@ export async function setStatus(id: number, newStatus: string, author: string) {
 }
 
 // ---- events / calendar -------------------------------------------------------
-export const listEvents = () => all<DevfestEvent & { id: number }>('SELECT * FROM devfest_events ORDER BY event_date IS NULL, event_date, name');
+export type EventRow = DevfestEvent & { id: number };
+export const listEvents = () => all<EventRow>('SELECT * FROM devfest_events ORDER BY event_date IS NULL, event_date, name');
+/** Public name of an event: "DevFest Douala 2026" (falls back to the place name). */
+export const eventName = (e: { title?: string | null; name: string }) => e.title?.trim() || e.name;
 
 export async function eventFor(c: Pick<Candidate, 'city' | 'city_other'>): Promise<DevfestEvent | null> {
   const key = c.city === 'autre' ? norm(c.city_other ?? '') : (c.city ?? '');
   if (!key) return null;
   const events = await listEvents();
-  return events.find((e) => e.city === key || norm(e.name) === key) ?? null;
+  return events.find((e) => e.city === key || norm(e.name) === key || norm(eventName(e)) === key) ?? null;
 }
 
-export function cityLabel(c: Pick<Candidate, 'city' | 'city_other'>, locale: Locale = 'fr'): string {
-  if (c.city === 'autre') return c.city_other || (locale === 'fr' ? 'Autre' : 'Other');
-  return c.city ? labelOf(CITIES, c.city, locale) : '—';
+/** Name of the event a candidate chose; "other" events show what she typed. */
+export function eventLabel(c: Pick<Candidate, 'city' | 'city_other'>, events: EventRow[], locale: Locale = 'fr'): string {
+  if (c.city === 'autre') return c.city_other || OTHER_EVENT.label[locale];
+  const e = events.find((x) => x.city === c.city);
+  return e ? eventName(e) : c.city || '—';
+}
+export async function eventLabelFor(c: Pick<Candidate, 'city' | 'city_other'>, locale: Locale = 'fr'): Promise<string> {
+  return eventLabel(c, await listEvents(), locale);
 }
 
 export function clientIp(h: Headers): string {

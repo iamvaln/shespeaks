@@ -1,9 +1,12 @@
 // Plan de route: badge, next action, 5 steps with personalised (★) actions (spec: "Écran final").
-import { APPLICATION_STATES, CITIES, FORMATS, labelOf, type Answers, type Branch, type Locale } from './questions.ts';
+import { typoFr } from './text.ts';
+import { APPLICATION_STATES, FORMATS, labelOf, type Answers, type Branch, type Locale } from './questions.ts';
 
 export interface DevfestEvent {
-  city: string;
-  name: string;
+  city: string; // slug, also the value stored in candidates.city
+  name: string; // city / place
+  title: string | null; // public name of the event, e.g. "DevFest Douala 2026"
+  poster_url: string | null;
   cfp_close_date: string | null; // YYYY-MM-DD
   cfp_close_note: string | null;
   event_date: string | null;
@@ -36,11 +39,12 @@ export interface RoadmapInput {
   locale: Locale;
   subjectTitle?: string | null;
   event: DevfestEvent | null;
-  cityName: string;
+  /** display name of the event the candidate chose (also used when it is not in the calendar) */
+  eventName: string;
 }
 
 type T = { fr: string; en: string };
-const t = (fr: string, en: string): T => ({ fr, en });
+const t = (fr: string, en: string): T => ({ fr: typoFr(fr), en });
 
 const STEP_TITLES: T[] = [
   t('Sujet et candidature', 'Topic and application'),
@@ -56,7 +60,7 @@ const COMMON: T[][] = [
     t('Finaliser titre et résumé', 'Finalise title and abstract'),
     t('Préparer ta bio', 'Prepare your bio'),
     t('Choisir ta photo de speaker avec ta coach', 'Pick your speaker photo with your coach'),
-    t('Soumettre à l’appel à speakers du DevFest de ta ville avant la date limite', 'Submit to your city’s DevFest call for speakers before the deadline'),
+    t('Soumettre à l’appel à speakers de ton événement avant la date limite', 'Submit to your event’s call for speakers before the deadline'),
   ],
   [
     t('Construire le plan du talk en trois parties', 'Build your talk outline in three parts'),
@@ -131,7 +135,7 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
     };
   });
 
-  const cityLabel = i.event?.name ?? i.cityName ?? labelOf(CITIES, String(a['P2'] ?? ''), loc);
+  const eventLabel = i.event ? i.event.title?.trim() || i.event.name : i.eventName;
   const title =
     (i.subjectTitle && i.subjectTitle.trim()) ||
     String(a['C1'] ?? a['D1-a'] ?? '').trim() ||
@@ -140,7 +144,7 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
   return {
     badge: {
       name: String(a['P1'] ?? ''),
-      devfest: cityLabel,
+      devfest: eventLabel,
       title,
       role: String(a['P6'] ?? ''),
       format: labelOf(FORMATS, String(a['D4'] ?? ''), loc),

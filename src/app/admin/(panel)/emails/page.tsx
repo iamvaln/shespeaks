@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 const KINDS: Record<string, string> = {
   candidate_started: 'Candidate · parcours commencé', candidate_confirmation: 'Candidate · confirmation de réception',
   candidate_reminder_1: 'Candidate · relance 1', candidate_reminder_2: 'Candidate · relance 2', candidate_reminder_manual: 'Candidate · rappel manuel',
-  coach_new_diagnostic: 'Coach · nouveau diagnostic', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
+  coach_new_diagnostic: 'Coach · nouvel intérêt', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
 };
 
 export default async function Emails({ searchParams }: { searchParams: Promise<{ id?: string }> }) {

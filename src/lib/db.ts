@@ -5,7 +5,7 @@ import { resolveDatabaseUrl } from './env.ts';
 
 export const STATUSES = [
   { id: 'en_cours', label: 'En cours' },
-  { id: 'diagnostic_recu', label: 'Diagnostic reçu' },
+  { id: 'diagnostic_recu', label: 'Intérêt reçu' },
   { id: 'sujet_valide', label: 'Sujet validé' },
   { id: 'candidature_soumise', label: 'Candidature soumise' },
   { id: 'retenue', label: 'Retenue' },

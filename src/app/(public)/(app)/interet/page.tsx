@@ -6,9 +6,9 @@ import { getRefs } from '@/lib/data';
 import { Wizard, type WizardInit } from '@/components/Wizard';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Diagnostic' };
+export const metadata: Metadata = { title: 'Soumettre mon intérêt' };
 
-export default async function DiagnosticPage() {
+export default async function InteretPage() {
   const locale = await getLocale();
   const c = await getCandidateFromCookie();
   if (c?.completed_at) redirect('/plan');

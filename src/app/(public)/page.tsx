@@ -1,69 +1,182 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
 import { fmtDate, t } from '@/lib/i18n';
-import { listEvents } from '@/lib/data';
+import { eventName, listEvents } from '@/lib/data';
+import { SLIDES } from '@/content/slides';
+import { HeroSlider } from '@/components/HeroSlider';
+import { EventCard } from '@/components/EventCard';
+import { SiteHeader } from '@/components/SiteHeader';
+import { SiteFooter } from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = {
+  title: "SheSpeaks · Prends la parole sur les scènes de la tech",
+  description: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech. · SheSpeaks supports young professionals and students in tech so they speak at tech events.',
+};
+
+const Check = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="11" fill="var(--amber)" /><path d="M6.2 11.4l3.2 3.1 6.4-6.6" fill="none" stroke="var(--on-amber)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+);
+const Dash = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="var(--ink-muted)" strokeWidth="1.5" /><path d="M6.5 11h9" stroke="var(--ink-muted)" strokeWidth="2" strokeLinecap="round" /></svg>
+);
 
 export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const events = await listEvents();
-  const cta = c ? (c.completed_at ? { href: '/plan', label: d.seePlan } : { href: '/diagnostic', label: d.resume }) : { href: '/diagnostic', label: d.cta };
+  const today = new Date().toISOString().slice(0, 10);
+  const events = (await listEvents()).filter((e) => !e.event_date || e.event_date >= today);
+
+  const daysLeft = (iso: string) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86_400_000);
+  const next = events.filter((e) => e.cfp_close_date && daysLeft(e.cfp_close_date) >= 0).sort((a, b) => a.cfp_close_date!.localeCompare(b.cfp_close_date!))[0];
+  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta };
+  const slides = SLIDES.map((s) => ({
+    id: s.id, scene: s.scene, photo: s.photo, alt: s.alt?.[locale] ?? s.title[locale], title: s.title[locale], caption: s.caption[locale],
+  }));
 
   return (
-    <div className="container">
-      <section className="hero">
-        <p className="label">{d.eyebrow}</p>
-        <h1 className="display-xl">{d.h1}</h1>
-        <p className="lead">{d.lead}</p>
-        <div className="cta-row">
-          <Link className="btn" href={cta.href}>{cta.label}</Link>
-        </div>
-        <ul className="meta-list">{d.meta.map((m) => <li key={m}>{m}</li>)}</ul>
-      </section>
+    <>
+      <SiteHeader locale={locale} variant="landing" cta={cta} />
+      <main id="main">
+        {/* ---------- Hero + slider (night) ---------- */}
+        <section className="band hero" aria-labelledby="h1">
+          <div className="container hero-grid">
+            <div>
+              <p className="label">{d.hero.eyebrow}</p>
+              <h1 id="h1" className="display-xl">{d.hero.h1}</h1>
+              <p className="lead">{d.hero.lead}</p>
+              <div className="cta-row">
+                <Link className="btn btn-lg" href={cta.href}>{cta.label}</Link>
+                <a className="btn btn-lg btn-ghost" href="#comment">{d.hero.secondary}</a>
+              </div>
+              <ul className="meta-list">{d.hero.meta.map((m) => <li key={m}>{m}</li>)}</ul>
+            </div>
+            {next && (
+              <aside className="deadline" aria-label={d.hero.next.label}>
+                <p className="label-s">{d.hero.next.label}</p>
+                <p className="deadline-days"><span>{daysLeft(next.cfp_close_date!)}</span> {d.hero.next.days(daysLeft(next.cfp_close_date!))}</p>
+                <p className="deadline-event">{eventName(next)}</p>
+                <p className="deadline-until">{d.hero.next.until} {fmtDate(next.cfp_close_date, locale)}</p>
+                <a className="deadline-link" href="#evenements">{d.hero.next.see} →</a>
+              </aside>
+            )}
+          </div>
+          <div className="container stage-intro">
+            <h2 className="stage-title">{d.stage.title}</h2>
+            <p>{d.stage.lead}</p>
+          </div>
+          <div className="container slider-wrap">
+            <HeroSlider
+              slides={slides}
+              labels={{ region: d.stage.region, prev: d.stage.prev, next: d.stage.next, pause: d.stage.pause, play: d.stage.play, goTo: d.stage.goTo }}
+            />
+          </div>
+        </section>
 
-      <section className="section">
-        <p className="label-s">{d.forWho}</p>
-        <p className="lead" style={{ marginTop: 12, maxWidth: '60ch' }}>{d.forWhoText}</p>
-      </section>
+        {/* ---------- Upcoming events (light) ---------- */}
+        <section id="evenements" className="band band-light" data-theme="clair" aria-labelledby="h-events">
+          <div className="container">
+            <p className="label-s">{d.events.eyebrow}</p>
+            <h2 id="h-events" className="h2">{d.events.title}</h2>
+            <p className="section-lead">{d.events.lead}</p>
+            {events.length === 0 ? (
+              <p className="section-lead">{d.events.empty}</p>
+            ) : (
+              <div className="event-grid">
+                {events.map((e) => <EventCard key={e.id} e={e} locale={locale} today={today} interestHref={cta.href} />)}
+              </div>
+            )}
+          </div>
+        </section>
 
-      <section className="section">
-        <h2 className="title">{d.stepsTitle}</h2>
-        <ol className="steps-list">
-          {d.steps.map(([title, text]) => (
-            <li key={title}><div><strong>{title}</strong><span>{text}</span></div></li>
-          ))}
-        </ol>
-      </section>
+        {/* ---------- Who (light, raised) ---------- */}
+        <section id="qui" className="band band-light band-alt" data-theme="clair" aria-labelledby="h-who">
+          <div className="container who-grid">
+            <div>
+              <p className="label-s">{d.who.eyebrow}</p>
+              <h2 id="h-who" className="h2">{d.who.title}</h2>
+              <p className="section-lead">{d.who.lead}</p>
+            </div>
+            <div className="who-cards">
+              <div className="card card-lg">
+                <h3>{d.who.mustTitle}</h3>
+                <ul className="icon-list">{d.who.must.map((x) => <li key={x}><Check /><span>{x}</span></li>)}</ul>
+              </div>
+              <div className="card card-lg">
+                <h3>{d.who.notTitle}</h3>
+                <ul className="icon-list muted-list">{d.who.not.map((x) => <li key={x}><Dash /><span>{x}</span></li>)}</ul>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section className="section">
-        <h2 className="title">{d.gainTitle}</h2>
-        <ul className="ticks">{d.gains.map((g) => <li key={g}>{g}</li>)}</ul>
-        <div className="cta-row" style={{ marginTop: 40 }}>
-          <Link className="btn" href={cta.href}>{cta.label}</Link>
-        </div>
-      </section>
+        {/* ---------- How it works (light) ---------- */}
+        <section id="comment" className="band band-light" data-theme="clair" aria-labelledby="h-how">
+          <div className="container">
+            <p className="label-s">{d.how.eyebrow}</p>
+            <h2 id="h-how" className="h2">{d.how.title}</h2>
+            <p className="section-lead">{d.how.lead}</p>
+            <ol className="timeline">
+              {d.how.steps.map(([title, text], i) => (
+                <li key={title}>
+                  <span className="ring-num" aria-hidden="true">{i + 1}</span>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </li>
+              ))}
+            </ol>
+            <p className="note">{d.how.note}</p>
+          </div>
+        </section>
 
-      <section className="section">
-        <h2 className="title">{d.citiesTitle}</h2>
-        <p className="muted" style={{ margin: '8px 0 24px' }}>{d.citiesIntro}</p>
-        <div className="grid grid-3">
-          {events.map((e) => (
-            <article key={e.city} className="card card-lg city-card">
-              <p className="label-s">DEVFEST</p>
-              <h3>{e.name}</h3>
-              <dl>
-                <dt>{d.cfpClose}</dt>
-                <dd>{e.cfp_close_date ? fmtDate(e.cfp_close_date, locale) : d.toConfirm}</dd>
-                <dt>{d.event}</dt>
-                <dd>{e.event_date ? `${fmtDate(e.event_date, locale)}${e.venue ? ` · ${e.venue}` : ''}` : d.toConfirm}</dd>
-              </dl>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
+        {/* ---------- How to join (light, raised) ---------- */}
+        <section id="participer" className="band band-light band-alt" data-theme="clair" aria-labelledby="h-join">
+          <div className="container">
+            <p className="label-s">{d.join.eyebrow}</p>
+            <h2 id="h-join" className="h2">{d.join.title}</h2>
+            <ol className="join-steps">
+              {d.join.steps.map(([title, text], i) => (
+                <li key={title} className="card card-lg">
+                  <span className="ring-num" aria-hidden="true">{i + 1}</span>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="cta-row"><Link className="btn btn-lg" href={cta.href}>{cta.label}</Link></div>
+          </div>
+        </section>
+
+        {/* ---------- FAQ (light) ---------- */}
+        <section id="faq" className="band band-light" data-theme="clair" aria-labelledby="h-faq">
+          <div className="container faq-wrap">
+            <div>
+              <p className="label-s">{d.faq.eyebrow}</p>
+              <h2 id="h-faq" className="h2">{d.faq.title}</h2>
+            </div>
+            <div className="faq">
+              {d.faq.items.map(([q, a]) => (
+                <details key={q} className="faq-item">
+                  <summary>{q}</summary>
+                  <p>{a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- Final call (night) ---------- */}
+        <section className="band final-cta" aria-labelledby="h-final">
+          <div className="container">
+            <h2 id="h-final" className="h2">{d.final.title}</h2>
+            <p className="section-lead">{d.final.lead}</p>
+            <div className="cta-row"><Link className="btn btn-lg" href={cta.href}>{cta.label}</Link></div>
+          </div>
+        </section>
+      </main>
+      <SiteFooter locale={locale} />
+    </>
   );
 }

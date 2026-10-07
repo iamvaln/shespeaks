@@ -30,3 +30,6 @@ export function textLocale(talkLanguage: unknown, ui: Locale): Locale {
   if (talkLanguage === 'fr') return 'fr';
   return ui;
 }
+
+/** French typography: a no-break space before : ? ! ; » and after «, so punctuation never starts a line. */
+export const typoFr = (s: string): string => s.replace(/ ([:?!;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
