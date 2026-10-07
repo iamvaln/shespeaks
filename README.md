@@ -12,15 +12,15 @@ Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driv
 
 ## Deploy: Supabase + Vercel
 
-1. **Supabase** → create a project. Copy:
-   - the **Transaction pooler** connection string (Project Settings → Database → Connection pooling, port 6543) → `DATABASE_URL`
-   - the project URL → `SUPABASE_URL`, and the `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (server-side only).
+1. **Supabase** → create a project. The easiest way is Vercel's **Supabase integration** (Vercel → Storage / Integrations): it creates `POSTGRES_URL` (the pooled connection, port 6543), `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for you, and the app reads them as they are (`DATABASE_URL` is only needed to override `POSTGRES_URL`). Doing it by hand instead: take the **Transaction pooler** string (Project Settings → Database → Connection pooling) as `DATABASE_URL`, the project URL as `SUPABASE_URL`, and the `service_role` key as `SUPABASE_SERVICE_ROLE_KEY` (server-side only).
+   - **Scope matters:** variables added by the integration are scoped to *Production* only. Preview deployments (every PR) get none of them, and the build's environment check fails. In Vercel → Settings → Environment Variables, edit each one and also tick **Preview** (and **Development** if you use `vercel dev`).
+   - Previews then talk to the same database as production. Fine before launch; afterwards use a separate Supabase project (or branch) for Preview.
 2. **Create the schema** (once, then after each new file in `supabase/migrations/`):
    ```bash
-   DATABASE_URL="postgresql://…" ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" npm run db:migrate
+   DATABASE_URL="postgresql://…" ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" npm run db:migrate   # POSTGRES_URL works too
    ```
    (or paste `supabase/migrations/0001_init.sql` in the Supabase SQL editor). It seeds the DevFest calendar, enables Row Level Security on every table with no policy (the public Supabase API can't read any candidate data; the app uses the database role), and creates the first coach.
-3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
+3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`/`POSTGRES_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
 4. **Reminders** run from **Vercel Cron** (`vercel.json`, daily at 07:00 UTC; Vercel sends `Authorization: Bearer $CRON_SECRET` itself). Hobby plans only allow daily crons; on Pro, change the schedule to hourly (`0 * * * *`) for finer reminder timing.
 
 Photos: browsers upload **directly to Supabase Storage** through a short-lived signed URL (Vercel functions cap request bodies at ~4.5 MB; photos can be 10 Mo). The server then re-checks what landed (magic bytes, size, count) before registering it. Photos are shown through an authenticated route that redirects to a 5-minute signed URL.
@@ -47,7 +47,7 @@ The app validates its configuration (rules in `src/lib/env.ts`; it only ever rep
 - **In the admin**: Admin → Paramètres → *Configuration du serveur* shows what is still wrong.
 - **On demand**: `npm run check:env` (strict, reads `.env.local`).
 
-Errors: `DATABASE_URL`, `APP_URL` (not localhost), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `RESEND_API_KEY` unset, test sender `resend.dev`, `ADMIN_EMAIL`, pooler port. With a key set, `MAIL_FROM` becomes an error if missing or invalid. Escape hatch: `SKIP_ENV_CHECK=true`.
+Errors: `DATABASE_URL`/`POSTGRES_URL`, `APP_URL` (if unset on Vercel, the Vercel-provided URL is used with a warning; localhost is an error), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `RESEND_API_KEY` unset, test sender `resend.dev`, `ADMIN_EMAIL`, pooler port. With a key set, `MAIL_FROM` becomes an error if missing or invalid. Escape hatch: `SKIP_ENV_CHECK=true`.
 
 ## Emails (Resend)
 

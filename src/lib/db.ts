@@ -1,6 +1,7 @@
 // Postgres (Supabase) connection and tiny query helpers. Schema: supabase/migrations/*.sql
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { resolveDatabaseUrl } from './env.ts';
 
 export const STATUSES = [
   { id: 'en_cours', label: 'En cours' },
@@ -22,8 +23,8 @@ const g = globalThis as unknown as { __shespeaksSql?: Sql };
 /** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
 export function sql(): Sql {
   if (!g.__shespeaksSql) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is not set');
+    const url = resolveDatabaseUrl(process.env);
+    if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set');
     const local = /localhost|127\.0\.0\.1/.test(url);
     g.__shespeaksSql = postgres(url, {
       max: 3,

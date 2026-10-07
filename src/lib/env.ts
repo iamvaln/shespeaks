@@ -10,6 +10,29 @@ export interface EnvIssue {
 }
 type Env = Record<string, string | undefined>;
 
+/**
+ * Database URL: DATABASE_URL, or POSTGRES_URL (the pooled URL created by Vercel's Supabase integration).
+ * The integration appends non-standard parameters (`supa=base-pooler.x`) that the driver would forward to
+ * Postgres as settings, which makes every connection fail, so they are stripped.
+ */
+export function resolveDatabaseUrl(env: Env): string | undefined {
+  const raw = (env.DATABASE_URL || env.POSTGRES_URL)?.trim();
+  if (!raw) return undefined;
+  const q = raw.indexOf('?');
+  if (q < 0) return raw;
+  const params = raw.slice(q + 1).split('&').filter((p) => p && !/^(supa|pgbouncer)=/i.test(p));
+  return params.length ? `${raw.slice(0, q)}?${params.join('&')}` : raw.slice(0, q);
+}
+
+/** Public site URL: APP_URL, else the URL Vercel provides (production domain, then deployment URL), else localhost. */
+export function resolveAppUrl(env: Env): { url: string; source: 'APP_URL' | 'vercel' | 'default' } {
+  const set = env.APP_URL?.trim();
+  if (set && !/^(change-?me|your[-_ ].*)$/i.test(set)) return { url: set.replace(/\/$/, ''), source: 'APP_URL' };
+  const host = (env.VERCEL_ENV === 'production' && env.VERCEL_PROJECT_PRODUCTION_URL) || env.VERCEL_URL;
+  if (host) return { url: `https://${host.replace(/^https?:\/\//, '').replace(/\/$/, '')}`, source: 'vercel' };
+  return { url: 'http://localhost:3000', source: 'default' };
+}
+
 const PLACEHOLDER = /^(change-?me|changeme|xxx+|your[-_ ].*|\[.*\])?$/i;
 const isSet = (v: string | undefined) => !!v && !PLACEHOLDER.test(v.trim());
 
@@ -19,8 +42,8 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
   const onVercel = !!env.VERCEL;
 
   // --- database: needed everywhere ---------------------------------------------
-  const db = env.DATABASE_URL?.trim();
-  if (!db) add('error', ['DATABASE_URL'], 'Missing. Use the Supabase Transaction pooler connection string (port 6543).');
+  const db = resolveDatabaseUrl(env);
+  if (!db) add('error', ['DATABASE_URL'], 'Missing. Set DATABASE_URL (or let the Supabase integration provide POSTGRES_URL): the Transaction pooler string, port 6543.');
   else if (!/^postgres(ql)?:\/\//i.test(db)) add('error', ['DATABASE_URL'], 'Must start with postgresql:// (check you copied the connection string, not the project URL).');
   else if (/\[YOUR-PASSWORD\]|\[PASSWORD\]/i.test(db)) add('error', ['DATABASE_URL'], 'Still contains the [YOUR-PASSWORD] placeholder.');
   else if (onVercel && !/:6543\b/.test(db)) {
@@ -30,10 +53,11 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
   if (!opts.production) return out; // everything below only matters when real users are involved
 
   // --- public URL ------------------------------------------------------------------
-  const url = env.APP_URL?.trim();
-  if (!isSet(url)) add('error', ['APP_URL'], 'Missing. Links in emails (resume, coach login) would point to localhost.');
-  else if (/localhost|127\.0\.0\.1/.test(url!)) add('error', ['APP_URL'], 'Points to localhost in production: emailed links would not work for candidates.');
-  else if (!/^https:\/\//i.test(url!)) add('warn', ['APP_URL'], 'Should start with https://.');
+  const app = resolveAppUrl(env);
+  if (app.source === 'default') add('error', ['APP_URL'], 'Missing. Links in emails (resume, coach login) would point to localhost.');
+  else if (/localhost|127\.0\.0\.1/.test(app.url)) add('error', ['APP_URL'], 'Points to localhost in production: emailed links would not work for candidates.');
+  else if (app.source === 'vercel') add('warn', ['APP_URL'], `Not set: emailed links will use ${app.url}. Set APP_URL to your real domain.`);
+  else if (!/^https:\/\//i.test(app.url)) add('warn', ['APP_URL'], 'Should start with https://.');
 
   // --- secrets -----------------------------------------------------------------------
   if (!isSet(env.SESSION_SECRET)) add('error', ['SESSION_SECRET'], 'Missing or still "change-me". Generate one: openssl rand -hex 32');

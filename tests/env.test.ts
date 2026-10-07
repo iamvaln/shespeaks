@@ -57,3 +57,31 @@ test('issues never contain variable values', () => {
   const text = JSON.stringify(checkEnv({ ...good, SESSION_SECRET: 'x', CRON_SECRET: secret, DATABASE_URL: `https://${secret}` }, { production: true }));
   assert.ok(!text.includes(secret));
 });
+
+import { resolveAppUrl, resolveDatabaseUrl } from '../src/lib/env.ts';
+
+test('Vercel Supabase integration: POSTGRES_URL is accepted and non-standard params are stripped', () => {
+  const pg = 'postgres://postgres.abc:pw@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x';
+  assert.equal(resolveDatabaseUrl({ POSTGRES_URL: pg }), 'postgres://postgres.abc:pw@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require');
+  assert.equal(resolveDatabaseUrl({ POSTGRES_URL: 'postgres://u:p@h:6543/db?supa=base-pooler.x' }), 'postgres://u:p@h:6543/db');
+  assert.equal(resolveDatabaseUrl({ DATABASE_URL: 'postgres://own', POSTGRES_URL: pg }), 'postgres://own', 'DATABASE_URL wins');
+  assert.equal(resolveDatabaseUrl({}), undefined);
+});
+
+test('APP_URL falls back to the URL Vercel provides', () => {
+  assert.deepEqual(resolveAppUrl({ APP_URL: 'https://shespeaks.org/' }), { url: 'https://shespeaks.org', source: 'APP_URL' });
+  assert.deepEqual(resolveAppUrl({ VERCEL_ENV: 'production', VERCEL_PROJECT_PRODUCTION_URL: 'shespeaks.vercel.app', VERCEL_URL: 'x-123.vercel.app' }), { url: 'https://shespeaks.vercel.app', source: 'vercel' });
+  assert.deepEqual(resolveAppUrl({ VERCEL_ENV: 'preview', VERCEL_URL: 'x-123.vercel.app' }), { url: 'https://x-123.vercel.app', source: 'vercel' });
+  assert.equal(resolveAppUrl({}).source, 'default');
+});
+
+test('the variables from the real Vercel project: only the two secrets are missing', () => {
+  const vercelProject = {
+    VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_PRODUCTION_URL: 'shespeaks.vercel.app',
+    POSTGRES_URL: 'postgres://postgres.abc:pw@aws-0.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x',
+    SUPABASE_URL: 'https://abc.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service', ADMIN_EMAIL: 'v@example.com', ADMIN_NAME: 'V',
+    RESEND_API_KEY: 're_abc123', MAIL_FROM: 'SheSpeaks <no-reply@example.com>',
+  };
+  assert.deepEqual(names(vercelProject).sort(), ['error:CRON_SECRET', 'error:SESSION_SECRET', 'warn:APP_URL']);
+  assert.deepEqual(names({ ...vercelProject, SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), APP_URL: 'https://shespeaks.org' }), []);
+});

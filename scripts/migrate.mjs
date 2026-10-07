@@ -3,9 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import postgres from 'postgres';
+import { resolveDatabaseUrl } from '../src/lib/env.ts';
 
-const url = process.env.DATABASE_URL;
-if (!url) { console.error('DATABASE_URL is required'); process.exit(1); }
+const url = resolveDatabaseUrl(process.env);
+if (!url) { console.error('DATABASE_URL (or POSTGRES_URL) is required'); process.exit(1); }
 const local = /localhost|127\.0\.0\.1/.test(url);
 const sql = postgres(url, { max: 1, prepare: false, ssl: local ? false : 'require', onnotice: () => {} });
 const dir = path.resolve('supabase/migrations');

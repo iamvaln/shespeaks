@@ -2,9 +2,10 @@
 import crypto from 'node:crypto';
 import { after } from 'next/server';
 import { run } from './db.ts';
+import { resolveAppUrl } from './env.ts';
 import type { Locale } from './questions.ts';
 
-export const appUrl = () => (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+export const appUrl = () => resolveAppUrl(process.env).url;
 const API = () => (process.env.RESEND_API_URL || 'https://api.resend.com').replace(/\/$/, '');
 // MAIL_FROM must be an address on a domain verified in Resend (e.g. "SheSpeaks <no-reply@mail.yourdomain.com>").
 const FROM = () => process.env.MAIL_FROM || 'SheSpeaks <onboarding@resend.dev>';
