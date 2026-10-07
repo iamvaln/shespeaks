@@ -2,7 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ['nodemailer'],
   experimental: { serverActions: { bodySizeLimit: '2mb' } },
 };
 export default nextConfig;

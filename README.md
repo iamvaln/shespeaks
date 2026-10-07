@@ -8,7 +8,7 @@ Diagnostic journey for women in tech (front office) + coach follow-up space (adm
 
 ## Stack
 
-Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driver) · **Supabase Storage** for speaker photos · nodemailer (SMTP) · deployed on **Vercel**.
+Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driver) · **Supabase Storage** for speaker photos · **Resend** (email) · deployed on **Vercel**.
 
 ## Deploy: Supabase + Vercel
 
@@ -20,7 +20,7 @@ Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driv
    DATABASE_URL="postgresql://…" ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" npm run db:migrate
    ```
    (or paste `supabase/migrations/0001_init.sql` in the Supabase SQL editor). It seeds the DevFest calendar, enables Row Level Security on every table with no policy (the public Supabase API can't read any candidate data; the app uses the database role), and creates the first coach.
-3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `SMTP_*`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
+3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
 4. **Reminders** run from **Vercel Cron** (`vercel.json`, daily at 07:00 UTC; Vercel sends `Authorization: Bearer $CRON_SECRET` itself). Hobby plans only allow daily crons; on Pro, change the schedule to hourly (`0 * * * *`) for finer reminder timing.
 
 Photos: browsers upload **directly to Supabase Storage** through a short-lived signed URL (Vercel functions cap request bodies at ~4.5 MB; photos can be 10 Mo). The server then re-checks what landed (magic bytes, size, count) before registering it. Photos are shown through an authenticated route that redirects to a 5-minute signed URL.
@@ -36,20 +36,26 @@ npm test                        # unit tests (pure logic)
 node scripts/smoke.mjs          # API journey for the 4 branches (server must be running)
 ```
 
-Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `SMTP_HOST`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without SMTP, the link is shown on screen).
+Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `RESEND_API_KEY`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without Resend, the link is shown on screen).
 
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):
 
 - **At build time on Vercel** (`prebuild` → `scripts/check-env.mjs`): a missing or placeholder required variable fails the deploy with a clear list, instead of surfacing in front of candidates.
-- **At server start in production** (`src/instrumentation.ts`): errors are logged and the server refuses to boot. Warnings (e.g. no SMTP, so emails are not sent) are logged but don't block.
+- **At server start in production** (`src/instrumentation.ts`): errors are logged and the server refuses to boot. Warnings (e.g. no Resend key, so emails are not sent) are logged but don't block.
 - **In the admin**: Admin → Paramètres → *Configuration du serveur* shows what is still wrong.
 - **On demand**: `npm run check:env` (strict, reads `.env.local`).
 
-Errors: `DATABASE_URL`, `APP_URL` (not localhost), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `SMTP_HOST` / `MAIL_FROM`, `ADMIN_EMAIL`, pooler port. Escape hatch: `SKIP_ENV_CHECK=true`.
+Errors: `DATABASE_URL`, `APP_URL` (not localhost), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `RESEND_API_KEY` unset, test sender `resend.dev`, `ADMIN_EMAIL`, pooler port. With a key set, `MAIL_FROM` becomes an error if missing or invalid. Escape hatch: `SKIP_ENV_CHECK=true`.
 
-## Emails
+## Emails (Resend)
+
+1. Create a Resend account, **add and verify your sending domain** (Domains → Add domain → add the DNS records), and create an API key.
+2. Set `RESEND_API_KEY` (starts with `re_`) and `MAIL_FROM` (an address on the verified domain, e.g. `SheSpeaks <no-reply@yourdomain.com>`). Optionally `MAIL_REPLY_TO` so candidates' replies reach a coach.
+3. Until your domain is verified, `onboarding@resend.dev` can only deliver to your own Resend account email (fine for a first test).
+
+How sending behaves: confirmations/notifications are sent **after** the response (`after()` → the candidate never waits), every send goes through a queue spaced for Resend's 2 requests/second default limit, retries on 429/5xx honour `Retry-After`, and an idempotency key makes retries safe (no duplicates). A failure never breaks a candidate's journey: it is stored with its error in Admin → Emails; successful rows keep Resend's message id so you can find them in the Resend dashboard.
 
 | Event | To | Content |
 |---|---|---|
@@ -60,7 +66,7 @@ Errors: `DATABASE_URL`, `APP_URL` (not localhost), `SESSION_SECRET`, `CRON_SECRE
 | **Unfinished diagnostic** (same trigger) | **coach + extra notification emails** | digest of stalled candidates with WhatsApp numbers (works even without candidate email) |
 | Coach login / invitation | coach | one-time link (15 min) |
 
-Without `SMTP_HOST`, emails are only recorded in **Admin → Emails** (nothing is sent) — handy for local testing. Delay, interval, max count, extra recipients: **Admin → Paramètres**.
+Without `RESEND_API_KEY`, emails are only recorded in **Admin → Emails** (nothing is sent), which is handy for local testing. Delay, interval, max count, extra recipients: **Admin → Paramètres**.
 
 Reminders are driven by `/api/cron/reminders` (Vercel Cron, or any scheduler: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/reminders`). Runs are idempotent: each candidate is claimed before any email is sent.
 

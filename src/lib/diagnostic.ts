@@ -8,7 +8,7 @@ import {
 import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
-import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, sendMail } from './mail.ts';
+import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
 export const BRANCH_LABEL: Record<Branch, string> = {
   A: 'A · Recherche de sujet',
@@ -153,7 +153,7 @@ export async function submitScreen(token: string | null, screenId: string, value
   const fresh = (await getCandidate(result.id))!;
   if (result.created && fresh.email) {
     const m = candidateStarted({ name: fresh.name ?? '' }, `${appUrl()}/reprendre/${fresh.token}`, fresh.locale);
-    await sendMail({ ...m, to: fresh.email, kind: 'candidate_started', candidateId: fresh.id });
+    deferMail(() => sendMail({ ...m, to: fresh.email!, kind: 'candidate_started', candidateId: fresh.id }));
   }
   let completed = false;
   if (result.nextId === 'done') {
@@ -194,7 +194,7 @@ export async function completeDiagnostic(id: number) {
       );
     }
   });
-  await notifyCompletion(id);
+  deferMail(() => notifyCompletion(id)); // after the response: the candidate never waits on email
 }
 
 export async function coachRecipients(c: Candidate): Promise<{ name: string; email: string }[]> {
@@ -225,7 +225,7 @@ async function notifyCompletion(id: number) {
     `${appUrl()}/admin/candidates/${id}`,
   );
   for (const r of await coachRecipients(c)) jobs.push(sendMail({ ...m, to: r.email, kind: 'coach_new_diagnostic', candidateId: id }));
-  await Promise.allSettled(jobs); // sendMail never throws; awaited because serverless may freeze after the response
+  await Promise.allSettled(jobs); // sendMail never throws; Resend sends are serialised by the queue in mail.ts
 }
 
 /** Regenerate the 5 tracks (coach action). Keeps coach-added and chosen tracks. */

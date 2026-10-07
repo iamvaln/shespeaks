@@ -55,13 +55,19 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
   // --- first coach -------------------------------------------------------------------
   if (!isSet(env.ADMIN_EMAIL)) add('warn', ['ADMIN_EMAIL'], 'Not set: if no coach exists yet, nobody can log in to the admin. (Ignore once a coach has been created.)');
 
-  // --- email -------------------------------------------------------------------------
-  if (!isSet(env.SMTP_HOST)) {
-    add('warn', ['SMTP_HOST'], 'Not set: confirmations, reminders and coach notifications are only recorded in Admin → Emails, never sent. Coach login links will not be delivered.');
+  // --- email (Resend) -------------------------------------------------------------------
+  if (!isSet(env.RESEND_API_KEY)) {
+    add('warn', ['RESEND_API_KEY'], 'Not set: confirmations, reminders and coach notifications are only recorded in Admin → Emails, never sent. Coach login links will not be delivered.');
   } else {
-    if (!isSet(env.MAIL_FROM)) add('warn', ['MAIL_FROM'], 'Not set: emails will use a placeholder sender that most providers reject or flag as spam.');
-    if (env.SMTP_PORT && !/^\d{2,5}$/.test(env.SMTP_PORT.trim())) add('error', ['SMTP_PORT'], 'Must be a number (587 or 465).');
-    if (isSet(env.SMTP_USER) !== isSet(env.SMTP_PASS)) add('warn', ['SMTP_USER', 'SMTP_PASS'], 'Only one of the two is set; most providers need both.');
+    if (!/^re_/.test(env.RESEND_API_KEY!.trim())) add('error', ['RESEND_API_KEY'], 'Resend API keys start with "re_" (Resend dashboard → API Keys).');
+    const from = env.MAIL_FROM?.trim();
+    const addr = from ? (/<([^>]+)>/.exec(from)?.[1] ?? from).trim() : '';
+    if (!from) add('error', ['MAIL_FROM'], 'Required with Resend: a sender on a domain you verified in Resend, e.g. "SheSpeaks <no-reply@yourdomain.com>".');
+    else if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test(addr)) add('error', ['MAIL_FROM'], 'Not a valid sender address. Expected: SheSpeaks <no-reply@yourdomain.com>');
+    else if (/@resend\.dev$/i.test(addr)) add('warn', ['MAIL_FROM'], 'resend.dev is Resend\'s test sender: it can only deliver to the email of your own Resend account. Verify your domain and use it here.');
+    if (env.MAIL_REPLY_TO?.trim() && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test((/<([^>]+)>/.exec(env.MAIL_REPLY_TO)?.[1] ?? env.MAIL_REPLY_TO).trim())) {
+      add('warn', ['MAIL_REPLY_TO'], 'Not a valid address; replies would not reach a coach.');
+    }
   }
   return out;
 }

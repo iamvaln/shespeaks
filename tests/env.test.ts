@@ -5,7 +5,7 @@ import { checkEnv, hasErrors } from '../src/lib/env.ts';
 const good = {
   APP_URL: 'https://shespeaks.example.com', DATABASE_URL: 'postgresql://u:p@aws-0.pooler.supabase.com:6543/postgres',
   SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), SUPABASE_URL: 'https://abc.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service.key',
-  ADMIN_EMAIL: 'coach@example.com', SMTP_HOST: 'smtp.example.com', MAIL_FROM: 'SheSpeaks <no-reply@example.com>', SMTP_USER: 'u', SMTP_PASS: 'p',
+  ADMIN_EMAIL: 'coach@example.com', RESEND_API_KEY: 're_123456789', MAIL_FROM: 'SheSpeaks <no-reply@example.com>',
 };
 const names = (env: Record<string, string | undefined>, production = true) => checkEnv(env, { production }).map((i) => `${i.level}:${i.vars.join('+')}`);
 
@@ -16,7 +16,7 @@ test('a complete production config has no issues', () => {
 test('empty production env reports every required variable as an error', () => {
   const n = names({ VERCEL: '1' });
   for (const v of ['DATABASE_URL', 'APP_URL', 'SESSION_SECRET', 'CRON_SECRET', 'SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY']) assert.ok(n.includes(`error:${v}`), v);
-  assert.ok(n.includes('warn:SMTP_HOST') && n.includes('warn:ADMIN_EMAIL'));
+  assert.ok(n.includes('warn:RESEND_API_KEY') && n.includes('warn:ADMIN_EMAIL'));
 });
 
 test('placeholders and localhost are rejected in production', () => {
@@ -37,10 +37,14 @@ test('supabase storage: both or neither; neither is an error only on Vercel', ()
   assert.ok(names({ ...neither, VERCEL: '1' }).includes('error:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
 });
 
-test('smtp: missing host warns; host without MAIL_FROM warns; bad port errors', () => {
-  assert.ok(names({ ...good, SMTP_HOST: undefined }).includes('warn:SMTP_HOST'));
-  assert.ok(names({ ...good, MAIL_FROM: undefined }).includes('warn:MAIL_FROM'));
-  assert.ok(names({ ...good, SMTP_PORT: 'abc' }).includes('error:SMTP_PORT'));
+test('resend: missing key warns; bad key, missing/invalid/test sender are flagged', () => {
+  assert.ok(names({ ...good, RESEND_API_KEY: undefined }).includes('warn:RESEND_API_KEY'));
+  assert.ok(names({ ...good, RESEND_API_KEY: 'sk_live_nope' }).includes('error:RESEND_API_KEY'));
+  assert.ok(names({ ...good, MAIL_FROM: undefined }).includes('error:MAIL_FROM'));
+  assert.ok(names({ ...good, MAIL_FROM: 'not an address' }).includes('error:MAIL_FROM'));
+  assert.ok(names({ ...good, MAIL_FROM: 'SheSpeaks <onboarding@resend.dev>' }).includes('warn:MAIL_FROM'));
+  assert.ok(names({ ...good, MAIL_FROM: 'no-reply@example.com' }).length === 0, 'bare address accepted');
+  assert.ok(names({ ...good, MAIL_REPLY_TO: 'nope' }).includes('warn:MAIL_REPLY_TO'));
 });
 
 test('development only requires DATABASE_URL', () => {

@@ -1,26 +1,14 @@
-// Email sending (SMTP via nodemailer, or logged-only when SMTP is not configured) + bilingual templates.
-import nodemailer from 'nodemailer';
+// Email sending via Resend (https://resend.com), or logged-only when RESEND_API_KEY is not set, + bilingual templates.
+import crypto from 'node:crypto';
+import { after } from 'next/server';
 import { run } from './db.ts';
 import type { Locale } from './questions.ts';
 
 export const appUrl = () => (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-const FROM = () => process.env.MAIL_FROM || 'SheSpeaks <no-reply@shespeaks.local>';
-
-let transport: nodemailer.Transporter | null | undefined;
-function getTransport() {
-  if (transport !== undefined) return transport;
-  const host = process.env.SMTP_HOST;
-  transport = host
-    ? nodemailer.createTransport({
-        host,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-      })
-    : null;
-  return transport;
-}
-export const mailConfigured = () => !!process.env.SMTP_HOST;
+const API = () => (process.env.RESEND_API_URL || 'https://api.resend.com').replace(/\/$/, '');
+// MAIL_FROM must be an address on a domain verified in Resend (e.g. "SheSpeaks <no-reply@mail.yourdomain.com>").
+const FROM = () => process.env.MAIL_FROM || 'SheSpeaks <onboarding@resend.dev>';
+export const mailConfigured = () => !!process.env.RESEND_API_KEY;
 
 export interface Mail {
   to: string;
@@ -31,14 +19,59 @@ export interface Mail {
   candidateId?: number | null;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Resend's default limit is 2 requests/second. All sends of this server instance go through one queue,
+// spaced out, so a burst (confirmation + coach notifications + digest) never trips 429.
+// (Kept on globalThis: Next bundles each route separately, so a module-level variable would not be shared.)
+const gq = globalThis as unknown as { __ssMailChain?: Promise<unknown> };
+const gap = () => Number(process.env.RESEND_MIN_GAP_MS ?? 550);
+function queued<T>(fn: () => Promise<T>): Promise<T> {
+  const result = (gq.__ssMailChain ?? Promise.resolve()).then(fn);
+  gq.__ssMailChain = result.then(() => sleep(gap()), () => sleep(gap()));
+  return result;
+}
+
+interface Delivered { id: string | null }
+
+/** POST /emails with retries on 429 / 5xx / network errors. The idempotency key makes retries safe (no duplicate mail). */
+async function resendSend(m: Mail): Promise<Delivered> {
+  const key = crypto.randomUUID();
+  const replyTo = process.env.MAIL_REPLY_TO?.trim();
+  const body = JSON.stringify({ from: FROM(), to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}) });
+  let lastError = 'unknown error';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${API()}/emails`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+      const json = (await res.json().catch(() => ({}))) as { id?: string; message?: string; name?: string };
+      if (res.ok) return { id: json.id ?? null };
+      lastError = `${res.status} ${json.name ?? ''} ${json.message ?? ''}`.trim();
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt === 3) break;
+      const ra = Number(res.headers.get('retry-after'));
+      await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 10) * 1000 : 1000 * attempt);
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      if (attempt === 3) break;
+      await sleep(1000 * attempt);
+    }
+  }
+  throw new Error(lastError);
+}
+
 /** Never throws: a mail failure must not break a candidate's journey. Always recorded in email_log. */
 export async function sendMail(m: Mail): Promise<'sent' | 'logged' | 'failed'> {
   let status: 'sent' | 'logged' | 'failed' = 'logged';
   let error: string | null = null;
-  const tr = getTransport();
-  if (tr) {
+  let providerId: string | null = null;
+  if (mailConfigured()) {
     try {
-      await tr.sendMail({ from: FROM(), to: m.to, subject: m.subject, text: m.text, html: m.html });
+      providerId = (await queued(() => resendSend(m))).id;
       status = 'sent';
     } catch (e) {
       status = 'failed';
@@ -48,8 +81,21 @@ export async function sendMail(m: Mail): Promise<'sent' | 'logged' | 'failed'> {
   } else {
     console.log(`[mail:logged] ${m.kind} → ${m.to}\n  ${m.subject}\n  ${m.text.split('\n').join('\n  ')}`);
   }
-  await run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id) VALUES (?,?,?,?,?,?,?)', m.kind, m.to, m.subject, m.text, status, error, m.candidateId ?? null);
+  try {
+    await run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id,provider_id) VALUES (?,?,?,?,?,?,?,?)', m.kind, m.to, m.subject, m.text, status, error, m.candidateId ?? null, providerId);
+  } catch (e) {
+    console.error('[mail] could not write email_log', e);
+  }
   return status;
+}
+
+/** Run email work after the HTTP response has been sent (Vercel keeps the function alive via waitUntil). */
+export function deferMail(job: () => Promise<unknown>) {
+  try {
+    after(job);
+  } catch {
+    void job().catch((e) => console.error('[mail] deferred job failed', e)); // outside a request (scripts)
+  }
 }
 
 // ---------------------------------------------------------------------------

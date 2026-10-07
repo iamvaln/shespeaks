@@ -9,7 +9,7 @@ export function LoginForm() {
       <div className="stack-sm" role="status">
         <div className="flash">Si cette adresse correspond à une coach, un lien de connexion vient de lui être envoyé. Il est valable 15 minutes.</div>
         {state.devLink && (
-          <p className="small">Mode développement (aucun SMTP configuré) : <a href={state.devLink}>ouvrir le lien de connexion</a></p>
+          <p className="small">Mode développement (Resend non configuré) : <a href={state.devLink}>ouvrir le lien de connexion</a></p>
         )}
       </div>
     );
