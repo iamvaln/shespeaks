@@ -1,12 +1,9 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
-import { fmtDate, t } from '@/lib/i18n';
-import { eventName, listEvents } from '@/lib/data';
-import { getSetting } from '@/lib/db';
+import { t } from '@/lib/i18n';
 import { SLIDES } from '@/content/slides';
 import { HeroSlider } from '@/components/HeroSlider';
-import { EventCard } from '@/components/EventCard';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 
@@ -28,12 +25,6 @@ export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const today = new Date().toISOString().slice(0, 10);
-  const events = (await listEvents()).filter((e) => !e.event_date || e.event_date >= today);
-  const internalDeadline = await getSetting('internal_deadline');
-
-  const daysLeft = (iso: string) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86_400_000);
-  const next = events.filter((e) => e.cfp_close_date && daysLeft(e.cfp_close_date) >= 0).sort((a, b) => a.cfp_close_date!.localeCompare(b.cfp_close_date!))[0];
   const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
   const slides = SLIDES.map((s) => ({
     id: s.id, scene: s.scene, photo: s.photo, alt: s.alt?.[locale] ?? s.title[locale], title: s.title[locale], caption: s.caption[locale],
@@ -43,10 +34,11 @@ export default async function Home() {
     <>
       <SiteHeader locale={locale} variant="landing" cta={cta} />
       <main id="main">
-        {/* ---------- Hero (night) ---------- */}
-        <section className="band hero" aria-labelledby="h1">
+        {/* Light, focused hero; photo slot is ready for an approved original asset. */}
+        <section className="band hero landing-hero" data-theme="clair" aria-labelledby="h1">
           <div className="container hero-grid">
-            <div>
+            <div className="hero-copy">
+              <p className="label-s">{d.stage.eyebrow}</p>
               <h1 id="h1" className="display-xl">{d.hero.h1}</h1>
               <p className="lead">{d.hero.lead}</p>
               <div className="cta-row">
@@ -54,42 +46,15 @@ export default async function Home() {
                 <a className="btn btn-lg btn-ghost" href="#comment">{d.hero.secondary}</a>
               </div>
             </div>
-            {next && (
-              <aside className="deadline" aria-label={d.hero.next.label}>
-                <p className="label-s">{d.hero.next.label}</p>
-                <p className="deadline-days">
-                  {daysLeft(next.cfp_close_date!) === 0
-                    ? <span className="deadline-today">{d.hero.next.days(0)}</span>
-                    : <><span>{daysLeft(next.cfp_close_date!)}</span> {d.hero.next.days(daysLeft(next.cfp_close_date!))}</>}
-                </p>
-                <p className="deadline-event">{eventName(next)}</p>
-                <p className="deadline-until">{d.hero.next.until} {fmtDate(next.cfp_close_date, locale)}</p>
-                {internalDeadline && <p className="deadline-until">{d.hero.next.internal} : <strong>{fmtDate(internalDeadline, locale)}</strong></p>}
-                <a className="deadline-link" href="#evenements">{d.hero.next.see} →</a>
-              </aside>
-            )}
+            <div className="hero-visual" role="img" aria-label={locale === 'fr' ? 'Une scène prête à accueillir les prochaines speakers' : 'A stage ready for the next speakers'}>
+              <span className="hero-stage-ellipse" aria-hidden="true" />
+              <span className="hero-visual-label">{locale === 'fr' ? 'Ta voix a sa place sur scène.' : 'Your voice belongs on stage.'}</span>
+            </div>
           </div>
         </section>
 
-        {/* ---------- Upcoming events (night: the posters sit on their own colours) ---------- */}
-        <section id="evenements" className="band band-alt" aria-labelledby="h-events">
-          <div className="container">
-            <p className="label-s">{d.events.eyebrow}</p>
-            <h2 id="h-events" className="h2">{d.events.title}</h2>
-            <p className="section-lead">{d.events.lead}</p>
-            {events.length === 0 ? (
-              <p className="section-lead">{d.events.empty}</p>
-            ) : (
-              <div className="event-grid">
-                {events.map((e) => <EventCard key={e.id} e={e} locale={locale} today={today} interestHref={cta.href} />)}
-              </div>
-            )}
-            {internalDeadline && <p className="note">{d.events.sheDeadline.replace('{date}', fmtDate(internalDeadline, locale))}</p>}
-          </div>
-        </section>
-
-        {/* ---------- Ways to take the floor (night) ---------- */}
-        <section className="band stage" aria-labelledby="h-stage">
+        {/* ---------- Speaking formats ---------- */}
+        <section className="band stage band-light" data-theme="clair" aria-labelledby="h-stage">
           <div className="container">
             <p className="label-s">{d.stage.eyebrow}</p>
             <h2 id="h-stage" className="h2">{d.stage.title}</h2>
