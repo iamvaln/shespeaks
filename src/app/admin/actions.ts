@@ -105,9 +105,15 @@ export async function trackAction(f: FormData) {
     return back(cpath(id), 'Pistes régénérées');
   }
   if (!track) return back(cpath(id), 'Piste introuvable', true);
+  // whichever button she pressed, what she typed in the title and the format of this track is kept (and the subject follows a chosen track)
+  const title = str(f, 'title') || track.title;
+  const format = str(f, 'format') || track.format;
+  if (op !== 'delete' && (title !== track.title || format !== track.format)) {
+    await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
+    if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
+  }
   let done: string;
   if (op === 'save') {
-    await run('UPDATE tracks SET title=?, format=? WHERE id=?', str(f, 'title') || track.title, str(f, 'format') || track.format, tid);
     done = 'Piste enregistrée';
   } else if (op === 'discard') {
     await run(`UPDATE tracks SET state='ecartee' WHERE id=?`, tid);
@@ -125,7 +131,7 @@ export async function trackAction(f: FormData) {
     await run(
       `INSERT INTO subjects (candidate_id,title,format) VALUES (?,?,?)
        ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, format=COALESCE(excluded.format, subjects.format)`,
-      id, track.title, track.format,
+      id, title, format,
     );
     done = 'Piste choisie : elle devient le sujet de la candidate';
   } else if (op === 'delete') {
@@ -200,7 +206,7 @@ export async function inviteCoachAction(f: FormData) {
   const sent = await inviteCoach(coach, me.name);
   if (sent === 'sent') return back('/admin/coaches', `Invitation envoyée à ${email}`);
   const why = sent === 'failed' ? 'l’envoi a échoué. Elle peut demander son lien depuis la page de connexion' : 'l’envoi d’emails n’est pas configuré';
-  return back('/admin/coaches', `${name} est ajoutée, mais l’email d’invitation n’est pas parti : ${why} (détail dans l’onglet Emails).`, true);
+  return back('/admin/coaches', `${name} est ajoutée, mais l’email d’invitation n’est pas parti (détail dans l’onglet Emails) : ${why}.`, true);
 }
 export async function toggleCoachAction(f: FormData) {
   const me = await requireCoach();

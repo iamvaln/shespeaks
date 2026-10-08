@@ -22,7 +22,8 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Candidates' };
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
   await requireCoach();
-  const sp = await searchParams;
+  const raw = await searchParams;
+  const sp = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])) as SP; // ?q=a&q=b arrives as a list: keep the first
   const all = await candidateRows();
   const events_ = [...new Set(all.map((r) => r.event_label))].sort();
   const coaches = await listCoaches();

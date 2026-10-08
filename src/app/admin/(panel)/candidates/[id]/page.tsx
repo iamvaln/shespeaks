@@ -194,7 +194,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           {rm && (
             <section>
               <h2>Plan de route tel que la candidate le voit</h2>
-              <RoadmapView rm={rm} locale={c.locale} photoUrl={selPhoto ? `/api/photos/${selPhoto.id}` : photos[0] ? `/api/photos/${photos[0].id}` : null} internalDeadline={null} />
+              <div lang={c.locale}><RoadmapView rm={rm} locale={c.locale} photoUrl={selPhoto ? `/api/photos/${selPhoto.id}` : photos[0] ? `/api/photos/${photos[0].id}` : null} internalDeadline={null} /></div>
             </section>
           )}
         </div>

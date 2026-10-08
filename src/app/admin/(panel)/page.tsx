@@ -37,7 +37,7 @@ export default async function Dashboard() {
         <Link className={`stat${received.length ? ' hot' : ''}`} href="/admin/candidates?status=diagnostic_recu"><div className="n">{received.length}</div><div className="l">Intérêts à traiter</div></Link>
         <Link className="stat" href="/admin/candidates?status=en_cours"><div className="n">{stalled.length}</div><div className="l">Parcours en cours</div></Link>
         <div className="stat">
-          <div className="n">{left === null ? '—' : countdown(left, 'dépassée')}</div>
+          <div className={`n${left !== null && left < 0 ? ' is-word' : ''}`}>{left === null ? '—' : countdown(left, 'dépassée')}</div>
           <div className="l">Date limite interne · {deadline ? fmtDate(deadline, 'fr', { day: 'numeric', month: 'short' }) : ''}</div>
         </div>
       </div>
