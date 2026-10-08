@@ -12,9 +12,11 @@ const fr = {
   home: {
     metaTitle: 'SheSpeaks · Prends la parole sur les scènes de la tech',
     metaDescription: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech.',
-    nav: { events: 'Événements', who: 'Qui peut participer', how: 'Comment ça marche', join: 'Comment participer', faq: 'Questions', skip: 'Aller au contenu', sections: 'Sections' },
+    nav: { events: 'Événements', who: 'Qui peut participer', how: 'Comment ça marche', formats: 'Formats', join: 'Comment participer', faq: 'Questions', skip: 'Aller au contenu', sections: 'Sections' },
     hero: {
+      eyebrow: 'Accompagner la nouvelle génération de femmes speakers',
       h1: 'Prends la parole sur les scènes de la tech.',
+      h1Accent: 'scènes de la tech.',
       lead: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech.',
       cta: 'Soumettre mon intérêt',
       ctaShort: 'Participer',
@@ -63,18 +65,36 @@ const fr = {
       notTitle: 'Pas besoin de',
       not: ['Avoir déjà pris la parole en public', 'Avoir déjà un sujet', 'Être experte : tous les niveaux sont les bienvenus'],
     },
+    formats: {
+      title: 'Différentes façons de prendre la parole',
+      lead: 'Partage tes connaissances, ton expérience ou un projet, dans le format qui te ressemble.',
+      all: 'Voir tous les formats',
+      allTitle: 'Tous les formats',
+      allLead: 'Pas sûre du format ? Ta coach t’aide à choisir celui qui te ressemble.',
+      list: ['Talk (20–30 min)', 'Lightning talk (5–10 min)', 'Atelier pratique (codelab)', 'Démo en direct / webinaire', 'Talk en ligne', 'Keynote'],
+      items: [
+        { id: 'talk', title: 'Tech Talk', text: 'Partage ton expérience et tes connaissances techniques avec un public plus large.', alt: 'Une intervenante prend la parole sur scène lors d’une conférence tech' },
+        { id: 'workshop', title: 'Atelier', text: 'Anime une session pratique et aide les autres à apprendre en faisant.', alt: 'Une formatrice guide un groupe de participants autour de leurs ordinateurs' },
+        { id: 'demo', title: 'Démo en direct / Webinaire', text: 'Présente un projet, un outil ou une solution de façon concrète et interactive.', alt: 'Une intervenante présente un projet en direct lors d’un webinaire technique' },
+      ],
+    },
     how: {
       eyebrow: 'COMMENT ÇA MARCHE ?',
-      title: 'Cinq étapes, de ton idée au jour J.',
-      lead: 'Une coach t’accompagne à chaque étape, et le groupe des SheSpeakers (les participantes du programme) est dans la salle le jour de ton talk.',
+      title: 'Cinq étapes, de ton idée au jour J',
+      lead: 'Tu n’es pas seule. On t’accompagne à chaque étape.',
       steps: [
-        ['Sujet et candidature', 'Tu définis ton sujet, tu rédiges ta proposition et tu la soumets à l’appel à speakers.'],
-        ['Préparation', 'Tu construis le contenu de ton talk une fois ta candidature retenue par les organisateurs de l’événement.'],
-        ['Slides', 'Tu conçois ton support de présentation.'],
-        ['Speech rehearsal', 'Tu répètes ton talk devant le groupe avant l’événement.'],
-        ['Jour J', 'Tu présentes. Le groupe est dans la salle pour t’encourager.'],
+        ['Sujet et candidature', 'Soumets ton idée et dis-nous ce que tu aimerais partager.'],
+        ['Préparation', 'Reçois des conseils, des ressources et des retours de notre équipe.'],
+        ['Slides', 'Affine ton contenu et construis des slides claires et percutantes.'],
+        ['Répétition', 'Entraîne-toi avec ta coach et reçois des retours constructifs.'],
+        ['Jour J', 'Prends la parole avec confiance lors de l’événement.'],
       ],
       note: 'Tu cherches encore ton sujet, tu as un domaine, un sujet précis ou une proposition déjà rédigée ? Le formulaire s’adapte à ton point de départ.',
+    },
+    quote: {
+      // PLACEHOLDER: replace with a real, approved quote (or set LANDING.showQuote to false) before the programme is promoted.
+      text: 'SheSpeaks m’a donné la structure, la confiance et le soutien dont j’avais besoin pour transformer mon idée en vrai talk. Aujourd’hui, je prends la parole lors d’événements tech sans crainte.',
+      name: 'SheSpeaker',
     },
     join: {
       eyebrow: 'COMMENT PARTICIPER ?',
@@ -98,7 +118,8 @@ const fr = {
       ],
     },
     final: {
-      title: 'Prête à prendre la parole ?',
+      eyebrow: 'Prête à prendre la parole ?',
+      title: 'Rejoins SheSpeaks et transforme tes idées en vraies opportunités sur les scènes de la tech.',
       lead: 'Dis-nous où tu en es. Ta coach s’occupe de la suite avec toi.',
       cta: 'Soumettre mon intérêt',
     },
@@ -201,9 +222,11 @@ const en: Dict = {
   home: {
     metaTitle: 'SheSpeaks · Take the floor on tech stages',
     metaDescription: 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events.',
-    nav: { events: 'Events', who: 'Who can join', how: 'How it works', join: 'How to join', faq: 'Questions', skip: 'Skip to content', sections: 'Sections' },
+    nav: { events: 'Events', who: 'Who can join', how: 'How it works', formats: 'Formats', join: 'How to join', faq: 'Questions', skip: 'Skip to content', sections: 'Sections' },
     hero: {
+      eyebrow: 'Supporting the next generation of women speakers',
       h1: 'Take the floor on tech stages.',
+      h1Accent: 'tech stages.',
       lead: 'SheSpeaks supports young professionals and students in tech so they speak at tech events.',
       cta: 'Submit my interest',
       ctaShort: 'Join',
@@ -252,18 +275,36 @@ const en: Dict = {
       notTitle: 'No need to',
       not: ['Have spoken in public before', 'Already have a topic', 'Be an expert: all levels are welcome'],
     },
+    formats: {
+      title: 'Different ways to take the floor',
+      lead: 'Share your knowledge, your experience or a project, in the format that fits you.',
+      all: 'See all formats',
+      allTitle: 'All formats',
+      allLead: 'Not sure which format? Your coach helps you pick the one that suits you.',
+      list: ['Talk (20–30 min)', 'Lightning talk (5–10 min)', 'Hands-on workshop (codelab)', 'Live demo / webinar', 'Online talk', 'Keynote'],
+      items: [
+        { id: 'talk', title: 'Tech Talk', text: 'Share your experience and technical knowledge with a wider audience.', alt: 'A woman speaking on stage at a tech conference' },
+        { id: 'workshop', title: 'Workshop', text: 'Guide a hands-on session and help others learn by doing.', alt: 'A trainer guiding a group of participants around their laptops' },
+        { id: 'demo', title: 'Live Demo / Webinar', text: 'Showcase a project, tool or solution in a practical and interactive way.', alt: 'A woman presenting a project live during a technical webinar' },
+      ],
+    },
     how: {
       eyebrow: 'HOW DOES IT WORK?',
-      title: 'Five steps, from your idea to your talk day.',
-      lead: 'A coach supports you at every step, and the group of SheSpeakers (the programme’s participants) is in the room on the day of your talk.',
+      title: 'Five steps, from your idea to your talk day',
+      lead: 'You are not alone. We support you at every step.',
       steps: [
-        ['Topic and application', 'You define your topic, write your proposal and submit it to the call for speakers.'],
-        ['Preparation', 'You build your talk’s content once the event organisers accept your application.'],
-        ['Slides', 'You design your presentation deck.'],
-        ['Speech rehearsal', 'You practise your talk in front of the group before the event.'],
-        ['Talk day', 'You present. The group is in the room to cheer you on.'],
+        ['Topic and application', 'Submit your idea and tell us what you’d like to share.'],
+        ['Preparation', 'Get guidance, resources and feedback from our team.'],
+        ['Slides', 'Refine your content and build clear, impactful slides.'],
+        ['Speech rehearsal', 'Practise your talk with your coach and get constructive feedback.'],
+        ['Talk day', 'Take the floor with confidence at the event.'],
       ],
       note: 'Still looking for a topic, have a field, a specific topic or a written proposal? The form adapts to where you are.',
+    },
+    quote: {
+      // PLACEHOLDER: replace with a real, approved quote (or set LANDING.showQuote to false) before the programme is promoted.
+      text: 'SheSpeaks gave me the structure, the confidence and the support I needed to turn my idea into a real talk. Today, I speak at tech events without fear.',
+      name: 'SheSpeaker',
     },
     join: {
       eyebrow: 'HOW TO JOIN?',
@@ -287,7 +328,8 @@ const en: Dict = {
       ],
     },
     final: {
-      title: 'Ready to take the floor?',
+      eyebrow: 'Ready to take the floor?',
+      title: 'Join SheSpeaks and turn your ideas into real opportunities on tech stages.',
       lead: 'Tell us where you are. Your coach takes care of the rest with you.',
       cta: 'Submit my interest',
     },
