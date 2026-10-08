@@ -57,7 +57,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <form action={saveSettingsAction} className="a-stack" style={{ gap: 20 }}>
         <section className="a-card a-stack">
           <h2 className="a-h2">Notifications</h2>
-          <p className="a-muted" style={{ margin: 0 }}>Chaque formulaire terminé, et chaque relance de candidate inachevée, est envoyé à la coach assignée <strong style={{ color: 'var(--ink)' }}>et</strong> aux adresses ci-dessous. {mailConfigured() ? 'Resend configuré : les emails partent réellement.' : 'RESEND_API_KEY absente : les emails sont seulement enregistrés (voir l’onglet Emails).'}</p>
+          <p className="a-muted" style={{ margin: 0 }}>Chaque formulaire terminé, et chaque relance de candidate inachevée, est envoyé à la coach assignée <strong style={{ color: 'var(--ink)' }}>et</strong> aux adresses ci-dessous. {mailConfigured() ? 'Resend configuré : les emails partent réellement.' : 'RESEND_API_KEY absente : les emails sont seulement enregistrés (voir la page Emails).'}</p>
           <label className="a-label">Email(s) de notification supplémentaires (séparés par des virgules)<input className="a-input" name="notification_email" defaultValue={v.notification_email} placeholder="admin@exemple.com" /></label>
         </section>
 

@@ -8,6 +8,7 @@ import { requireCoach } from '@/lib/auth';
 import { screenProgress } from '@/lib/reminders';
 import { BRANCH_SHORT, elapsed, one, pageList, statusTone } from '@/lib/admin-format';
 import { AutoSubmitForm } from '@/components/AutoSubmitForm';
+import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { Icon } from '@/components/admin-icons';
 
 type SP = Record<'q' | 'event' | 'status' | 'coach' | 'start' | 'order' | 'page' | 'msg', string | string[] | undefined>;
@@ -22,8 +23,9 @@ const COLS: Record<string, (a: Row, b: Row) => number> = {
   event: (a, b) => a.event_label.localeCompare(b.event_label),
   status: (a, b) => STATUSES.findIndex((s) => s.id === a.status) - STATUSES.findIndex((s) => s.id === b.status),
   activity: (a, b) => a.updated_at.localeCompare(b.updated_at),
+  received: (a, b) => (a.completed_at ?? '').localeCompare(b.completed_at ?? ''), // how long she has been waiting
 };
-const ORDER_CHOICES: [string, string][] = [['activity-desc', 'Activité récente'], ['activity-asc', 'Activité ancienne'], ['name-asc', 'Nom A → Z'], ['status-asc', 'Statut'], ['event-asc', 'Événement']];
+const ORDER_CHOICES: [string, string][] = [['activity-desc', 'Activité récente'], ['activity-asc', 'Activité ancienne'], ['received-asc', 'Attente la plus longue'], ['name-asc', 'Nom A → Z'], ['status-asc', 'Statut'], ['event-asc', 'Événement']];
 
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await requireCoach();
@@ -34,6 +36,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   const now = new Date();
   const events = [...new Set(all.map((r) => r.event_label))].sort();
   const q = norm(sp.q);
+  const qDigits = sp.q.replace(/\D/g, ''); // « +237 612 345 678 » and « 237612345678 » find the same candidate
 
   // only known values are used: a hand-typed ?order=__proto__ or ?start=Z is ignored
   const [col, dir] = sp.order.split('-');
@@ -41,27 +44,29 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   const [orderCol, orderDir] = order.split('-');
   const start = Object.hasOwn(BRANCH_SHORT, sp.start) ? sp.start : '';
   const status = STATUSES.some((s) => s.id === sp.status) ? sp.status : '';
+  const event = events.includes(sp.event) ? sp.event : ''; // an unknown event or coach is ignored, as the drop-down shows it
+  const coachFilter = sp.coach === 'none' || coaches.some((c) => String(c.id) === sp.coach) ? sp.coach : ''; 
 
   // every filter but the status: the status tabs count what each one would show
   const base = all.filter(
     (r) =>
-      (!sp.event || r.event_label === sp.event) &&
-      (!sp.coach || (sp.coach === 'none' ? r.coach_id === null : String(r.coach_id ?? '') === sp.coach)) &&
+      (!event || r.event_label === event) &&
+      (!coachFilter || (coachFilter === 'none' ? r.coach_id === null : String(r.coach_id ?? '') === coachFilter)) &&
       (!start || r.branch === start) &&
-      (!q || norm(`${r.name} ${r.topic} ${r.whatsapp} ${r.email ?? ''} ${r.role ?? ''}`).includes(q)),
+      (!q || norm(`${r.name} ${r.topic} ${r.whatsapp} ${r.email ?? ''} ${r.role ?? ''}`).includes(q) || (qDigits.length >= 5 && (r.whatsapp ?? '').replace(/\D/g, '').includes(qDigits))),
   );
   const counts = new Map<string, number>();
   for (const r of base) counts.set(r.status, (counts.get(r.status) ?? 0) + 1);
-  const rows = base.filter((r) => !status || r.status === status).sort((a, b) => COLS[orderCol](a, b) * (orderDir === 'asc' ? 1 : -1));
+  const rows = base.filter((r) => !status || r.status === status).sort((a, b) => COLS[orderCol](a, b) * (orderDir === 'asc' ? 1 : -1) || a.id - b.id); // ties: by id, so a page never repeats or skips a row
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const page = Math.min(pages, Math.max(1, Math.floor(Number(sp.page)) || 1));
   const shown = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const filtered = !!(sp.q || sp.event || status || sp.coach || start);
+  const filtered = !!(sp.q || event || status || coachFilter || start);
 
   const href = (over: Record<string, string>) => {
     const p = new URLSearchParams();
-    const merged: Record<string, string> = { q: sp.q, event: sp.event, status, coach: sp.coach, start, order: order === DEFAULT_ORDER ? '' : order, ...over };
+    const merged: Record<string, string> = { q: sp.q, event, status, coach: coachFilter, start, order: order === DEFAULT_ORDER ? '' : order, ...over };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
     const qs = p.toString();
     return `/admin/candidates${qs ? `?${qs}` : ''}`;
@@ -80,15 +85,15 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
       </div>
       {sp.msg && <div className="flash" role="status" style={{ margin: 0 }}>{sp.msg}</div>}
 
-      <nav className="a-tabs" aria-label="Filtrer par statut">
+      <CurrentIntoView className="a-tabs" aria-label="Filtrer par statut">
         {tabs.map((t) => (
           <Link key={t.id || 'all'} href={href({ status: t.id, page: '' })} className="a-tab" aria-current={(status || '') === t.id ? 'true' : undefined}>
             {t.label}<span>{t.n}</span>
           </Link>
         ))}
-      </nav>
+      </CurrentIntoView>
 
-      <AutoSubmitForm className="a-filters" method="get" action="/admin/candidates" defaults={{ order: DEFAULT_ORDER }} role="search" aria-label="Rechercher et filtrer">
+      <AutoSubmitForm key={JSON.stringify([sp.q, event, status, coachFilter, start, order])} className="a-filters" method="get" action="/admin/candidates" defaults={{ order: DEFAULT_ORDER }} role="search" aria-label="Rechercher et filtrer">
         {status && <input type="hidden" name="status" value={status} />}
         <label className="a-field a-field-search">
           <span className="sr-only">Rechercher</span>
@@ -96,9 +101,9 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
           <input type="search" name="q" defaultValue={sp.q} placeholder="Nom, sujet, téléphone, email…" autoComplete="off" />
         </label>
         <label className="a-field-select"><span className="sr-only">Événement</span>
-          <select name="event" defaultValue={sp.event ?? ''}><option value="">Tous les événements</option>{events.map((c) => <option key={c}>{c}</option>)}</select></label>
+          <select name="event" defaultValue={event}><option value="">Tous les événements</option>{events.map((c) => <option key={c}>{c}</option>)}</select></label>
         <label className="a-field-select"><span className="sr-only">Coach</span>
-          <select name="coach" defaultValue={sp.coach ?? ''}><option value="">Toutes les coachs</option><option value="none">Non assignées</option>{coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <select name="coach" defaultValue={coachFilter}><option value="">Toutes les coachs</option><option value="none">Non assignées</option>{coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label className="a-field-select"><span className="sr-only">Point de départ</span>
           <select name="start" defaultValue={start}><option value="">Tous les départs</option>{Object.entries(BRANCH_SHORT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
         <label className="a-field-select a-only-s"><span className="sr-only">Trier par</span>
@@ -111,16 +116,16 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
         {rows.length === 0 ? (
           <p className="a-empty">Aucune candidate ne correspond. {filtered && <Link className="a-more" href="/admin/candidates">Réinitialiser les filtres</Link>}</p>
         ) : (
-          <div role="table" aria-label="Candidates" style={{ ['--cols' as string]: 'minmax(0,2.3fr) minmax(0,1.5fr) minmax(0,1.7fr) minmax(0,1.2fr) 150px 56px 110px 18px' }}>
+          <div role="table" aria-label="Candidates" style={{ ['--cols' as string]: 'minmax(0,2.3fr) minmax(0,1.5fr) minmax(0,1.7fr) minmax(0,1.2fr) 190px 56px 110px 18px', ['--cols-m' as string]: 'minmax(0,2.4fr) minmax(0,1.5fr) 190px 56px 104px' }}>
             <div role="row" className="a-th">
               <span role="columnheader" aria-sort={aria('name')}><Link href={sortHref('name')} className="a-sort">Nom{arrow('name')}</Link></span>
               <span role="columnheader" aria-sort={aria('event')}><Link href={sortHref('event')} className="a-sort">Événement{arrow('event')}</Link></span>
-              <span role="columnheader">Sujet</span>
-              <span role="columnheader">Départ</span>
+              <span role="columnheader" className="a-hide-mid">Sujet</span>
+              <span role="columnheader" className="a-hide-m">Départ</span>
               <span role="columnheader" aria-sort={aria('status')}><Link href={sortHref('status')} className="a-sort">Statut{arrow('status')}</Link></span>
               <span role="columnheader">Coach</span>
               <span role="columnheader" aria-sort={aria('activity')}><Link href={sortHref('activity')} className="a-sort">Activité{arrow('activity')}</Link></span>
-              <span role="columnheader" aria-label="Ouvrir" />
+              <span role="columnheader" className="a-hide-m"><span className="sr-only">Ouvrir</span></span>
             </div>
             {shown.map((r) => {
               const p = r.status === 'en_cours' ? screenProgress(r) : null;
@@ -132,11 +137,12 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
                       <Link href={`/admin/candidates/${r.id}`} className="a-name a-stretch">{r.name}</Link>
                       <span className="a-sub">{r.role}</span>
                       <span className="a-sub a-only-s">{r.event_label}{r.branch ? ` · ${BRANCH_SHORT[r.branch]}` : ''}</span>
+                      {(r.branch || r.topic) && <span className="a-sub a-m-only">{[r.branch ? BRANCH_SHORT[r.branch] : '', r.topic].filter(Boolean).join(' · ')}</span>}
                     </span>
                   </div>
-                  <span role="cell" className="a-trunc a-hide-s">{r.event_label}</span>
-                  <span role="cell" className={`a-trunc c-topic${r.topic ? '' : ' a-muted'}`}>{r.topic || (r.status === 'en_cours' ? '—' : 'Pas encore de sujet')}</span>
-                  <span role="cell" className={`a-trunc a-hide-s${r.branch ? '' : ' a-muted'}`}>{r.branch ? BRANCH_SHORT[r.branch] : 'Pas encore choisi'}</span>
+                  <span role="cell" className="a-trunc a-hide-s" title={r.event_label}>{r.event_label}</span>
+                  <span role="cell" className={`a-trunc a-hide-mid c-topic${r.topic ? '' : ' a-muted'}`} title={r.topic || undefined}>{r.topic || (r.status === 'en_cours' ? '—' : 'Pas encore de sujet')}</span>
+                  <span role="cell" className={`a-trunc a-hide-s a-hide-m${r.branch ? '' : ' a-muted'}`}>{r.branch ? BRANCH_SHORT[r.branch] : 'Pas encore choisi'}</span>
                   <span role="cell" className="c-status">
                     <span className={`a-pill is-${statusTone(r.status)}`}>{statusLabel(r.status)}</span>
                     {p && <span className="a-sub" style={{ marginTop: 4 }}>écran {p.done} sur {p.total}</span>}
@@ -147,7 +153,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
                       : <span className="a-coach is-none">–<span className="sr-only">Non assignée</span></span>}
                   </span>
                   <span role="cell" className="a-muted c-when" title={fmtDate(r.updated_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}>il y a {elapsed(r.updated_at, now)}</span>
-                  <span role="cell" className="a-chev a-hide-s" aria-hidden="true"><Icon name="chevron" /></span>
+                  <span role="cell" className="a-chev a-hide-s a-hide-m" aria-hidden="true"><Icon name="chevron" /></span>
                 </div>
               );
             })}

@@ -97,7 +97,6 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .btn-ghost { background: transparent; color: var(--ink); border-color: var(--ink-muted); }
 .btn-ghost:hover { border-color: var(--amber); filter: none; }
 .btn-sm { min-height: 36px; padding: 6px 16px; font-size: 14px; }
-.btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 .link-btn { background: none; border: 0; padding: 0; color: var(--amber-text); text-decoration: underline; cursor: pointer; font: inherit; }
 
 /* ---- cards ---- */
@@ -303,16 +302,12 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .admin-main h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; font-weight: 800; font-stretch: 112%; letter-spacing: -.02em; margin: 0 0 var(--s6); }
 .admin-main h2 { font-size: 22px; line-height: 28px; font-weight: 700; margin: 0 0 var(--s4); }
 .admin-main h3 { font-size: 17px; margin: 0 0 8px; }
-.admin-main .btn { min-height: 40px; padding: 8px 20px; }
-.admin-main .btn-sm { min-height: 32px; padding: 4px 14px; }
-.admin-main .btn-ghost { color: var(--ink); border-color: var(--ink-muted); }
 .kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; font-size: 15px; }
 .kv dt { color: var(--ink-muted); } .kv dd { margin: 0; overflow-wrap: anywhere; } .kv dd a { overflow-wrap: anywhere; }
 .kv-cal { grid-template-columns: 1fr; }
 @media (min-width: 641px) { .kv-cal { grid-template-columns: minmax(150px, 200px) 1fr; } }
 .flash { padding: 12px 16px; border-radius: var(--r-md); margin-bottom: var(--s4); background: #D5EEDD; color: #11512D; font-weight: 500; }
 .flash.err { background: #F4D9D5; color: #7A1D10; }
-.admin-main .input, .admin-main .textarea, .admin-main .select { background: #fff; }
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: var(--s4); }
 .login-card { width: 100%; max-width: 440px; }
 .photo-admin { display: flex; gap: var(--s4); flex-wrap: wrap; }

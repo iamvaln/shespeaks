@@ -18,9 +18,9 @@ export default async function Coaches({ searchParams }: { searchParams: Promise<
       {sp.err && <div className="flash err" role="alert" style={{ margin: 0 }}>{sp.err}</div>}
 
       <section className="a-card is-flush" aria-label="Coachs">
-        <div role="table" aria-label="Coachs" style={{ ['--cols' as string]: 'minmax(0,2.2fr) minmax(0,2fr) minmax(0,1.3fr) 96px 110px 130px' }}>
+        <div role="table" aria-label="Coachs" style={{ ['--cols' as string]: 'minmax(0,2.2fr) minmax(0,2fr) minmax(0,1.3fr) 96px 110px 130px', ['--cols-m' as string]: 'minmax(0,2.2fr) minmax(0,2fr) 110px 130px' }}>
           <div role="row" className="a-th">
-            <span role="columnheader">Nom</span><span role="columnheader" className="a-hide-s">Email</span><span role="columnheader" className="a-hide-s">WhatsApp</span><span role="columnheader" className="a-hide-s">Candidates</span><span role="columnheader">Accès</span><span role="columnheader" aria-label="Action" />
+            <span role="columnheader">Nom</span><span role="columnheader" className="a-hide-s">Email</span><span role="columnheader" className="a-hide-s a-hide-m">WhatsApp</span><span role="columnheader" className="a-hide-s a-hide-m">Candidates</span><span role="columnheader">Accès</span><span role="columnheader"><span className="sr-only">Action</span></span>
           </div>
           {coaches.map((c) => (
             <div role="row" className="a-tr" key={c.id}>
@@ -29,12 +29,13 @@ export default async function Coaches({ searchParams }: { searchParams: Promise<
                 <span style={{ minWidth: 0 }}>
                   <strong className="a-name">{c.name}{c.id === me.id ? <span className="a-muted" style={{ fontWeight: 400 }}> (toi)</span> : null}</strong>
                   <span className="a-sub">depuis le {fmtDate(c.created_at, 'fr', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                  <span className="a-sub a-only-s">{c.email} · {c.load} candidate{c.load > 1 ? 's' : ''}</span>
+                  <span className="a-sub a-only-s">{[c.email, c.whatsapp, `${c.load} candidate${c.load > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}</span>
+                  <span className="a-sub a-m-only">{[c.whatsapp, `${c.load} candidate${c.load > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}</span>
                 </span>
               </div>
-              <span role="cell" className="a-trunc a-hide-s">{c.email}</span>
-              <span role="cell" className="a-trunc a-hide-s">{c.whatsapp ?? '—'}</span>
-              <span role="cell" className="a-hide-s" style={{ fontVariantNumeric: 'tabular-nums' }}>{c.load}</span>
+              <span role="cell" className="a-trunc a-hide-s" title={c.email}>{c.email}</span>
+              <span role="cell" className="a-trunc a-hide-s a-hide-m">{c.whatsapp ?? '—'}</span>
+              <span role="cell" className="a-hide-s a-hide-m" style={{ fontVariantNumeric: 'tabular-nums' }}>{c.load}</span>
               <span role="cell"><span className={`a-pill ${c.active ? 'is-green' : 'is-red'}`}>{c.active ? 'Actif' : 'Désactivé'}</span></span>
               <span role="cell">
                 {c.id !== me.id && (

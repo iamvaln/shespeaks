@@ -47,20 +47,21 @@ export default async function Emails({ searchParams }: { searchParams: Promise<{
 
       <section className="a-card is-flush" aria-label="Emails envoyés">
         {rows.length === 0 ? <p className="a-empty">Aucun email pour le moment.</p> : (
-          <div role="table" aria-label="Emails" style={{ ['--cols']: '112px minmax(0,1.6fr) minmax(0,1.5fr) minmax(0,2fr) 112px' } as React.CSSProperties}>
+          <div role="table" aria-label="Emails" style={{ ['--cols']: '112px minmax(0,1.6fr) minmax(0,1.5fr) minmax(0,2fr) 112px', ['--cols-m']: '112px minmax(0,2fr) 112px' } as React.CSSProperties}>
             <div role="row" className="a-th">
-              <span role="columnheader">Date</span><span role="columnheader" className="a-hide-s">Type</span><span role="columnheader" className="a-hide-s">Destinataire</span><span role="columnheader">Objet</span><span role="columnheader">Statut</span>
+              <span role="columnheader">Date</span><span role="columnheader" className="a-hide-s a-hide-m">Type</span><span role="columnheader" className="a-hide-s a-hide-m">Destinataire</span><span role="columnheader">Objet</span><span role="columnheader">Statut</span>
             </div>
             {rows.map((r) => {
               const [label, tone] = STATUS[r.status] ?? STATUS.logged;
               return (
                 <div role="row" className="a-tr" key={r.id}>
                   <span role="cell" className="a-muted">{fmtDate(r.at, 'fr', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                  <span role="cell" className="a-trunc a-hide-s">{kindLabel(r.kind)}</span>
-                  <span role="cell" className="a-trunc a-hide-s">{r.to_addr}</span>
+                  <span role="cell" className="a-trunc a-hide-s a-hide-m">{kindLabel(r.kind)}</span>
+                  <span role="cell" className="a-trunc a-hide-s a-hide-m" title={r.to_addr}>{r.to_addr}</span>
                   <span role="cell" style={{ minWidth: 0 }}>
                     <Link href={`/admin/emails?id=${r.id}`} className="a-name a-stretch" style={{ fontWeight: 600 }}>{r.subject}</Link>
                     <span className="a-sub a-only-s">{kindLabel(r.kind)} · {r.to_addr}</span>
+                    <span className="a-sub a-m-only">{kindLabel(r.kind)} · {r.to_addr}</span>
                   </span>
                   <span role="cell"><span className={`a-pill ${tone}`}>{label}</span></span>
                 </div>

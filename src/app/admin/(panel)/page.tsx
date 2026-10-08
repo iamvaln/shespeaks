@@ -50,19 +50,19 @@ export default async function Dashboard() {
       </div>
 
       <div className="a-kpis">
-        <section className="a-kpi is-night" aria-label="Intérêts à traiter">
+        <section className="a-kpi is-night">
           <p className="a-eyebrow">Intérêts à traiter</p>
           <p className="n">{received.length}</p>
-          <p className="a-muted">{received.length ? `La plus ancienne attend depuis ${elapsed(received[0].completed_at ?? received[0].created_at, now)}.` : 'Rien à traiter pour le moment.'}</p>
-          <Link className="more" href="/admin/candidates?status=diagnostic_recu">Traiter la liste →</Link>
+          <p className="a-muted">{received.length ? `Le plus ancien attend depuis ${elapsed(received[0].completed_at ?? received[0].created_at, now)}.` : 'Rien à traiter pour le moment.'}</p>
+          <Link className="more" href="/admin/candidates?status=diagnostic_recu&order=received-asc">Traiter la liste →</Link>
         </section>
-        <section className="a-kpi" aria-label="Parcours en cours">
+        <section className="a-kpi">
           <p className="a-eyebrow">Parcours en cours</p>
           <p className="n">{stalled.length}</p>
-          <p className="a-muted">{idle ? `Dont ${idle} inactive${idle > 1 ? 's' : ''} depuis plus de 2 jours.` : 'Aucune n’est restée longtemps sans nouvelles.'}</p>
+          <p className="a-muted">{idle ? `Dont ${idle} sans nouvelles depuis plus de 2 jours.` : 'Aucun n’est resté longtemps sans nouvelles.'}</p>
           <Link className="more" href="/admin/candidates?status=en_cours">Voir les parcours →</Link>
         </section>
-        <section className="a-kpi" aria-label="Prochaine clôture">
+        <section className="a-kpi">
           <p className="a-eyebrow">Prochaine clôture</p>
           <p className="n">{nextDays === null ? '—' : countdown(nextDays, '')}</p>
           <p className="a-muted">{next ? `${eventName(next)} · ${fmtDate(next.cfp_close_date, 'fr', { day: 'numeric', month: 'long' })}.` : 'Aucune clôture à venir.'}</p>
@@ -77,9 +77,9 @@ export default async function Dashboard() {
             <span className="a-muted">Les plus anciens d’abord</span>
           </div>
           {received.length === 0 ? <p className="a-empty">Rien à traiter pour le moment.</p> : (
-            <div role="table" aria-label="Intérêts à traiter" style={{ ['--cols' as string]: 'minmax(0,2.4fr) minmax(0,1.6fr) minmax(0,1.4fr) 112px 20px' }}>
+            <div role="table" aria-label="Intérêts à traiter" style={{ ['--cols' as string]: 'minmax(0,2.4fr) minmax(0,1.6fr) minmax(0,1.4fr) 112px 20px', ['--cols-m' as string]: 'minmax(0,2.4fr) minmax(0,1.6fr) 112px' }}>
               <div role="row" className="a-th">
-                <span role="columnheader">Candidate</span><span role="columnheader" className="a-hide-s">Événement</span><span role="columnheader" className="a-hide-s">Point de départ</span><span role="columnheader">Attend depuis</span><span role="columnheader" aria-label="Ouvrir" />
+                <span role="columnheader">Candidate</span><span role="columnheader" className="a-hide-s">Événement</span><span role="columnheader" className="a-hide-s a-hide-m">Point de départ</span><span role="columnheader">Attend depuis</span><span role="columnheader" className="a-hide-m"><span className="sr-only">Ouvrir</span></span>
               </div>
               {received.slice(0, PREVIEW).map((r) => {
                 const wait = r.completed_at ?? r.created_at;
@@ -91,19 +91,20 @@ export default async function Dashboard() {
                         <Link href={`/admin/candidates/${r.id}`} className="a-name a-stretch">{r.name}</Link>
                         <span className="a-sub">{r.role}</span>
                         <span className="a-sub a-only-s">{r.event_label} · {r.branch ? BRANCH_SHORT[r.branch] : '—'}</span>
+                        {r.branch && <span className="a-sub a-m-only">{BRANCH_SHORT[r.branch]}</span>}
                       </span>
                     </div>
-                    <span role="cell" className="a-trunc a-hide-s">{r.event_label}</span>
-                    <span role="cell" className="a-trunc a-hide-s">{r.branch ? BRANCH_SHORT[r.branch] : '—'}</span>
+                    <span role="cell" className="a-trunc a-hide-s" title={r.event_label}>{r.event_label}</span>
+                    <span role="cell" className="a-trunc a-hide-s a-hide-m">{r.branch ? BRANCH_SHORT[r.branch] : '—'}</span>
                     <span role="cell" className={elapsedHours(wait, now) >= LATE_HOURS ? 'a-late' : undefined}>{elapsed(wait, now)}</span>
-                    <span role="cell" className="a-chev a-hide-s" aria-hidden="true"><Icon name="chevron" /></span>
+                    <span role="cell" className="a-chev a-hide-s a-hide-m" aria-hidden="true"><Icon name="chevron" /></span>
                   </div>
                 );
               })}
             </div>
           )}
           {received.length > PREVIEW && (
-            <div className="a-card-foot"><Link className="a-more" href="/admin/candidates?status=diagnostic_recu">Voir les {received.length} intérêts →</Link></div>
+            <div className="a-card-foot"><Link className="a-more" href="/admin/candidates?status=diagnostic_recu&order=received-asc">Voir les {received.length} intérêts →</Link></div>
           )}
         </section>
 

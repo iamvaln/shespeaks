@@ -41,20 +41,33 @@ export async function logoutAction() {
 const TABS = ['reponses', 'notes', 'photos', 'plan'];
 const cpath = (id: number, tab = '') => `/admin/candidates/${id}${TABS.includes(tab) ? `?tab=${tab}` : ''}`;
 
-/** The « Suivi » card: status, coach and next follow-up date in one save. Nothing is saved if the status is refused. */
+/**
+ * The « Suivi » card: status, coach and next follow-up date. Only what she changed since the page was loaded (the was_* fields)
+ * is saved, so a page left open never overwrites what a colleague did meanwhile; a refused status does not block the rest.
+ */
 export async function followUpAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'id');
   const tab = str(f, 'tab');
   const status = str(f, 'status');
+  const coachId = str(f, 'coach_id');
+  const date = str(f, 'next_point_date');
   if (!STATUSES.some((s) => s.id === status)) return back(cpath(id, tab), 'Statut inconnu', true);
-  if (status === 'sujet_valide') {
-    const s = await getSubject(id);
-    if (!s?.title?.trim() || !s?.abstract?.trim()) return back(cpath(id, tab), 'Pour valider le sujet, renseigne d’abord le titre et le résumé du sujet retenu.', true);
+  if (badDate(date || null)) return back(cpath(id, tab), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
+  const changed = { status: status !== str(f, 'was_status'), coach: coachId !== str(f, 'was_coach'), date: date !== str(f, 'was_date') };
+  if (!changed.status && !changed.coach && !changed.date) return back(cpath(id, tab), 'Rien n’a changé');
+  let refused = '';
+  if (changed.status) {
+    if (status === 'sujet_valide') {
+      const s = await getSubject(id);
+      if (!s?.title?.trim() || !s?.abstract?.trim()) refused = 'Le statut n’a pas changé : pour valider le sujet, renseigne d’abord le titre et le résumé dans l’onglet « Sujet et pistes ».';
+    }
+    if (!refused) await setStatus(id, status, coach.name);
   }
-  await setStatus(id, status, coach.name);
-  await run('UPDATE candidates SET coach_id=?, next_point_date=? WHERE id=?', num(f, 'coach_id') || null, str(f, 'next_point_date') || null, id);
+  if (changed.coach) await run('UPDATE candidates SET coach_id=? WHERE id=?', coachId ? num(f, 'coach_id') : null, id);
+  if (changed.date) await run('UPDATE candidates SET next_point_date=? WHERE id=?', date || null, id);
   revalidatePath('/admin', 'layout'); // the menu counts the interests to process
+  if (refused) return back(cpath(id, tab), changed.coach || changed.date ? `${refused} Le reste est enregistré.` : refused, true);
   return back(cpath(id, tab), 'Suivi enregistré');
 }
 
@@ -150,8 +163,8 @@ export async function remindNowAction(f: FormData) {
   const tab = str(f, 'tab');
   const sent = await sendReminderNow(id);
   if (sent === 'sent') return back(cpath(id, tab), 'Rappel envoyé par email');
-  if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans l’onglet Emails. Écris-lui sur WhatsApp.', true);
-  if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans l’onglet Emails). Écris-lui sur WhatsApp.', true);
+  if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans la page Emails. Écris-lui sur WhatsApp.', true);
+  if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans la page Emails). Écris-lui sur WhatsApp.', true);
   return back(cpath(id, tab), 'Impossible : pas d’email ou formulaire déjà terminé', true);
 }
 
@@ -203,7 +216,7 @@ export async function inviteCoachAction(f: FormData) {
   const sent = await inviteCoach(coach, me.name);
   if (sent === 'sent') return back('/admin/coaches', `Invitation envoyée à ${email}`);
   const why = sent === 'failed' ? 'l’envoi a échoué. Elle peut demander son lien depuis la page de connexion' : 'l’envoi d’emails n’est pas configuré';
-  return back('/admin/coaches', `${name} est ajoutée, mais l’email d’invitation n’est pas parti (détail dans l’onglet Emails) : ${why}.`, true);
+  return back('/admin/coaches', `${name} est ajoutée, mais l’email d’invitation n’est pas parti (détail dans la page Emails) : ${why}.`, true);
 }
 export async function toggleCoachAction(f: FormData) {
   const me = await requireCoach();

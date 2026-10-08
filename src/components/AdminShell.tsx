@@ -21,9 +21,16 @@ export function AdminShell({ toProcess, coachName, initials, signOut, children }
   const burger = useRef<HTMLButtonElement>(null);
   const side = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
 
-  // a page change closes the drawer and the phone search
-  useEffect(() => { setOpen(false); setSearching(false); }, [path]);
+  // a page change closes the drawer and the phone search; when it came from the drawer, focus goes to the new page's content
+  const wasOpen = useRef(false);
+  useEffect(() => { wasOpen.current = open; }, [open]);
+  useEffect(() => {
+    if (wasOpen.current) document.getElementById('contenu')?.focus();
+    setOpen(false);
+    setSearching(false);
+  }, [path]);
 
   // open drawer: Escape closes it, so does a window wide enough to show the menu; focus goes in, then back to the button
   useEffect(() => {
@@ -39,12 +46,18 @@ export function AdminShell({ toProcess, coachName, initials, signOut, children }
 
   useEffect(() => { if (searching) search.current?.focus(); }, [searching]);
 
-  // « / » jumps to the search (not while typing somewhere, and only where the field is shown)
+  // « / » jumps to the search, but only when no control has the focus (so it never fights typing or a button), never behind the drawer,
+  // and only where the field is shown. Escape closes the phone search.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && search.current && document.activeElement === search.current && search.current.closest('.app-search.is-open')) {
+        setSearching(false);
+        toggle.current?.focus();
+        return;
+      }
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      if (document.querySelector('.app[data-open]')) return;
       if (search.current && search.current.offsetParent !== null) { e.preventDefault(); search.current.focus(); }
     };
     document.addEventListener('keydown', onKey);
@@ -108,15 +121,15 @@ export function AdminShell({ toProcess, coachName, initials, signOut, children }
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/shespeaks-logo-nuit.svg" alt="SheSpeaks" />
           </Link>
+          <button ref={toggle} type="button" className="app-icon-btn app-search-toggle" aria-label="Rechercher" aria-expanded={searching} onClick={() => setSearching((s) => !s)}>
+            <Icon name="search" size={22} />
+          </button>
           <form className={`app-search${searching ? ' is-open' : ''}`} role="search" action="/admin/candidates" method="get">
             <label className="sr-only" htmlFor="q-global">Chercher une candidate</label>
             <Icon name="search" />
             <input id="q-global" ref={search} name="q" type="search" placeholder="Chercher une candidate, un sujet, un numéro…" autoComplete="off" />
             <kbd aria-hidden="true">/</kbd>
           </form>
-          <button type="button" className="app-icon-btn app-search-toggle" aria-label="Rechercher" aria-expanded={searching} onClick={() => setSearching((s) => !s)}>
-            <Icon name="search" size={22} />
-          </button>
           <a className="app-site" href="/" target="_blank" rel="noopener noreferrer">Voir le site public <Icon name="external" size={14} /></a>
           <span className="app-avatar app-avatar-sm" aria-hidden="true">{initials}</span>
         </header>

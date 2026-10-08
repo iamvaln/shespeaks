@@ -12,10 +12,12 @@ import {
 import { buildRoadmap } from '@/lib/roadmap';
 import { RoadmapView } from '@/components/RoadmapView';
 import { Icon } from '@/components/admin-icons';
+import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
+import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
-import { BRANCH_SHORT, elapsed, one, statusTone } from '@/lib/admin-format';
+import { BRANCH_SHORT, elapsed, one } from '@/lib/admin-format';
 import { initials, wordCount } from '@/lib/text';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, trackAction,
@@ -89,6 +91,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           </div>
         </div>
         <div className="a-actions">
+          <a className="a-btn is-ghost a-jump" href="#suivi">Suivi ↓</a>
           {wa && <a className="a-btn is-amber" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"><Icon name="message" />Écrire sur WhatsApp</a>}
           {c.email && <a className="a-btn is-ghost" href={`mailto:${c.email}`}><Icon name="mail" />Envoyer un email</a>}
           {!c.completed_at && c.email && (
@@ -111,7 +114,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             ))}
           </ol>
           <div className="a-steps-sm">
-            <div className="a-row-between"><strong>Étape {stage + 1} sur {STAGES.length} · {stageLabel(c.status)}</strong>{stage + 1 < STAGES.length && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Ensuite : {stageLabel(STAGES[stage + 1]).toLowerCase()}</span>}</div>
+            <div className="a-row-between"><strong>Étape {stage + 1} sur {STAGES.length} · {stageLabel(c.status)}</strong>{stage + 1 < STAGES.length && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Ensuite : {stageLabel(STAGES[stage + 1])}</span>}</div>
             <div className="a-segs" aria-hidden="true">{STAGES.map((s, i) => <i key={s} className={i < stage ? 'is-done' : i === stage ? 'is-current' : undefined} />)}</div>
           </div>
         </section>
@@ -123,19 +126,22 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           <span className="a-sub" style={{ whiteSpace: 'normal' }}>S’est arrêtée à « {progress.label} » · inactive depuis {elapsed(c.last_activity_at, now)} · {c.reminders_sent} relance{c.reminders_sent > 1 ? 's' : ''} automatique{c.reminders_sent > 1 ? 's' : ''}</span>
         </section>
       )}
+      {c.status === 'en_cours' && !progress && (
+        <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Formulaire terminé · statut remis à « En cours »</strong><span className="a-pill is-soft">En cours</span></div></section>
+      )}
       {c.status === 'non_retenue' && (
         <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Candidature non retenue</strong><span className="a-pill is-red">Non retenue</span></div></section>
       )}
 
       <div className="a-split">
         <div className="a-main a-stack" style={{ gap: 20 }}>
-          <nav className="a-tabbar" aria-label="Sections de la fiche">
+          <CurrentIntoView className="a-tabbar" aria-label="Sections de la fiche">
             {TABS.map(([t, label, n]) => (
               <Link key={t} href={tabHref(t)} scroll={false} className="a-tabbar-link" aria-current={t === tab ? 'page' : undefined}>
                 {label}{n ? <span>{n}</span> : null}
               </Link>
             ))}
-          </nav>
+          </CurrentIntoView>
 
           {tab === 'sujet' && (
             <>
@@ -159,7 +165,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             <input type="hidden" name="cid" value={id} /><input type="hidden" name="track_id" value={t.id} />
                             <span className="a-num" aria-hidden="true">{i + 1}</span>
                             <div className="a-track-main">
-                              <textarea className="a-track-title" name="title" rows={1} defaultValue={t.title} aria-label={`Titre de la piste ${i + 1}`} />
+                              <AutoGrowTextarea className="a-track-title" name="title" defaultValue={t.title} aria-label={`Titre de la piste ${i + 1}`} />
                               <span className="a-track-meta">
                                 <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
                                 <span>{ORIGIN[t.origin] ?? t.origin}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
@@ -170,11 +176,11 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               {t.hook && <span className="a-sub" style={{ whiteSpace: 'normal' }}>{t.hook}</span>}
                             </div>
                             <div className="a-track-actions">
-                              {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm">Choisir</button>}
-                              {t.state === 'generee' && <button name="op" value="shortlist" className="a-btn is-ghost is-sm">Retenir</button>}
-                              {t.state === 'ecartee' ? <button name="op" value="restore" className="a-btn is-ghost is-sm">Rétablir</button> : t.state !== 'choisie' && <button name="op" value="discard" className="a-link-btn">Écarter</button>}
-                              <button name="op" value="save" className="a-link-btn">Enregistrer</button>
-                              {t.origin === 'coach' && <button name="op" value="delete" className="a-link-btn is-danger">Supprimer</button>}
+                              {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm" aria-label={`Choisir la piste ${i + 1}`}>Choisir</button>}
+                              {t.state === 'generee' && <button name="op" value="shortlist" className="a-btn is-ghost is-sm" aria-label={`Retenir la piste ${i + 1}`}>Retenir</button>}
+                              {t.state === 'ecartee' ? <button name="op" value="restore" className="a-btn is-ghost is-sm" aria-label={`Rétablir la piste ${i + 1}`}>Rétablir</button> : t.state !== 'choisie' && <button name="op" value="discard" className="a-link-btn" aria-label={`Écarter la piste ${i + 1}`}>Écarter</button>}
+                              <button name="op" value="save" className="a-link-btn" aria-label={`Enregistrer la piste ${i + 1}`}>Enregistrer</button>
+                              {t.origin === 'coach' && <button name="op" value="delete" className="a-link-btn is-danger" aria-label={`Supprimer la piste ${i + 1}`}>Supprimer</button>}
                             </div>
                           </form>
                         </li>
@@ -330,14 +336,16 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <dt>Langue du talk</dt><dd>{fmtVal(question('diag2', 'P5'), a['P5'])}</dd>
               <dt>Interface</dt><dd>{c.locale === 'en' ? 'En anglais' : 'En français'}</dd>
               <dt>Inscrite le</dt><dd>{fmtDate(c.created_at, 'fr', DATE_TIME)}</dd>
-              <dt>Terminé le</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', DATE_TIME) : `Non, écran « ${SCREENS[resumeScreen(c.branch, c.current_screen)]?.title.fr ?? c.current_screen} »`}</dd>
+              <dt>Formulaire</dt><dd>{c.completed_at ? `Terminé le ${fmtDate(c.completed_at, 'fr', DATE_TIME)}` : `Pas terminé : écran « ${SCREENS[resumeScreen(c.branch, c.current_screen)]?.title.fr ?? c.current_screen} »`}</dd>
             </dl>
           </section>
 
-          <section className="a-card" aria-labelledby="h-suivi">
+          <section className="a-card" id="suivi" aria-labelledby="h-suivi">
             <form action={followUpAction} className="a-stack">
               <h2 id="h-suivi" className="a-h2">Suivi</h2>
               <input type="hidden" name="id" value={id} /><input type="hidden" name="tab" value={tab === 'sujet' ? '' : tab} />
+              {/* what the page showed: only a field she changes is saved, so a page left open never overwrites what a colleague did meanwhile */}
+              <input type="hidden" name="was_status" value={c.status} /><input type="hidden" name="was_coach" value={c.coach_id ?? ''} /><input type="hidden" name="was_date" value={c.next_point_date ?? ''} />
               <label className="a-label">Statut<select className="a-select-f" name="status" defaultValue={c.status}>{STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
               <label className="a-label">Coach assignée {coach && !coach.active ? '(accès désactivé)' : ''}<select className="a-select-f" name="coach_id" defaultValue={c.coach_id ?? ''}><option value="">— aucune —</option>{coaches.map((x) => <option key={x.id} value={x.id}>{x.name}{x.id === me.id ? ' (toi)' : ''}</option>)}</select></label>
               <label className="a-label">Prochain point<input className="a-input" type="date" name="next_point_date" defaultValue={c.next_point_date ?? ''} /></label>

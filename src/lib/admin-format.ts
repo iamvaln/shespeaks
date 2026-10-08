@@ -38,7 +38,7 @@ export function elapsed(since: string, now: Date = new Date()): string {
 export function dayLabel(days: number): string {
   if (days === 0) return 'aujourd’hui';
   if (days === 1) return 'demain';
-  if (days === -1) return 'hier';
+  if (days === -1) return 'en retard d’un jour';
   return days > 1 ? `dans ${days} jours` : `en retard de ${-days} jours`;
 }
 
