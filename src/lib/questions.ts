@@ -277,7 +277,7 @@ const a1: Screen = {
   branch: 'A',
   block: aBlock,
   title: L('Ce qui t’occupe au quotidien', 'What keeps you busy every day'),
-  intro: L('Les questions ouvertes sont facultatives : plus tu réponds, plus tes pistes seront personnelles.', 'Open questions are optional: the more you share, the more personal your topic ideas.'),
+  intro: L('Réponds comme tu veux : plus tu en dis, plus nos idées de sujets seront personnelles.', 'Answer as you like: the more you share, the more personal our topic ideas will be.'),
   questions: [
     { code: 'A1', type: 'longtext', required: false, maxLength: 1500, label: L('Sur quoi travailles-tu au quotidien (job, études, projets perso) ?', 'What do you work on day to day (job, studies, personal projects)?') },
     {
@@ -308,6 +308,7 @@ const a2: Screen = {
   block: aBlock,
   title: L('Ton expérience, tes questions', 'Your experience, your questions'),
   questions: [
+    { code: 'A7', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
     {
       code: 'A4',
       type: 'longtext',
@@ -318,7 +319,6 @@ const a2: Screen = {
     },
     { code: 'A5', type: 'text', required: false, maxLength: 160, label: L('Sur quoi te pose-t-on souvent des questions ?', 'What do people often ask you about?') },
     { code: 'A6', type: 'longtext', required: false, maxLength: 1500, label: L('Qu’aurais-tu aimé savoir à tes débuts ?', 'What do you wish you had known when you started?') },
-    { code: 'A7', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
   ],
 };
 
