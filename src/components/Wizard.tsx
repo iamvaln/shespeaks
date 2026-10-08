@@ -74,7 +74,9 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
       if (!r.ok || !j.ok) {
         if (j.fatal === 'already_completed') { router.replace('/plan'); return; }
         setErrors(j.errors ?? {});
-        setBanner(d.fixErrors);
+        const fieldErrors = j.errors && Object.keys(j.errors).length > 0;
+        // A failed save is not always the candidate's fault: say what really happened.
+        setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : d.fatal.other);
         const firstErr = Object.keys(j.errors ?? {})[0];
         if (firstErr) requestAnimationFrame(() => document.getElementById(`q-${firstErr}`)?.focus());
         setBusy(false);
@@ -99,18 +101,19 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   const pct = Math.round(((idx + 1) / total) * 100);
 
   return (
-    <div className="wizard">
-      <div className="container narrow">
+    <div className="form-shell">
+      <div className="container form-container">
         <div className="progress" role="group" aria-label={d.screenOf(idx + 1, total)}>
-          <p className="label-s">{d.screenOf(idx + 1, total)} · {screen.block[locale]}</p>
-          <div className="progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><div style={{ width: `${pct}%` }} /></div>
+          <p className="label-s muted">{d.screenOf(idx + 1, total)}</p>
+          <div className="progress-bar" role="progressbar" aria-label={d.screenOf(idx + 1, total)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={d.screenOf(idx + 1, total)}><div style={{ width: `${pct}%` }} /></div>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); if (!isPhoto) submit(); }} noValidate>
-          <div className="screen-head">
-            <h1 className="display-l" ref={head} tabIndex={-1}>{screen.title[locale]}</h1>
-            {screen.intro && <p className="lead">{screen.intro[locale]}</p>}
-          </div>
+        <form className="form-card" onSubmit={(e) => { e.preventDefault(); if (!isPhoto) submit(); }} noValidate>
+          <header className="form-head">
+            <p className="form-block">{screen.block[locale]}</p>
+            <h1 className="form-title" ref={head} tabIndex={-1}>{screen.title[locale]}</h1>
+            {screen.intro && <p className="form-intro">{screen.intro[locale]}</p>}
+          </header>
 
           {banner && <div className="banner" role="alert">{banner}</div>}
 
@@ -142,8 +145,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
             </div>
           )}
 
-          <div className="wiz-actions">
-            <button type="button" className="btn btn-ghost" onClick={back} disabled={idx === 0 || busy}>{d.back}</button>
+          <div className="form-actions">
+            {idx > 0 ? <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>{d.back}</button> : <span />}
             <div className="grow">
               {isPhoto ? (
                 <>
@@ -155,7 +158,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
               )}
             </div>
           </div>
-          <p className="small" style={{ marginTop: 16 }}>{d.saved}</p>
+          <p className="small form-note">{d.saved}</p>
         </form>
       </div>
     </div>
@@ -176,25 +179,27 @@ function Field({ q, locale, refs, value, error, onChange }: {
       {!q.required && <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}> · {d.optional}</span>}
     </>
   );
-  const help = (q.help || q.type === 'multi') && (
-    <p className="help">{q.help?.[locale] ?? ''}{q.type === 'multi' && q.max ? ` ${d.pickUpTo(q.max)}` : ''}</p>
+  const helpId = `${id}-help`;
+  const describedBy = [(q.help || (q.type === 'multi' && q.max)) && helpId, error && errId].filter(Boolean).join(' ') || undefined;
+  const help = (q.help || (q.type === 'multi' && q.max)) && (
+    <p className="help" id={helpId}>{q.help?.[locale] ?? ''}{q.type === 'multi' && q.max ? ` ${d.pickUpTo(q.max)}` : ''}</p>
   );
   const err = error && <p className="err" id={errId} role="alert">{d.errors[error] ?? error}</p>;
 
   if (q.type === 'single' || q.type === 'multi' || q.type === 'scale') {
     const selected = q.type === 'multi' ? ((value as string[] | undefined) ?? []) : value === undefined ? [] : [String(value)];
     const items = q.type === 'scale' ? [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) })) : opts.map((o) => ({ value: o.value, label: o.label[locale] }));
-    const long = q.type !== 'scale' && items.some((o) => o.label.length > 34);
+    const short = q.type !== 'scale' && items.length >= 4 && items.every((o) => o.label.length <= 22);
     return (
-      <fieldset className="q" aria-describedby={error ? errId : undefined}>
+      <fieldset className="q" aria-describedby={describedBy}>
         <legend>{label}</legend>
         {help}
-        <div className={q.type === 'scale' ? 'scale' : `chips${long ? ' stack-chips' : ''}`} role={q.type === 'multi' ? 'group' : 'radiogroup'}>
+        <div className={q.type === 'scale' ? 'scale' : `opts${short ? ' cols' : ''}`}>
           {items.map((o, i) => {
             const checked = selected.includes(o.value);
             const atMax = q.type === 'multi' && !!q.max && selected.length >= q.max && !checked;
             return (
-              <label className="chip" key={o.value}>
+              <label className={q.type === 'scale' ? 'scale-opt' : 'opt'} key={o.value}>
                 <input
                   id={i === 0 ? id : undefined}
                   type={q.type === 'multi' ? 'checkbox' : 'radio'}
@@ -221,7 +226,7 @@ function Field({ q, locale, refs, value, error, onChange }: {
   }
 
   const common = {
-    id, name: q.code, value: String(value ?? ''), 'aria-invalid': !!error, 'aria-describedby': error ? errId : undefined,
+    id, name: q.code, value: String(value ?? ''), 'aria-invalid': !!error, 'aria-describedby': describedBy,
     placeholder: q.placeholder?.[locale], maxLength: q.maxLength,
   };
   return (
@@ -252,12 +257,12 @@ function DraftField({ q, locale, value, error, onChange, onReset }: {
   return (
     <div className="q">
       <label className="q-label" htmlFor={`q-${q.code}`}>{q.label[locale]}</label>
-      <textarea id={`q-${q.code}`} className="textarea" style={{ minHeight: 280 }} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={!!error} />
-      <div className="counter">
+      <textarea id={`q-${q.code}`} className="textarea" style={{ minHeight: 280 }} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={!!error} aria-describedby={`q-${q.code}-count${error ? ` q-${q.code}-err` : ''}`} />
+      <div className="counter" id={`q-${q.code}-count`}>
         <span className={words >= 80 ? 'good' : ''}>{d.words(words)} · {d.wordsTarget}</span>
         <button type="button" className="link-btn" onClick={onReset}>{d.resetDraft}</button>
       </div>
-      {error && <p className="err" role="alert">{d.errors[error]}</p>}
+      {error && <p className="err" id={`q-${q.code}-err`} role="alert">{d.errors[error]}</p>}
     </div>
   );
 }

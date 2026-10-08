@@ -1,4 +1,5 @@
 -- SheSpeaks schema (Postgres / Supabase). Timestamps are UTC `timestamp` columns.
+-- Schema only: reference data (DevFest calendar, first coach) is loaded by `npm run db:seed`.
 -- The app connects with the database role (bypasses RLS); RLS is enabled with NO policies so the
 -- public Supabase REST/anon API cannot read any of this personal data.
 
@@ -119,13 +120,6 @@ create table if not exists email_log (
   at timestamp not null default (now() at time zone 'utc')
 );
 create index if not exists idx_email_at on email_log(at desc);
-
--- Seed: DevFest calendar (Bamenda dates still to confirm)
-insert into devfest_events (city,name,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label) values
- ('yaounde','Yaoundé','2026-10-31','à 23 h 59 (heure de Yaoundé)','2026-11-21',null,'https://devfest.gdgyaounde.com/speakers','Sessionize, via devfest.gdgyaounde.com/speakers'),
- ('douala','Douala','2026-11-01','heure non précisée','2026-11-28','Majestic Cinéma','https://devfest.gdgdouala.org/cfp','devfest.gdgdouala.org/cfp (affiche : bit.ly/speakersdevfest26)'),
- ('bamenda','Bamenda',null,null,null,null,null,null)
-on conflict (city) do nothing;
 
 -- Lock the tables away from the public Supabase API
 alter table coaches enable row level security;

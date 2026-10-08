@@ -2,7 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ['nodemailer'],
+  async redirects() {
+    // old public URL of the form (links already shared or emailed)
+    return [{ source: '/diagnostic', destination: '/interet', permanent: true }];
+  },
   experimental: { serverActions: { bodySizeLimit: '2mb' } },
 };
 export default nextConfig;

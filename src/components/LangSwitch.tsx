@@ -15,7 +15,7 @@ export function LangSwitch({ locale }: { locale: Locale }) {
       aria-label={other === 'en' ? 'Switch to English' : 'Passer en français'}
       onClick={() => start(() => setLocaleAction(other).then(() => window.location.reload()))}
     >
-      {other === 'en' ? 'English' : 'Français'}
+      {other.toUpperCase()}
     </button>
   );
 }

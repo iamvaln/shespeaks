@@ -5,11 +5,11 @@ import { listCoaches } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
 import { norm } from '@/lib/text';
 
-type SP = { q?: string; city?: string; status?: string; coach?: string; sort?: string; dir?: string; msg?: string };
+type SP = { q?: string; event?: string; status?: string; coach?: string; sort?: string; dir?: string; msg?: string };
 
 const SORTS: Record<string, (r: Awaited<ReturnType<typeof candidateRows>>[number]) => string> = {
   name: (r) => norm(r.name ?? ''),
-  city: (r) => r.city_label,
+  event: (r) => r.event_label,
   status: (r) => String(STATUSES.findIndex((s) => s.id === r.status)).padStart(2, '0'),
   updated: (r) => r.updated_at,
   next: (r) => r.next_point_date ?? '9999',
@@ -21,12 +21,12 @@ export const dynamic = 'force-dynamic';
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const all = await candidateRows();
-  const cities = [...new Set(all.map((r) => r.city_label))].sort();
+  const events_ = [...new Set(all.map((r) => r.event_label))].sort();
   const coaches = await listCoaches();
   const q = norm(sp.q ?? '');
   let rows = all.filter(
     (r) =>
-      (!sp.city || r.city_label === sp.city) && (!sp.status || r.status === sp.status) && (!sp.coach || String(r.coach_id ?? '') === sp.coach) &&
+      (!sp.event || r.event_label === sp.event) && (!sp.status || r.status === sp.status) && (!sp.coach || String(r.coach_id ?? '') === sp.coach) &&
       (!q || norm(`${r.name} ${r.topic} ${r.whatsapp} ${r.email ?? ''} ${r.role ?? ''}`).includes(q)),
   );
   const sort = SORTS[sp.sort ?? ''] ? sp.sort! : 'updated';
@@ -40,7 +40,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
     return `/admin/candidates?${p}`;
   };
   const arrow = (col: string) => (sort === col ? (dir === 1 ? ' ↑' : ' ↓') : '');
-  const perCity = (st?: string) => cities.map((c) => `${c} ${rows.filter((r) => r.city_label === c && (!st || r.status === st)).length}`).join(' · ');
+  const perEvent = (st?: string) => events_.map((c) => `${c} ${rows.filter((r) => r.event_label === c && (!st || r.status === st)).length}`).join(' · ');
 
   return (
     <>
@@ -48,18 +48,18 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
       {sp.msg && <div className="flash">{sp.msg}</div>}
       <form className="filters" method="get">
         <label>Recherche<input className="input" name="q" defaultValue={sp.q} placeholder="Nom, sujet, téléphone…" /></label>
-        <label>Ville<select className="select" name="city" defaultValue={sp.city ?? ''}><option value="">Toutes</option>{cities.map((c) => <option key={c}>{c}</option>)}</select></label>
+        <label>Événement<select className="select" name="event" defaultValue={sp.event ?? ''}><option value="">Toutes</option>{events_.map((c) => <option key={c}>{c}</option>)}</select></label>
         <label>Statut<select className="select" name="status" defaultValue={sp.status ?? ''}><option value="">Tous</option>{STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         <label>Coach<select className="select" name="coach" defaultValue={sp.coach ?? ''}><option value="">Toutes</option>{coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <button className="btn btn-sm">Filtrer</button>
         <Link className="btn btn-sm btn-ghost" href="/admin/candidates">Réinitialiser</Link>
       </form>
-      <p className="small" style={{ marginBottom: 12 }}>{rows.length} candidate{rows.length > 1 ? 's' : ''} · {perCity()}</p>
+      <p className="small" style={{ marginBottom: 12 }}>{rows.length} candidate{rows.length > 1 ? 's' : ''} · {perEvent()}</p>
       <div className="table-wrap">
         <table className="t">
           <thead><tr>
             <th><Link href={link('name')}>Nom{arrow('name')}</Link></th>
-            <th><Link href={link('city')}>Ville{arrow('city')}</Link></th>
+            <th><Link href={link('event')}>Événement{arrow('event')}</Link></th>
             <th>Sujet</th>
             <th><Link href={link('branch')}>Départ{arrow('branch')}</Link></th>
             <th><Link href={link('status')}>Statut{arrow('status')}</Link></th>
@@ -71,7 +71,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
             {rows.map((r) => (
               <tr key={r.id}>
                 <td><Link href={`/admin/candidates/${r.id}`}><strong>{r.name}</strong></Link><div className="small">{r.role}</div></td>
-                <td>{r.city_label}</td>
+                <td>{r.event_label}</td>
                 <td>{r.topic || <span className="muted">—</span>}</td>
                 <td>{r.branch ?? '—'}</td>
                 <td><span className={`status s-${r.status}`}>{statusLabel(r.status)}</span></td>

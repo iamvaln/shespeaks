@@ -9,7 +9,7 @@ Order requested: **front office first, then admin**. Email notifications through
 |---|---|---|
 | App | Next.js 15 (App Router) + TypeScript | One codebase for public site, admin, API, scheduler |
 | DB | **Postgres on Supabase** (`postgres` driver, pooler) | Deployed on Vercel (serverless) → managed Postgres; schema in `supabase/migrations/` |
-| Email | `nodemailer` (SMTP). No SMTP configured → mails are logged to the `email_log` table (visible in admin) | Works in dev with no setup, real mail in prod via env |
+| Email | **Resend** (REST API, queue + retry). No `RESEND_API_KEY` → mails are logged to the `email_log` table (visible in admin) | Works in dev with no setup |
 | Reminders | Vercel Cron → secured `/api/cron/reminders` | No long-lived process on serverless |
 | Photos | Supabase Storage, direct browser upload via signed URL | Vercel 4.5 MB body limit |
 | Auth (admin) | Passwordless: emailed one-time login link → signed session cookie | Spec: "coachs … se connectent avec leur email" |
@@ -54,7 +54,7 @@ Hosting: Vercel + Supabase (see README).
 ### Phase 3 — Quality
 - [x] Unit tests for pure logic (topic generation, review grid, roadmap rules, abstract assembly)
 - [x] End-to-end smoke run (all four branches, reminders, admin flows) in a real browser
-- [x] README (setup, env vars, SMTP, deploy, cron), spec-compliance notes
+- [x] README (setup, env vars, Resend, deploy, cron), spec-compliance notes
 - [x] Commit + push + draft PR
 
 ## Not in this version (spec "évolutions")
@@ -64,3 +64,9 @@ Hosting: Vercel + Supabase (see README).
 
 ## Open point from spec
 DevFest Bamenda dates unknown → shown as « À confirmer »; editable in admin Calendrier.
+
+## Follow-ups
+- [x] Startup / build-time / admin environment check (`src/lib/env.ts`)
+- [x] Emails via Resend (replaces SMTP): throttled queue, retry, idempotency, `after()`
+- [x] CI/CD: tracked + checksummed migrations (advisory lock, transactional), idempotent seeding, migrations on every Vercel build (`MIGRATE_ON_BUILD`), GitHub Actions CI, actionable runtime error when the schema is missing
+- [x] Landing page (events, who/how/join, FAQ, slider), light-theme form, "intérêt" vocabulary, events instead of cities (migration 0003: title, poster)

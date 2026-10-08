@@ -104,8 +104,8 @@ await run('D', 'Danielle Eto', [
   const token = c.jar.ss_token;
   const c2 = new Client();
   const r = await c2.get(`/reprendre/${token}`);
-  ok(r.status === 307 && r.location.endsWith('/diagnostic') && c2.jar.ss_token === token, 'resume: link restores session on a new device');
-  const d = await c2.get('/diagnostic');
+  ok(r.status === 307 && r.location.endsWith('/interet') && c2.jar.ss_token === token, 'resume: link restores session on a new device');
+  const d = await c2.get('/interet');
   ok(d.status === 200 && d.text.includes('Fanny') === false || true, 'resume: diagnostic page renders');
 }
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');

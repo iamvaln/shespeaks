@@ -1,10 +1,11 @@
 // Postgres (Supabase) connection and tiny query helpers. Schema: supabase/migrations/*.sql
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { resolveDatabaseUrl } from './env.ts';
 
 export const STATUSES = [
   { id: 'en_cours', label: 'En cours' },
-  { id: 'diagnostic_recu', label: 'Diagnostic reçu' },
+  { id: 'diagnostic_recu', label: 'Intérêt reçu' },
   { id: 'sujet_valide', label: 'Sujet validé' },
   { id: 'candidature_soumise', label: 'Candidature soumise' },
   { id: 'retenue', label: 'Retenue' },
@@ -22,8 +23,8 @@ const g = globalThis as unknown as { __shespeaksSql?: Sql };
 /** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
 export function sql(): Sql {
   if (!g.__shespeaksSql) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is not set');
+    const url = resolveDatabaseUrl(process.env);
+    if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set');
     const local = /localhost|127\.0\.0\.1/.test(url);
     g.__shespeaksSql = postgres(url, {
       max: 3,
@@ -48,16 +49,38 @@ const toPg = (text: string) => {
 };
 
 type Param = string | number | null;
+
+/** Turn "table/column does not exist" into something an operator reading the Vercel logs can act on. */
+function explain(e: unknown): unknown {
+  const code = (e as { code?: string })?.code;
+  if (code === '42P01' || code === '42703') {
+    const err = new Error(
+      `Database schema is missing or out of date (${(e as Error).message}). Apply the migrations: run "npm run db:setup" ` +
+        'against this database, or redeploy on Vercel (migrations run during the build unless MIGRATE_ON_BUILD=false).',
+    );
+    (err as Error & { cause?: unknown }).cause = e;
+    return err;
+  }
+  return e;
+}
+
 export async function all<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T[]> {
-  return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+  try {
+    return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+  } catch (e) {
+    throw explain(e);
+  }
 }
 export async function get<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T | undefined> {
   return (await all<T>(text, ...p))[0];
 }
 /** Returns the number of affected rows. */
 export async function run(text: string, ...p: Param[]): Promise<number> {
-  const r = await conn().unsafe(toPg(text), p);
-  return r.count;
+  try {
+    return (await conn().unsafe(toPg(text), p)).count;
+  } catch (e) {
+    throw explain(e);
+  }
 }
 /** INSERT … returning the new row id. */
 export async function insert(text: string, ...p: Param[]): Promise<number> {

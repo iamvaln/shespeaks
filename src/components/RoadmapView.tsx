@@ -8,14 +8,15 @@ export function RoadmapView({
 }: { rm: Roadmap; locale: Locale; photoUrl?: string | null; internalDeadline?: string | null }) {
   const d = t(locale).plan;
   const ev = rm.calendar.event;
+  const current = rm.steps.find((s) => !s.done)?.n; // the ring marks the step in progress (charte)
   return (
     <div className="stack">
-      <section className="badge-card" data-theme="nuit" aria-label="Badge speaker">
+      <section className="badge-card" data-theme="nuit" aria-label={d.badgeLabel}>
         <div className="ring" style={{ ['--size' as string]: '168px' }}>
           <div>{/* eslint-disable-next-line @next/next/no-img-element */}{photoUrl ? <img src={photoUrl} alt="" /> : <span>SHE</span>}</div>
         </div>
         <div>
-          <p className="label-s">{d.badge} · DEVFEST {rm.badge.devfest.toUpperCase()}</p>
+          <p className="label-s">{d.badge} · {rm.badge.devfest.toUpperCase()}</p>
           <p className="name">{rm.badge.name}</p>
           <p className="talk">{rm.badge.title === 'à définir' || rm.badge.title === 'to be defined' ? d.toDefine : rm.badge.title}</p>
           <p className="meta">{[rm.badge.role, rm.badge.format].filter(Boolean).join(' · ')}</p>
@@ -32,7 +33,7 @@ export function RoadmapView({
         <p className="small" style={{ marginBottom: 24 }}><span className="legend-star">★</span> {d.star}</p>
         <ol className="rm-steps">
           {rm.steps.map((s) => (
-            <li key={s.n} className={`rm-step${s.done ? ' done' : ''}`}>
+            <li key={s.n} className={`rm-step${s.done ? ' done' : s.n === current ? ' current' : ''}`}>
               <div className="num" aria-hidden="true">{s.done ? '✓' : s.n}</div>
               <div>
                 <h3>
@@ -60,7 +61,7 @@ export function RoadmapView({
           <p>{d.toConfirmCoach}</p>
         ) : (
           ev && (
-            <dl className="kv" style={{ gridTemplateColumns: '200px 1fr' }}>
+            <dl className="kv kv-cal">
               <dt>{d.cfp}</dt>
               <dd>{fmtDate(ev.cfp_close_date, locale)}{ev.cfp_close_note ? ` · ${ev.cfp_close_note}` : ''}</dd>
               <dt>{d.eventDate}</dt>

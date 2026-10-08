@@ -1,6 +1,8 @@
 import { getSetting } from '@/lib/db';
 import { getRefs, refsToText } from '@/lib/data';
 import { mailConfigured } from '@/lib/mail';
+import { checkEnv } from '@/lib/env';
+import { all } from '@/lib/db';
 import { saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +10,13 @@ export const dynamic = 'force-dynamic';
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const sp = await searchParams;
   const refs = await getRefs();
+  let migrations: string[] | null = null;
+  try {
+    migrations = (await all<{ filename: string }>('SELECT filename FROM schema_migrations ORDER BY filename')).map((r) => r.filename);
+  } catch {
+    migrations = null; // table absent: migrations were never run through the tracked runner
+  }
+  const issues = checkEnv(process.env, { production: process.env.NODE_ENV === 'production' });
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
     first: await getSetting('reminder_first_hours'), interval: await getSetting('reminder_interval_hours'), max: await getSetting('reminder_max'),
@@ -17,10 +26,33 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     <>
       <h1>Paramètres</h1>
       {sp.msg && <div className="flash">{sp.msg}</div>}
+      <section className="card stack-sm" style={{ maxWidth: 820, marginBottom: 24 }} aria-label="Configuration du serveur">
+        <h2 style={{ margin: 0 }}>Configuration du serveur</h2>
+        {migrations && migrations.length > 0 ? (
+          <p className="small"><span className="pill ok">OK</span> Base de données : {migrations.length} migration{migrations.length > 1 ? 's' : ''} appliquée{migrations.length > 1 ? 's' : ''}, dernière : <code>{migrations[migrations.length - 1]}</code></p>
+        ) : (
+          <p className="small"><span className="pill bad">Erreur</span> Aucune migration enregistrée : lance <code>npm run db:setup</code> sur cette base (ou redéploie : les migrations s’exécutent pendant le build).</p>
+        )}
+        {issues.length === 0 ? (
+          <p className="small"><span className="pill ok">OK</span> Toutes les variables d’environnement attendues sont renseignées.</p>
+        ) : (
+          <>
+            <p className="small">Variables d’environnement à corriger dans Vercel (Project Settings → Environment Variables), puis redéployer. Seuls les noms sont affichés, jamais les valeurs.</p>
+            <ul className="checklist">
+              {issues.map((i) => (
+                <li key={i.vars.join()}>
+                  <span className={`pill ${i.level === 'error' ? 'bad' : ''}`}>{i.level === 'error' ? 'Erreur' : 'Attention'}</span>
+                  <div><strong style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>{i.vars.join(' + ')}</strong><div className="small">{i.message}</div></div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
       <form action={saveSettingsAction} className="stack" style={{ maxWidth: 820 }}>
         <section className="card stack">
           <h2>Notifications</h2>
-          <p className="small">Chaque diagnostic terminé, et chaque relance de candidate inachevée, est envoyé à la coach assignée <strong>et</strong> aux adresses ci-dessous. {mailConfigured() ? 'SMTP configuré : les emails partent réellement.' : 'SMTP non configuré : les emails sont seulement enregistrés (voir l’onglet Emails).'}</p>
+          <p className="small">Chaque formulaire terminé, et chaque relance de candidate inachevée, est envoyé à la coach assignée <strong>et</strong> aux adresses ci-dessous. {mailConfigured() ? 'Resend configuré : les emails partent réellement.' : 'RESEND_API_KEY absente : les emails sont seulement enregistrés (voir l’onglet Emails).'}</p>
           <label className="small">Email(s) de notification supplémentaires (séparés par des virgules)<input className="input" name="notification_email" defaultValue={v.notification_email} placeholder="admin@exemple.com" /></label>
         </section>
 

@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck, tests, migrations, build, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: shespeaks
+          POSTGRES_PASSWORD: shespeaks
+          POSTGRES_DB: shespeaks
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shespeaks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://shespeaks:shespeaks@localhost:5432/shespeaks
+      ADMIN_EMAIL: coach@example.com
+      ADMIN_NAME: CI Coach
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (pure logic + environment rules)
+        run: npm test
+
+      - name: Migration tests (fresh DB, idempotency, tamper detection, concurrency, seed safety)
+        run: npm run test:db
+
+      - name: Apply migrations + seed to the CI database
+        run: npm run db:setup
+
+      - name: Migrations are idempotent (second run applies nothing, status clean)
+        run: |
+          npm run db:setup | tee second-run.log
+          grep -q "nothing to apply" second-run.log
+          npm run db:status
+
+      - name: Build (runs the environment check)
+        run: npm run build
+        env:
+          APP_URL: https://ci.example.com
+          SESSION_SECRET: ci-session-secret-0123456789abcdef
+          CRON_SECRET: ci-cron-secret-0123456789abcdef
+
+      - name: Start the production server
+        run: |
+          npm start > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/ > /dev/null && exit 0; sleep 1; done
+          echo "server did not come up"; cat server.log; exit 1
+        env:
+          APP_URL: https://ci.example.com
+          SESSION_SECRET: ci-session-secret-0123456789abcdef
+          CRON_SECRET: ci-cron-secret-0123456789abcdef
+
+      - name: Smoke test (the four diagnostic branches, photo rules, resume link)
+        run: node scripts/smoke.mjs
+
+      - name: Reminder endpoint is protected
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/cron/reminders)" = "401"
+          curl -sf -X POST -H "Authorization: Bearer ci-cron-secret-0123456789abcdef" http://localhost:3000/api/cron/reminders
+
+      - name: Server log (always)
+        if: always()
+        run: cat server.log || true

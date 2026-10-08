@@ -12,6 +12,8 @@ export function PhotoManager({
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
+  const removeRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
@@ -45,6 +47,7 @@ export function PhotoManager({
         if (!r.ok) { setError(d.errors[j.error as string] ?? d.errors.network); continue; }
         list = j.photos as PhotoItem[];
         onChange(list);
+        setStatus(d.added(list.length, max));
       } catch { setError(d.errors.network); }
     }
     setBusy(false);
@@ -55,16 +58,23 @@ export function PhotoManager({
     setBusy(true);
     try {
       const r = await fetch(`/api/diag/photo?id=${id}`, { method: 'DELETE' });
-      if (r.ok) onChange((await r.json()).photos);
+      if (r.ok) {
+        const next = (await r.json()).photos as PhotoItem[];
+        onChange(next);
+        setStatus(d.removedMsg(next.length, max));
+        // the focused button is about to disappear: move focus somewhere that still exists
+        setTimeout(() => (removeRefs.current.find(Boolean) ?? input.current)?.focus(), 0);
+      }
     } finally { setBusy(false); }
   }
 
   return (
     <div className="stack">
+      <p className="sr-only" role="status" aria-live="polite">{status}</p>
       <ul className="tips">{d.tips.map((x) => <li key={x}>{x}</li>)}</ul>
       {photos.length < max && (
         <label className="dropzone">
-          <input ref={input} type="file" accept="image/jpeg,image/png" multiple className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files)} />
+          <input ref={input} type="file" accept="image/jpeg,image/png" multiple className="sr-only" aria-busy={busy} onChange={(e) => { if (!busy) upload(e.target.files); }} />
           <strong>{busy ? '…' : d.drop}</strong>
           <span className="small" style={{ display: 'block' }}>{d.dropHint}</span>
         </label>
@@ -79,11 +89,11 @@ export function PhotoManager({
         <>
           <p className="small">{d.preview}</p>
           <div className="photo-grid">
-            {photos.map((p) => (
+            {photos.map((p, i) => (
               <div className="photo-item" key={p.id}>
                 <div className="ring"><div>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={`/api/photos/${p.id}`} alt="" /></div></div>
                 {p.width && p.height && Math.min(p.width, p.height) < 1000 && <p className="small" style={{ margin: 0 }}>{d.small}</p>}
-                <button type="button" className="link-btn" onClick={() => remove(p.id)} disabled={busy}>{d.remove}</button>
+                <button type="button" className="link-btn" ref={(el) => { removeRefs.current[i] = el; }} onClick={() => remove(p.id)} aria-disabled={busy} aria-label={`${d.remove} ${i + 1}`}>{d.remove}</button>
               </div>
             ))}
           </div>

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
   const c = await getCandidateByToken(token);
   const base = process.env.APP_URL || req.nextUrl.origin;
   if (!c) return NextResponse.redirect(new URL('/', base));
-  const res = NextResponse.redirect(new URL(c.completed_at ? '/plan' : '/diagnostic', base));
+  const res = NextResponse.redirect(new URL(c.completed_at ? '/plan' : '/interet', base));
   res.cookies.set(TOKEN_COOKIE, token, tokenCookieOptions);
   return res;
 }

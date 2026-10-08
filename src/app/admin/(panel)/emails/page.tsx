@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 const KINDS: Record<string, string> = {
   candidate_started: 'Candidate · parcours commencé', candidate_confirmation: 'Candidate · confirmation de réception',
   candidate_reminder_1: 'Candidate · relance 1', candidate_reminder_2: 'Candidate · relance 2', candidate_reminder_manual: 'Candidate · rappel manuel',
-  coach_new_diagnostic: 'Coach · nouveau diagnostic', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
+  coach_new_diagnostic: 'Coach · nouvel intérêt', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
 };
 
 export default async function Emails({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
@@ -19,7 +19,7 @@ export default async function Emails({ searchParams }: { searchParams: Promise<{
   return (
     <>
       <h1>Emails</h1>
-      <p className="muted" style={{ marginBottom: 16 }}>{mailConfigured() ? 'SMTP configuré : « envoyé » = remis au serveur SMTP.' : 'SMTP non configuré : les emails sont enregistrés ici (« journalisé ») mais pas envoyés. Renseigne SMTP_HOST dans l’environnement pour les envoyer.'}</p>
+      <p className="muted" style={{ marginBottom: 16 }}>{mailConfigured() ? 'Resend configuré : « envoyé » = accepté par Resend (l’identifiant du message est conservé pour le retrouver dans le tableau de bord Resend).' : 'Resend non configuré : les emails sont enregistrés ici (« journalisé ») mais pas envoyés. Renseigne RESEND_API_KEY et MAIL_FROM dans l’environnement pour les envoyer.'}</p>
       {open && (
         <section className="card" style={{ marginBottom: 24 }}>
           <div className="small">{KINDS[open.kind] ?? open.kind} · à {open.to_addr}</div>

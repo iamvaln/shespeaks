@@ -1,9 +1,12 @@
 // Plan de route: badge, next action, 5 steps with personalised (★) actions (spec: "Écran final").
-import { APPLICATION_STATES, CITIES, FORMATS, labelOf, type Answers, type Branch, type Locale } from './questions.ts';
+import { typoFr } from './text.ts';
+import { APPLICATION_STATES, FORMATS, labelOf, type Answers, type Branch, type Locale } from './questions.ts';
 
 export interface DevfestEvent {
-  city: string;
-  name: string;
+  city: string; // slug, also the value stored in candidates.city
+  name: string; // city / place
+  title: string | null; // public name of the event, e.g. "DevFest Douala 2026"
+  poster_url: string | null;
   cfp_close_date: string | null; // YYYY-MM-DD
   cfp_close_note: string | null;
   event_date: string | null;
@@ -36,18 +39,19 @@ export interface RoadmapInput {
   locale: Locale;
   subjectTitle?: string | null;
   event: DevfestEvent | null;
-  cityName: string;
+  /** display name of the event the candidate chose (also used when it is not in the calendar) */
+  eventName: string;
 }
 
 type T = { fr: string; en: string };
-const t = (fr: string, en: string): T => ({ fr, en });
+const t = (fr: string, en: string): T => ({ fr: typoFr(fr), en });
 
 const STEP_TITLES: T[] = [
   t('Sujet et candidature', 'Topic and application'),
   t('Préparation', 'Preparation'),
   t('Slides', 'Slides'),
   t('Répétition générale', 'Dress rehearsal'),
-  t('Jour J', 'Day D'),
+  t('Jour J', 'Talk day'),
 ];
 
 const COMMON: T[][] = [
@@ -56,7 +60,7 @@ const COMMON: T[][] = [
     t('Finaliser titre et résumé', 'Finalise title and abstract'),
     t('Préparer ta bio', 'Prepare your bio'),
     t('Choisir ta photo de speaker avec ta coach', 'Pick your speaker photo with your coach'),
-    t('Soumettre à l’appel à speakers du DevFest de ta ville avant la date limite', 'Submit to your city’s DevFest call for speakers before the deadline'),
+    t('Soumettre à l’appel à speakers de ton événement avant la date limite', 'Submit to your event’s call for speakers before the deadline'),
   ],
   [
     t('Construire le plan du talk en trois parties', 'Build your talk outline in three parts'),
@@ -111,9 +115,9 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
   if (has('D3', 'candidature') && !submitted) extra[1].push(t('Relecture de ta candidature par ta coach avant envoi', 'Your coach reviews your application before you send it'));
   if (has('D3', 'temps') || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
   if (a['D4'] === 'atelier') extra[2].push(t('Préparer les prérequis participants et un environnement prêt à l’emploi', 'Prepare participant prerequisites and a ready-to-use environment'));
-  if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un storyboard papier', 'Start from a clean template and a paper storyboard'));
+  if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un plan de tes slides dessiné sur papier', 'Start from a clean template and a paper sketch of your slides (storyboard)'));
   if (has('D3', 'anglais') || a['P5'] === 'en') extra[3].push(t('Relecture en anglais des slides et du script', 'English proofreading of the slides and script'));
-  if (has('D3', 'trac') || d2 <= 2) extra[4].push(t('Te filmer en répétition · Pitcher ton sujet en 2 minutes devant trois proches', 'Film yourself rehearsing · Pitch your topic in 2 minutes to three people close to you'));
+  if (has('D3', 'trac') || d2 <= 2) extra[4].push(t('Te filmer en répétition', 'Film yourself while rehearsing'), t('Présenter ton sujet en 2 minutes devant trois proches', 'Present your topic in 2 minutes to three people close to you'));
   if (a['D1'] === 'premiere') extra[4].push(t('Une répétition supplémentaire en conditions réelles (debout, micro, projecteur)', 'One extra rehearsal in real conditions (standing, mic, projector)'));
   if (has('D3', 'trac')) extra[5].push(t('Routine de respiration de 3 minutes avant de monter sur scène', 'A 3-minute breathing routine before going on stage'));
 
@@ -131,7 +135,7 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
     };
   });
 
-  const cityLabel = i.event?.name ?? i.cityName ?? labelOf(CITIES, String(a['P2'] ?? ''), loc);
+  const eventLabel = i.event ? i.event.title?.trim() || i.event.name : i.eventName;
   const title =
     (i.subjectTitle && i.subjectTitle.trim()) ||
     String(a['C1'] ?? a['D1-a'] ?? '').trim() ||
@@ -140,7 +144,7 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
   return {
     badge: {
       name: String(a['P1'] ?? ''),
-      devfest: cityLabel,
+      devfest: eventLabel,
       title,
       role: String(a['P6'] ?? ''),
       format: labelOf(FORMATS, String(a['D4'] ?? ''), loc),

@@ -1,7 +1,7 @@
 // Reminder engine: unfinished diagnostics → email to the candidate (if she left an address) AND alert to the coach(es).
 // Idempotent: a candidate is "claimed" (counter bumped) before any email goes out, so overlapping runs never double-send.
 import { all, getSetting, run, nowSql } from './db.ts';
-import { cityLabel, getCandidate, type Candidate } from './data.ts';
+import { eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
 import { SCREENS, flowFor } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
@@ -31,6 +31,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
   const rows = await all<Candidate>(`SELECT * FROM candidates WHERE status='en_cours' AND completed_at IS NULL AND name IS NOT NULL AND name <> ''`);
   report.checked = rows.length;
+  const events = await listEvents();
   const byRecipient = new Map<string, { name: string; items: StalledItem[] }>();
 
   for (const c of rows) {
@@ -55,7 +56,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
       report.candidateEmails++;
     }
     const item: StalledItem = {
-      name: c.name ?? '', cityLabel: cityLabel(c), whatsapp: c.whatsapp ?? '', email: c.email, screenLabel: prog.label,
+      name: c.name ?? '', eventLabel: eventLabel(c, events), whatsapp: c.whatsapp ?? '', email: c.email, screenLabel: prog.label,
       hoursIdle: Math.round(hoursBetween(now, toDate(c.last_activity_at))), tier, url: `${appUrl()}/admin/candidates/${c.id}`,
     };
     for (const r of await coachRecipients(c)) {

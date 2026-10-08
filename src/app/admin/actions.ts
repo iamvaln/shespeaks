@@ -127,7 +127,7 @@ export async function remindNowAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   const ok = await sendReminderNow(id);
-  return back(cpath(id), ok ? 'Rappel envoyé par email' : 'Impossible : pas d’email ou diagnostic déjà terminé', !ok);
+  return back(cpath(id), ok ? 'Rappel envoyé par email' : 'Impossible : pas d’email ou formulaire déjà terminé', !ok);
 }
 
 export async function deleteCandidateAction(f: FormData) {
@@ -140,24 +140,29 @@ export async function deleteCandidateAction(f: FormData) {
 }
 
 // ---- events ----------------------------------------------------------------------
+const safePoster = (v: string) => (/^(\/[\w\-./]+|https:\/\/\S+)$/.test(v) ? v : null);
+
 export async function saveEventAction(f: FormData) {
   await requireCoach();
   const nz = (k: string) => str(f, k) || null;
   const id = num(f, 'id');
+  const title = str(f, 'title');
+  const place = str(f, 'name');
+  const posterRaw = str(f, 'poster_url');
+  if (posterRaw && !safePoster(posterRaw)) return back('/admin/events', 'L’affiche doit être un chemin du site (/events/mon-affiche.jpg) ou une adresse https://', true);
   if (id) {
     await run(
-      'UPDATE devfest_events SET name=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=? WHERE id=?',
-      str(f, 'name'), nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'), id,
+      'UPDATE devfest_events SET title=?, name=?, poster_url=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=? WHERE id=?',
+      title || place, place, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'), id,
     );
-    return back('/admin/events', 'Calendrier mis à jour');
+    return back('/admin/events', 'Événement mis à jour');
   }
-  const name = str(f, 'name');
-  if (!name) return back('/admin/events', 'Nom de la ville requis', true);
-  const slug = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (await get('SELECT 1 FROM devfest_events WHERE city=?', slug)) return back('/admin/events', 'Cette ville existe déjà', true);
-  await run('INSERT INTO devfest_events (city,name,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label) VALUES (?,?,?,?,?,?,?,?)',
-    slug, name, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'));
-  return back('/admin/events', 'Ville ajoutée');
+  if (!title) return back('/admin/events', 'Le nom de l’événement est requis', true);
+  const slug = (title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if (!slug || (await get('SELECT 1 FROM devfest_events WHERE city=?', slug))) return back('/admin/events', 'Un événement portant ce nom existe déjà', true);
+  await run('INSERT INTO devfest_events (city,name,title,poster_url,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    slug, place || title, title, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'));
+  return back('/admin/events', 'Événement ajouté');
 }
 
 // ---- coaches -----------------------------------------------------------------------
