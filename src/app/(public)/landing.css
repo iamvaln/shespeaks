@@ -38,7 +38,7 @@
 @media (min-width: 600px) { .landing-formats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 900px) {
   .landing-refresh .hero-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 56px; }
-  .landing-formats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .landing-formats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 599px) {
   .landing-hero-media { aspect-ratio: 4 / 3; }

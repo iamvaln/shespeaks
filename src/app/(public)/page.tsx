@@ -59,7 +59,7 @@ export default async function Home() {
             <h2 id="h-stage" className="h2">{d.stage.title}</h2>
             <p className="section-lead">{d.stage.lead}</p>
             <ul className="landing-formats">
-              {SLIDES.slice(0, 4).map((format) => (
+              {SLIDES.map((format) => (
                 <li key={format.id}>
                   <h3>{format.title[locale]}</h3>
                   <p>{format.caption[locale]}</p>
