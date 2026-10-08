@@ -20,12 +20,12 @@ export function LangMenu({ locale }: { locale: Locale }) {
   }, []);
 
   const pick = (l: Locale) => {
-    if (l === locale) { if (ref.current) ref.current.open = false; return; }
+    if (l === locale) { const d = ref.current; if (d) { d.open = false; d.querySelector('summary')?.focus(); } return; }
     start(() => setLocaleAction(l).then(() => window.location.reload()));
   };
 
   return (
-    <details className="lang-menu" ref={ref}>
+    <details className="lang-menu" ref={ref} onBlur={(e) => { const next = e.relatedTarget as Node | null; if (next && !e.currentTarget.contains(next)) e.currentTarget.open = false; }}>
       <summary aria-label={locale === 'fr' ? 'Langue : Français' : 'Language: English'}>
         <span aria-hidden="true">{locale.toUpperCase()}</span>
         <Icon name="chevron" size={14} className="lang-menu-chevron" />

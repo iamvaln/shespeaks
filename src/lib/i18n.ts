@@ -21,7 +21,9 @@ const fr = {
       cta: 'Soumettre mon intérêt',
       ctaShort: 'Participer',
       resume: 'Reprendre mon formulaire',
+      resumeShort: 'Reprendre',
       seePlan: 'Voir mon plan de route',
+      seePlanShort: 'Mon plan',
       secondary: 'Découvrir le programme',
       next: { label: 'PROCHAINE DATE LIMITE', days: (n: number): string => (n === 0 ? 'Dernier jour' : n === 1 ? 'jour restant' : 'jours restants'), until: 'Appel à speakers jusqu’au', internal: 'Date limite SheSpeaks', see: 'Voir les événements' },
     },
@@ -92,9 +94,9 @@ const fr = {
       note: 'Tu cherches encore ton sujet, tu as un domaine, un sujet précis ou une proposition déjà rédigée ? Le formulaire s’adapte à ton point de départ.',
     },
     quote: {
-      // PLACEHOLDER: replace with a real, approved quote (or set LANDING.showQuote to false) before the programme is promoted.
-      text: 'SheSpeaks m’a donné la structure, la confiance et le soutien dont j’avais besoin pour transformer mon idée en vrai talk. Aujourd’hui, je prends la parole lors d’événements tech sans crainte.',
-      name: 'SheSpeaker',
+      text: 'Les femmes sont encore rares sur les scènes et les panels tech. Je mets mon expérience au service des jeunes femmes pour qu’elles partagent davantage leur savoir-faire.',
+      name: 'Valentine Nguemne',
+      role: 'Fondatrice de SheSpeaks',
     },
     join: {
       eyebrow: 'COMMENT PARTICIPER ?',
@@ -231,7 +233,9 @@ const en: Dict = {
       cta: 'Submit my interest',
       ctaShort: 'Join',
       resume: 'Resume my form',
+      resumeShort: 'Resume',
       seePlan: 'See my roadmap',
+      seePlanShort: 'My plan',
       secondary: 'Discover the programme',
       next: { label: 'NEXT DEADLINE', days: (n: number) => (n === 0 ? 'Last day' : n === 1 ? 'day left' : 'days left'), until: 'Call for speakers open until', internal: 'SheSpeaks deadline', see: 'See the events' },
     },
@@ -302,9 +306,9 @@ const en: Dict = {
       note: 'Still looking for a topic, have a field, a specific topic or a written proposal? The form adapts to where you are.',
     },
     quote: {
-      // PLACEHOLDER: replace with a real, approved quote (or set LANDING.showQuote to false) before the programme is promoted.
-      text: 'SheSpeaks gave me the structure, the confidence and the support I needed to turn my idea into a real talk. Today, I speak at tech events without fear.',
-      name: 'SheSpeaker',
+      text: 'Women are still rare on tech stages and panels. I’m putting my experience to work so more young women can share their expertise.',
+      name: 'Valentine Nguemne',
+      role: 'Founder of SheSpeaks',
     },
     join: {
       eyebrow: 'HOW TO JOIN?',
