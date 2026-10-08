@@ -46,3 +46,5 @@
   .landing-refresh .timeline { grid-template-columns: 1fr; }
   .landing-footer .footer-row { align-items: flex-start; gap: 24px; flex-direction: column; }
 }
+
+.landing-format-photo { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; border-radius: 10px; margin-bottom: 18px; }
