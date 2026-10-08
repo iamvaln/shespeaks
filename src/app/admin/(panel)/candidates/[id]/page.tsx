@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { all } from '@/lib/db';
+import { requireCoach } from '@/lib/auth';
 import { STATUSES, getSetting, statusLabel } from '@/lib/db';
 import {
   eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
@@ -24,6 +25,7 @@ const TRACK_STATE: Record<string, string> = { generee: 'Générée', retenue_coa
 const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach' };
 
 export default async function Fiche({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; err?: string }> }) {
+  await requireCoach();
   const { id: rawId } = await params;
   const sp = await searchParams;
   const id = Number(rawId);

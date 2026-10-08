@@ -1,5 +1,6 @@
 // Passwordless coach login: emailed one-time link → signed session cookie.
 import crypto from 'node:crypto';
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { get, run } from './db.ts';
@@ -31,13 +32,14 @@ export function readSessionValue(v: string | undefined): number | null {
   return Number(id);
 }
 
-export async function getSessionCoach(): Promise<Coach | null> {
+// cache(): the layout and the page of a request share one lookup
+export const getSessionCoach = cache(async (): Promise<Coach | null> => {
   const jar = await cookies();
   const id = readSessionValue(jar.get(COOKIE)?.value);
   if (!id) return null;
   const coach = await get<Coach>('SELECT * FROM coaches WHERE id=?', id);
   return coach && coach.active ? coach : null;
-}
+});
 
 export async function requireCoach(): Promise<Coach> {
   const c = await getSessionCoach();

@@ -1,4 +1,5 @@
 import { getSetting } from '@/lib/db';
+import { requireCoach } from '@/lib/auth';
 import { getRefs, refsToText } from '@/lib/data';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
@@ -8,6 +9,7 @@ import { saveSettingsAction } from '../../actions';
 export const dynamic = 'force-dynamic';
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  await requireCoach();
   const sp = await searchParams;
   const refs = await getRefs();
   let migrations: string[] | null = null;

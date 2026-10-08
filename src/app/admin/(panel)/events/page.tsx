@@ -1,4 +1,5 @@
 import { listEvents } from '@/lib/data';
+import { requireCoach } from '@/lib/auth';
 import { saveEventAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ function EventFields({ e }: { e?: Awaited<ReturnType<typeof listEvents>>[number]
 }
 
 export default async function Events({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
+  await requireCoach();
   const sp = await searchParams;
   const events = await listEvents();
   return (
