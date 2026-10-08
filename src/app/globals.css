@@ -108,10 +108,8 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .btn-lg { min-height: 54px; padding: 14px 32px; font-size: 17px; }
 
 .hero { padding-block: clamp(40px, 7vw, 88px) clamp(48px, 7vw, 88px); }
-.hero .display-xl { max-width: 15ch; margin: var(--s4) 0 var(--s6); text-wrap: balance; }
+.hero .display-xl { max-width: 15ch; margin: 0 0 var(--s6); text-wrap: balance; }
 .hero .lead { max-width: 58ch; }
-.meta-list { display: flex; flex-wrap: wrap; gap: 8px 24px; list-style: none; padding: 0; margin: var(--s6) 0 0; color: var(--ink-muted); font-size: 14px; }
-.meta-list li::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-right: 10px; vertical-align: middle; }
 .hero-grid { display: grid; gap: var(--s10); align-items: center; }
 @media (min-width: 1040px) { .hero-grid { grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 72px; } }
 .deadline { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s6) var(--s6) 28px; display: grid; gap: 6px; }

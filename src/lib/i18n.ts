@@ -14,7 +14,6 @@ const fr = {
     metaDescription: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
     nav: { events: 'Événements', who: 'Qui peut participer', how: 'Comment ça marche', join: 'Comment participer', faq: 'Questions', skip: 'Aller au contenu', sections: 'Sections' },
     hero: {
-      eyebrow: 'SHESPEAKS · DEVFEST 2026',
       h1: 'Prends la parole sur les scènes de la tech.',
       lead: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
       cta: 'Soumettre mon intérêt',
@@ -23,7 +22,6 @@ const fr = {
       seePlan: 'Voir mon plan de route',
       secondary: 'Découvrir le programme',
       next: { label: 'PROCHAINE DATE LIMITE', days: (n: number): string => (n === 0 ? 'Dernier jour' : n === 1 ? 'jour restant' : 'jours restants'), until: 'Appel à speakers jusqu’au', internal: 'Date limite SheSpeaks', see: 'Voir les événements' },
-      meta: ['8 à 10 minutes', 'Sans créer de compte', 'Sur téléphone ou ordinateur'],
     },
     stage: {
       eyebrow: 'TA FAÇON DE PRENDRE LA PAROLE',
@@ -205,7 +203,6 @@ const en: Dict = {
     metaDescription: 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events, starting with DevFest 2026.',
     nav: { events: 'Events', who: 'Who can join', how: 'How it works', join: 'How to join', faq: 'Questions', skip: 'Skip to content', sections: 'Sections' },
     hero: {
-      eyebrow: 'SHESPEAKS · DEVFEST 2026',
       h1: 'Take the floor on tech stages.',
       lead: 'SheSpeaks supports young professionals and students in tech so they speak at tech events, starting with DevFest 2026.',
       cta: 'Submit my interest',
@@ -214,7 +211,6 @@ const en: Dict = {
       seePlan: 'See my roadmap',
       secondary: 'Discover the programme',
       next: { label: 'NEXT DEADLINE', days: (n: number) => (n === 0 ? 'Last day' : n === 1 ? 'day left' : 'days left'), until: 'Call for speakers open until', internal: 'SheSpeaks deadline', see: 'See the events' },
-      meta: ['8 to 10 minutes', 'No account needed', 'On phone or computer'],
     },
     stage: {
       eyebrow: 'YOUR WAY TO TAKE THE FLOOR',
