@@ -12,6 +12,8 @@ import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
+/** A date field must be « AAAA-MM-JJ » (what <input type="date"> sends); anything else is refused instead of being stored. */
+const badDate = (v: string | null) => !!v && !(/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00Z`)));
 const back = (path: string, msg?: string, err = false): never => redirect(msg ? `${path}${path.includes('?') ? '&' : '?'}${err ? 'err' : 'msg'}=${encodeURIComponent(msg)}` : path);
 
 // ---- auth ----------------------------------------------------------------------
@@ -62,6 +64,7 @@ export async function addNoteAction(f: FormData) {
   const id = num(f, 'id');
   const text = str(f, 'text');
   const next = str(f, 'next_point_date') || null;
+  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (!text && !next) return back(cpath(id), 'Écris une note ou fixe une date', true);
   await run('INSERT INTO notes (candidate_id,coach_id,text,next_point_date) VALUES (?,?,?,?)', id, coach.id, text || '(prochain point fixé)', next);
   if (next) await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
@@ -72,7 +75,9 @@ export async function addNoteAction(f: FormData) {
 export async function setNextPointAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
-  await run('UPDATE candidates SET next_point_date=? WHERE id=?', str(f, 'next_point_date') || null, id);
+  const next = str(f, 'next_point_date') || null;
+  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
+  await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
   return back(cpath(id), 'Prochain point enregistré');
 }
 
@@ -178,6 +183,7 @@ export async function saveEventAction(f: FormData) {
   const title = str(f, 'title');
   const place = str(f, 'name');
   const posterRaw = str(f, 'poster_url');
+  if (badDate(nz('cfp_close_date')) || badDate(nz('event_date'))) return back('/admin/events', 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (posterRaw && !safePoster(posterRaw)) return back('/admin/events', 'L’affiche doit être un chemin du site (/events/mon-affiche.jpg) ou une adresse https://', true);
   if (id) {
     await run(

@@ -445,6 +445,7 @@ export function fmtDate(iso: string | null | undefined, l: Locale, opts: Intl.Da
   if (!iso) return '';
   const dateOnly = iso.length <= 10;
   const d = new Date(dateOnly ? iso + 'T12:00:00Z' : iso.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return iso; // a stray value (« 12/05/2026 » typed in an old browser) is shown as it is, never an error page
   // A calendar date is the same everywhere; a timestamp is stored in UTC and shown on the programme's clock (Douala, UTC+1).
   return new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: dateOnly ? 'UTC' : TIME_ZONE, ...opts }).format(d);
 }

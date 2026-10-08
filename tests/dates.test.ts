@@ -32,4 +32,6 @@ test('fmtDate: a calendar date is the same everywhere, a timestamp is shown on D
   assert.match(fmtDate('2026-10-08 22:30:00', 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), /^8 octobre.*23:30$/);
   assert.match(fmtDate('2026-10-08 23:30:00', 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), /^9 octobre.*00:30$/);
   assert.equal(fmtDate(null, 'fr'), '');
+  assert.equal(fmtDate('12/05/2026', 'fr'), '12/05/2026'); // a stray value is shown as it is, never thrown
+  assert.equal(fmtDate('2026-13-45', 'fr'), '2026-13-45');
 });
