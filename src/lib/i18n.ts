@@ -11,11 +11,11 @@ const fr = {
   nav: { start: 'Commencer', plan: 'Mon plan de route', lang: 'English' },
   home: {
     metaTitle: 'SheSpeaks · Prends la parole sur les scènes de la tech',
-    metaDescription: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
+    metaDescription: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech.',
     nav: { events: 'Événements', who: 'Qui peut participer', how: 'Comment ça marche', join: 'Comment participer', faq: 'Questions', skip: 'Aller au contenu', sections: 'Sections' },
     hero: {
       h1: 'Prends la parole sur les scènes de la tech.',
-      lead: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
+      lead: 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech.',
       cta: 'Soumettre mon intérêt',
       ctaShort: 'Participer',
       resume: 'Reprendre mon formulaire',
@@ -200,11 +200,11 @@ const en: Dict = {
   nav: { start: 'Start', plan: 'My roadmap', lang: 'Français' },
   home: {
     metaTitle: 'SheSpeaks · Take the floor on tech stages',
-    metaDescription: 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events, starting with DevFest 2026.',
+    metaDescription: 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events.',
     nav: { events: 'Events', who: 'Who can join', how: 'How it works', join: 'How to join', faq: 'Questions', skip: 'Skip to content', sections: 'Sections' },
     hero: {
       h1: 'Take the floor on tech stages.',
-      lead: 'SheSpeaks supports young professionals and students in tech so they speak at tech events, starting with DevFest 2026.',
+      lead: 'SheSpeaks supports young professionals and students in tech so they speak at tech events.',
       cta: 'Submit my interest',
       ctaShort: 'Join',
       resume: 'Resume my form',
