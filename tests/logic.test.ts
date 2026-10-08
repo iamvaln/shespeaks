@@ -84,6 +84,9 @@ test('roadmap: personalised actions and next action', () => {
   assert.equal(stars(4), 3); // filming and the 2-minute pitch are two separate actions + the extra first-time rehearsal
   assert.equal(stars(5), 1);
   assert.equal(r.steps.length, 5);
+  const step2Stars = (D5: string) => buildRoadmap({ answers: { ...a, D5 }, branch: 'A', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' }).steps[1].actions.filter((x) => x.personalized).length;
+  assert.equal(step2Stars('lt1'), step2Stars('1-2'), 'less than an hour a week gets the fixed-slots action, like 1 to 2 hours');
+  assert.equal(step2Stars('3-4'), step2Stars('1-2') - 1, 'three hours or more does not');
   assert.match(r.nextAction, /L’équipe SheSpeaks, notifiée automatiquement/);
   const d = buildRoadmap({ answers: { ...a, 'D1-d': 'retenue' }, branch: 'D', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
   assert.equal(d.steps[0].done, true);

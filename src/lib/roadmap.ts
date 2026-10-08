@@ -113,7 +113,7 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
   const extra: Record<number, T[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
   if (has('D3', 'legitime')) extra[1].push(t('Lister trois situations où tu as aidé quelqu’un à résoudre un problème', 'List three situations where you helped someone solve a problem'));
   if (has('D3', 'candidature') && !submitted) extra[1].push(t('Relecture de ta candidature par l’équipe SheSpeaks avant envoi', 'The SheSpeaks team reviews your application before you send it'));
-  if (has('D3', 'temps') || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
+  if (has('D3', 'temps') || a['D5'] === 'lt1' || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
   if (a['D4'] === 'atelier') extra[2].push(t('Préparer les prérequis participants et un environnement prêt à l’emploi', 'Prepare participant prerequisites and a ready-to-use environment'));
   if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un plan de tes slides dessiné sur papier', 'Start from a clean template and a paper sketch of your slides (storyboard)'));
   if (has('D3', 'anglais') || a['P5'] === 'en') extra[3].push(t('Relecture en anglais des slides et du script', 'English proofreading of the slides and script'));

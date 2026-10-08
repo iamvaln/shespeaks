@@ -95,7 +95,7 @@ export const FORMATS: Option[] = [
   opt('talk', 'Talk (20–30 min)', 'Talk (20–30 min)'),
   opt('lightning', 'Lightning talk (5–10 min)', 'Lightning talk (5–10 min)'),
   opt('atelier', 'Atelier pratique (codelab)', 'Hands-on workshop (codelab)'),
-  opt('ouverte', 'Je suis ouverte, conseille-moi', 'I’m open, advise me'),
+  opt('ouverte', 'Je suis ouverte, conseillez-moi', 'I’m open, advise me'),
 ];
 
 export const APPLICATION_STATES: Option[] = [
@@ -247,13 +247,14 @@ const diag2: Screen = {
       type: 'single',
       required: true,
       label: L('Combien de temps peux-tu y consacrer par semaine ?', 'How much time can you spend on it each week?'),
-      options: [opt('1-2', '1 à 2 heures', '1 to 2 hours'), opt('3-4', '3 à 4 heures', '3 to 4 hours'), opt('5+', '5 heures ou plus', '5 hours or more')],
+      options: [opt('lt1', 'Moins d’1 heure', 'Less than 1 hour'), opt('1-2', '1 à 2 heures', '1 to 2 hours'), opt('3-4', '3 à 4 heures', '3 to 4 hours'), opt('5+', '5 heures ou plus', '5 hours or more')],
     },
     {
       code: 'D6',
       type: 'single',
       required: true,
       label: L('Où en es-tu avec ton sujet ?', 'Where are you with your topic?'),
+      help: L('Selon ta réponse, les écrans suivants s’adaptent.', 'Depending on your answer, the next screens adapt.'),
       options: [
         opt('A', 'Je cherche encore mon sujet', 'I’m still looking for my topic'),
         opt('B', 'J’ai un domaine qui m’intéresse, mais pas encore de sujet précis', 'I have a field I like, but no specific topic yet'),
