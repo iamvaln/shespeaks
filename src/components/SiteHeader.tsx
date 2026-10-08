@@ -10,15 +10,14 @@ export function SiteHeader({ locale, variant, cta }: { locale: Locale; variant: 
   return (
     <>
     <a className="skip-link" href="#main">{n.skip}</a>
-    <header className="site-header">
+    <header className={`site-header${landing ? " landing-header" : ""}`} data-theme="clair">
       <div className="container bar">
         <Link href="/" className="brand" aria-label="SheSpeaks by Techies Connect'">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={landing ? '/brand/shespeaks-logo-nuit.svg' : '/brand/shespeaks-logo-clair.svg'} alt="SheSpeaks by Techies Connect'" width={102} height={42} />
+          <img src={'/brand/shespeaks-logo-clair.svg'} alt="SheSpeaks by Techies Connect'" width={102} height={42} />
         </Link>
         {landing && (
           <nav className="site-nav" aria-label={n.sections}>
-            <a href="#evenements">{n.events}</a>
             <a href="#qui">{n.who}</a>
             <a href="#comment">{n.how}</a>
             <a href="#participer">{n.join}</a>
