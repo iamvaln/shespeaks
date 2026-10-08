@@ -108,5 +108,36 @@ await run('D', 'Danielle Eto', [
   const d = await c2.get('/interet');
   ok(d.status === 200 && d.text.includes('Fanny') === false || true, 'resume: diagnostic page renders');
 }
+// coach login: public through the footer link, so the form and the link check must really be rate limited
+{
+  const unescape = (v) => v.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  // a random client IP per run (x-real-ip is what Vercel sets): re-running within 10 minutes must not share a counter
+  const fakeIp = () => `198.51.100.${1 + Math.floor(Math.random() * 250)}`;
+  const hiddenFields = (html) => [...html.matchAll(/<input[^>]*type="hidden"[^>]*>/g)].map((m) => [unescape(m[0].match(/name="([^"]*)"/)?.[1] ?? ''), unescape(m[0].match(/value="([^"]*)"/)?.[1] ?? '')]).filter(([n]) => n);
+  const formPost = async (path, fields, ip) => {
+    const fd = new FormData();
+    for (const [n, v] of fields) fd.append(n, v);
+    const r = await fetch(BASE + path, { method: 'POST', body: fd, headers: { 'x-real-ip': ip }, redirect: 'manual' });
+    return { status: r.status, location: r.headers.get('location') ?? '', text: await r.text() };
+  };
+
+  const ip = fakeIp();
+  const email = `nobody-${Date.now()}@example.com`;
+  const login = hiddenFields(await (await fetch(BASE + '/admin/login', { headers: { 'x-real-ip': ip } })).text());
+  ok(login.length > 0, 'coach login: the form is a server action (hidden action fields found)');
+  let neutral = 0;
+  for (let i = 1; i <= 5; i++) neutral += /lien de connexion vient de lui être envoyé/.test((await formPost('/admin/login', [...login, ['email', email]], ip)).text) ? 1 : 0;
+  ok(neutral === 5, 'coach login: 5 requests for an unknown address get the neutral confirmation');
+  const sixth = await formPost('/admin/login', [...login, ['email', email]], ip);
+  ok(/Trop de demandes de lien/.test(sixth.text) && !/vient de lui être envoyé/.test(sixth.text), 'coach login: the 6th request for the same address is refused');
+
+  const ip2 = fakeIp();
+  const verify = hiddenFields(await (await fetch(BASE + '/admin/verify?token=x', { headers: { 'x-real-ip': ip2 } })).text());
+  let expired = 0;
+  for (let i = 1; i <= 20; i++) expired += (await formPost('/admin/verify', [...verify, ['token', 'x']], ip2)).location.includes('expired=1') ? 1 : 0;
+  ok(expired === 20, 'login link: 20 invalid attempts are answered "expired"');
+  const limited = await formPost('/admin/verify', [...verify, ['token', 'x']], ip2);
+  ok(limited.location.includes('limited=1'), 'login link: the 21st attempt from the same IP is refused');
+}
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');
 process.exit(failures ? 1 : 0);

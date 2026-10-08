@@ -101,8 +101,10 @@ test('keys are opaque and the client IP comes from the platform headers', { skip
   assert.match(k, /^[0-9a-f]{32}$/);
   assert.equal(k, rl.rateKey('203.0.113.7'));
   assert.notEqual(k, rl.rateKey('203.0.113.8'));
+  await rl.checkLoginRate('203.0.113.99', 'someone@example.com'); // own rows: this test must also pass when run alone
+  await rl.checkVerifyRate('198.51.100.99');
   const stored = await raw`select key from rate_limit_hits where bucket in ('login:ip','login:email','verify:ip')`;
-  assert.ok(stored.length > 0);
+  assert.ok(stored.length >= 3);
   for (const r of stored) assert.ok(!/203\.0\.113|example\.com/.test(r.key), 'no raw IP or email stored');
   assert.equal(rl.requestIp(new Headers({ 'x-real-ip': '1.1.1.1', 'x-forwarded-for': '9.9.9.9, 2.2.2.2' })), '1.1.1.1');
   assert.equal(rl.requestIp(new Headers({ 'x-forwarded-for': '9.9.9.9, 2.2.2.2' })), '9.9.9.9');

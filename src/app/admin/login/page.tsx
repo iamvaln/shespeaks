@@ -1,6 +1,9 @@
+import { redirect } from 'next/navigation';
+import { getSessionCoach } from '@/lib/auth';
 import { LoginForm } from './LoginForm';
 export const dynamic = 'force-dynamic';
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ expired?: string; limited?: string }> }) {
+  if (await getSessionCoach()) redirect('/admin'); // already signed in (the footer link brings her here)
   const sp = await searchParams;
   return (
     <div className="login-wrap">

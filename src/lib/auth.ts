@@ -62,32 +62,36 @@ async function createLoginLink(coachId: number): Promise<string> {
   return `${appUrl()}/admin/verify?token=${token}`;
 }
 
+/** Looks the address up and, only if it belongs to a coach, creates a one-time link and emails it. Returns the link when mail is only logged (dev). */
+async function sendLoginLink(e: string): Promise<string | undefined> {
+  // First start: the very first login is allowed for ADMIN_EMAIL when no coach exists yet.
+  if (process.env.ADMIN_EMAIL && e === process.env.ADMIN_EMAIL.trim().toLowerCase() && !(await get('SELECT 1 FROM coaches LIMIT 1'))) {
+    await run('INSERT INTO coaches (name,email) VALUES (?,?)', process.env.ADMIN_NAME || 'Coach', e);
+  }
+  const coach = await get<Coach>('SELECT * FROM coaches WHERE email=? AND active=1', e);
+  if (!coach) return undefined;
+  const link = await createLoginLink(coach.id);
+  const status = await sendMail({ ...coachLogin(coach.name, link), to: coach.email, kind: 'coach_login' });
+  return status === 'logged' ? link : undefined;
+}
+
 /**
  * Rate limited per IP and per email (see ratelimit.ts), counting every request whether or not the email belongs to a coach.
- * Otherwise answers the same way (no account enumeration). Returns the link only for the dev console.
+ * Otherwise answers the same way (no account enumeration): in production the lookup, the token and the mail all run after
+ * the response, so the request does exactly the same work for every address and timing tells nothing.
+ * Returns the link only for the dev console (development, where mail is just logged).
  */
 export async function requestLogin(email: string, ip: string): Promise<{ devLink?: string; retryAfterSec?: number }> {
   const e = email.trim().toLowerCase().slice(0, 254);
   const rate = await checkLoginRate(ip, e);
   if (!rate.ok) return { retryAfterSec: rate.retryAfterSec };
   if (!e) return {};
-  // First start: the very first login is allowed for ADMIN_EMAIL when no coach exists yet.
-  if (process.env.ADMIN_EMAIL && e === process.env.ADMIN_EMAIL.trim().toLowerCase() && !(await get('SELECT 1 FROM coaches LIMIT 1'))) {
-    await run('INSERT INTO coaches (name,email) VALUES (?,?)', process.env.ADMIN_NAME || 'Coach', e);
-  }
-  const coach = await get<Coach>('SELECT * FROM coaches WHERE email=? AND active=1', e);
-  if (!coach) {
-    await get('SELECT 1 FROM login_tokens LIMIT 1'); // same number of database round trips as the coach path, so timing does not tell them apart
-    return {};
-  }
-  const link = await createLoginLink(coach.id);
-  const m = coachLogin(coach.name, link);
   if (process.env.NODE_ENV === 'production') {
-    deferMail(() => sendMail({ ...m, to: coach.email, kind: 'coach_login' })); // after the response: sending time must not reveal that the address is a coach
+    deferMail(() => sendLoginLink(e).catch((err) => console.error('[auth] login link failed', err)));
     return {};
   }
-  const status = await sendMail({ ...m, to: coach.email, kind: 'coach_login' });
-  return status === 'logged' ? { devLink: link } : {};
+  const devLink = await sendLoginLink(e);
+  return devLink ? { devLink } : {};
 }
 
 export async function inviteCoach(coach: Coach, invitedBy: string) {

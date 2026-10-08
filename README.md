@@ -91,7 +91,7 @@ The footer links to the coach space (`/admin/login`), which is public, so the lo
 | Login link requests for one email, **coach or not** | 5 per 10 minutes |
 | Attempts to use a login link, per IP | 20 per 10 minutes |
 
-Requests for unknown addresses count exactly like coaches', and the answer is the same neutral message, so the form does not reveal who is a coach. In production the email is sent after the response, so timing does not either. The client IP comes from `x-real-ip` (set by Vercel, which also overwrites `x-forwarded-for`).
+Requests for unknown addresses count exactly like coaches', and the answer is the same neutral message, so the form does not reveal who is a coach. In production the lookup, the one-time token and the email all run after the response, so the request does the same work for every address and timing does not tell them apart. The client IP comes from `x-real-ip` (set by Vercel, which also overwrites `x-forwarded-for`).
 
 ## Environment check
 
