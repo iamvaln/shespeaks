@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Locale } from '@/lib/questions';
 import { t } from '@/lib/i18n';
 import { PhotoManager, type PhotoItem } from './PhotoManager';
@@ -7,6 +8,7 @@ import { PhotoManager, type PhotoItem } from './PhotoManager';
 /** Photo screen reachable from the roadmap ("Ajouter ma photo plus tard"). */
 export function PlanPhotos({ initial, consent: c0, locale }: { initial: PhotoItem[]; consent: boolean; locale: Locale }) {
   const d = t(locale);
+  const router = useRouter();
   const [photos, setPhotos] = useState(initial);
   const [consent, setConsent] = useState(c0);
   const [saved, setSaved] = useState(false);
@@ -22,7 +24,7 @@ export function PlanPhotos({ initial, consent: c0, locale }: { initial: PhotoIte
     <section className="card card-lg stack" id="photo">
       <h2 className="title" style={{ fontSize: 22 }}>{d.plan.photoTitle}</h2>
       {photos.length === 0 && <p className="muted">{d.plan.photoMissing}</p>}
-      <PhotoManager photos={photos} onChange={(p) => { setPhotos(p); setSaved(false); }} locale={locale} />
+      <PhotoManager photos={photos} onChange={(p) => { setPhotos(p); setSaved(false); router.refresh(); }} locale={locale} />
       {photos.length > 0 && (
         <div className="stack-sm">
           <label className="check">

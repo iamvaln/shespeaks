@@ -9,14 +9,11 @@ import { assembleAbstract } from '@/lib/abstract';
 import { autoChecks } from '@/lib/review';
 import { wordCount } from '@/lib/text';
 import { t } from '@/lib/i18n';
-import { PhotoManager, type PhotoItem } from './PhotoManager';
 
 export interface WizardInit {
   candidate: { name: string; branch: Branch | null; current: string; completed: boolean; locale: Locale } | null;
   answers: Answers;
   refs: Refs;
-  photos: PhotoItem[];
-  consent: boolean;
 }
 
 export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
@@ -27,8 +24,6 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [photos, setPhotos] = useState<PhotoItem[]>(init.photos);
-  const [consent, setConsent] = useState(init.consent);
   const [checks, setChecks] = useState<Record<string, boolean>>(() => Object.fromEntries(SELF_CHECKS.map((s) => [s.code, init.answers[`chk_${s.code}`] === '1'])));
   const [abstractEdited, setAbstractEdited] = useState(() => {
     const stored = init.answers['C-abstract'];
@@ -61,13 +56,12 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
     setScreenId(next);
   }
 
-  async function submit(later = false) {
+  async function submit() {
     setBusy(true);
     setBanner(null);
     const values: Answers = {};
     for (const q of questions) if (answers[q.code] !== undefined) values[q.code] = answers[q.code];
     if (screen.kind === 'review') for (const s of SELF_CHECKS) values[`chk_${s.code}`] = checks[s.code] ? '1' : '';
-    if (screen.kind === 'photo') { values['consent'] = consent ? '1' : ''; values['later'] = later ? '1' : ''; }
     try {
       const r = await fetch('/api/diag/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ screen: screenId, values }) });
       const j = await r.json();
@@ -97,7 +91,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
     if (idx > 0) { setErrors({}); setBanner(null); setScreenId(flow[idx - 1]); }
   }
 
-  const isPhoto = screen.kind === 'photo';
+  // the last screen of the branch sends the form
+  const isLast = branch !== null && idx === flow.length - 1;
   const pct = Math.round(((idx + 1) / total) * 100);
 
   return (
@@ -108,7 +103,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
           <div className="progress-bar" role="progressbar" aria-label={d.screenOf(idx + 1, total)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={d.screenOf(idx + 1, total)}><div style={{ width: `${pct}%` }} /></div>
         </div>
 
-        <form className="form-card" onSubmit={(e) => { e.preventDefault(); if (!isPhoto) submit(); }} noValidate>
+        <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
           <header className="form-head">
             <p className="form-block">{screen.block[locale]}</p>
             <h1 className="form-title" ref={head} tabIndex={-1}>{screen.title[locale]}</h1>
@@ -129,33 +124,10 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
 
           {screen.kind === 'review' && <ReviewGrid locale={locale} title={String(answers['D1-a'] ?? '')} abstract={String(answers['D1-b'] ?? '')} checks={checks} setChecks={setChecks} />}
 
-          {isPhoto && (
-            <div className="stack">
-              <PhotoManager photos={photos} onChange={setPhotos} locale={locale} />
-              {photos.length > 0 && (
-                <div className="q">
-                  <label className="check">
-                    <input id="q-consent" type="checkbox" checked={consent} onChange={(e) => { setConsent(e.target.checked); setErrors({}); }} aria-invalid={!!errors.consent} />
-                    <span>{d.photo.consent}</span>
-                  </label>
-                  {errors.consent && <p className="err">{d.errors[errors.consent]}</p>}
-                </div>
-              )}
-              {errors.photo && <p className="err" style={{ color: 'var(--danger)' }}>{d.errors[errors.photo]}</p>}
-            </div>
-          )}
-
           <div className="form-actions">
             {idx > 0 ? <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>{d.back}</button> : <span />}
             <div className="grow">
-              {isPhoto ? (
-                <>
-                  <button type="button" className="btn btn-ghost" disabled={busy || photos.length > 0} onClick={() => submit(true)}>{d.later}</button>
-                  <button type="button" className="btn" disabled={busy || photos.length === 0} onClick={() => submit(false)}>{busy ? d.saving : d.finish}</button>
-                </>
-              ) : (
-                <button type="submit" className="btn" disabled={busy}>{busy ? d.saving : d.next}</button>
-              )}
+              <button type="submit" className="btn" disabled={busy}>{busy ? d.saving : isLast ? d.finish : d.next}</button>
             </div>
           </div>
           <p className="small form-note">{d.saved}</p>

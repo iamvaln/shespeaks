@@ -184,6 +184,38 @@ test('0004: official posters are set only where none exists, and a removed poste
   assert.equal(y.poster_url, null);
 });
 
+test('0006: candidates stuck on the removed photo screen go back to the last screen of their branch', { skip }, async () => {
+  const { url } = await freshDb();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-'));
+  const before = fs.readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql') && f < '0006');
+  for (const f of before) fs.copyFileSync(path.join('supabase/migrations', f), path.join(dir, f));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0); // database as it was before 0006
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  await s`insert into candidates (token, branch, current_screen, completed_at) values
+    ('ta', 'A', 'photo', null), ('tb', 'B', 'photo', null), ('tc', 'C', 'photo', null), ('td', 'D', 'photo', null),
+    ('tdone', 'A', 'done', now()), ('tmid', 'B', 'b1', null), ('tnobranch', null, 'photo', null)`;
+  fs.copyFileSync('supabase/migrations/0006_form_without_photo_screen.sql', path.join(dir, '0006_form_without_photo_screen.sql'));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0);
+  const rows = Object.fromEntries((await s`select token, current_screen from candidates`).map((r) => [r.token, r.current_screen]));
+  await s.end();
+  assert.deepEqual(rows, { ta: 'a2', tb: 'b2', tc: 'c2', td: 'd2', tdone: 'done', tmid: 'b1', tnobranch: 'photo' });
+});
+
+test('0007: the "heure non précisée" placeholder is cleared, a note typed by a coach is kept', { skip }, async () => {
+  const { url } = await freshDb();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-'));
+  const before = fs.readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql') && f < '0007');
+  for (const f of before) fs.copyFileSync(path.join('supabase/migrations', f), path.join(dir, f));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0); // database as it was before 0007
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  await s`insert into devfest_events (city,name,event_date,cfp_close_note) values ('douala','Douala','2026-11-28','heure non précisée'), ('yaounde','Yaoundé','2026-11-21','à 23 h 59 (heure de Yaoundé)'), ('kribi','Kribi','2027-03-01',null)`;
+  fs.copyFileSync('supabase/migrations/0007_clear_unknown_time_note.sql', path.join(dir, '0007_clear_unknown_time_note.sql'));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0);
+  const rows = Object.fromEntries((await s`select city, cfp_close_note from devfest_events`).map((r) => [r.city, r.cfp_close_note]));
+  await s.end();
+  assert.deepEqual(rows, { douala: null, yaounde: 'à 23 h 59 (heure de Yaoundé)', kribi: null });
+});
+
 test('a fresh database gets both posters from the seed, and the files exist', { skip }, async () => {
   const { url } = await freshDb();
   assert.equal(cli(url, ['setup']).status, 0);

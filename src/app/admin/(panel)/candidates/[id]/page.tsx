@@ -6,7 +6,7 @@ import {
   eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
 } from '@/lib/data';
 import {
-  APPLICATION_STATES, AUDIENCES, FORMATS, SCREENS, SELF_CHECKS, flowFor, labelOf, resolveOptions, visibleQuestions, type Answer, type Question,
+  APPLICATION_STATES, AUDIENCES, FORMATS, SCREENS, SELF_CHECKS, flowFor, labelOf, resolveOptions, resumeScreen, visibleQuestions, type Answer, type Question,
 } from '@/lib/questions';
 import { buildRoadmap } from '@/lib/roadmap';
 import { RoadmapView } from '@/components/RoadmapView';
@@ -77,9 +77,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <dt>Événement</dt><dd>{evLabel}</dd>
               <dt>Rôle</dt><dd>{c.role}</dd>
               <dt>Ancienneté tech</dt><dd>{String(a['P7'] ?? '—').replace('lt1', 'Moins d’un an')}</dd>
-              <dt>Langue du talk</dt><dd>{labelOf(resolveOptions(SCREENS.profile.questions.find((q) => q.code === 'P5')!, refs), String(a['P5'] ?? ''), 'fr')}</dd>
+              <dt>Langue du talk</dt><dd>{labelOf(resolveOptions(SCREENS.diag2.questions.find((q) => q.code === 'P5')!, refs), String(a['P5'] ?? ''), 'fr')}</dd>
               <dt>Inscrite le</dt><dd>{fmtDate(c.created_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
-              <dt>Formulaire terminé</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : <>Non — écran « {SCREENS[c.current_screen]?.title.fr ?? c.current_screen} », {c.reminders_sent} relance(s) auto</>}</dd>
+              <dt>Formulaire terminé</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : <>Non — écran « {SCREENS[resumeScreen(c.branch, c.current_screen)]?.title.fr ?? c.current_screen} », {c.reminders_sent} relance(s) auto</>}</dd>
             </dl>
             {!c.completed_at && c.email && (
               <form action={remindNowAction} style={{ marginTop: 16 }}>
