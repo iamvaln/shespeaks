@@ -147,7 +147,7 @@ else {
 
   const id = await ficheId('Aïcha Mbarga');
   const fiche = await admin(`/admin/candidates/${id}`);
-  ok(fiche.status === 200 && /<dt>Ancienneté tech<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
+  ok(fiche.status === 200 && /<dt>Ancienneté<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
   // a field named "id" hides form.id, and React then drops the clicked button's value: the buttons would silently do nothing
   const forms = fiche.text.split('<form').slice(1).map((f) => f.slice(0, f.indexOf('</form>')));
   const named = forms.filter((f) => /<button[^>]*name="op"/.test(f));
@@ -164,7 +164,7 @@ else {
   ok(r1.json?.ok && (r2.json?.ok || r2.json?.fatal === 'already_completed'), 'race: both simultaneous submissions are answered');
   const once = await racer('Race Single');
   await once.save('b2', { B4: ['retour'] });
-  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="track[ "]/g) ?? []).length;
+  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="a-track[ "]/g) ?? []).length;
   const [nTwice, nOnce] = [await count('Race Double'), await count('Race Single')];
   ok(nOnce > 0 && nTwice === nOnce, `race: tracks are not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
 }

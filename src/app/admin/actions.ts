@@ -14,6 +14,7 @@ const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
 /** A date field must be « AAAA-MM-JJ » (what <input type="date"> sends); anything else is refused instead of being stored. */
 const badDate = (v: string | null) => !!v && !(/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00Z`)));
+const oneLine = (v: string) => v.replace(/\s+/g, ' ').trim(); // a title is typed in a box that grows: no line breaks
 const back = (path: string, msg?: string, err = false): never => redirect(msg ? `${path}${path.includes('?') ? '&' : '?'}${err ? 'err' : 'msg'}=${encodeURIComponent(msg)}` : path);
 
 // ---- auth ----------------------------------------------------------------------
@@ -36,27 +37,25 @@ export async function logoutAction() {
 }
 
 // ---- candidate ---------------------------------------------------------------
-const cpath = (id: number) => `/admin/candidates/${id}`;
+// A fiche has tabs (?tab=…); an action sends the coach back to the tab she was on.
+const TABS = ['reponses', 'notes', 'photos', 'plan'];
+const cpath = (id: number, tab = '') => `/admin/candidates/${id}${TABS.includes(tab) ? `?tab=${tab}` : ''}`;
 
-export async function changeStatusAction(f: FormData) {
+/** The « Suivi » card: status, coach and next follow-up date in one save. Nothing is saved if the status is refused. */
+export async function followUpAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'id');
+  const tab = str(f, 'tab');
   const status = str(f, 'status');
-  if (!STATUSES.some((s) => s.id === status)) return back(cpath(id), 'Statut inconnu', true);
+  if (!STATUSES.some((s) => s.id === status)) return back(cpath(id, tab), 'Statut inconnu', true);
   if (status === 'sujet_valide') {
     const s = await getSubject(id);
-    if (!s?.title?.trim() || !s?.abstract?.trim()) return back(cpath(id), 'Pour valider le sujet, renseigne d’abord le titre et le résumé du sujet retenu.', true);
+    if (!s?.title?.trim() || !s?.abstract?.trim()) return back(cpath(id, tab), 'Pour valider le sujet, renseigne d’abord le titre et le résumé du sujet retenu.', true);
   }
   await setStatus(id, status, coach.name);
-  revalidatePath('/admin', 'layout');
-  return back(cpath(id), 'Statut mis à jour');
-}
-
-export async function assignCoachAction(f: FormData) {
-  await requireCoach();
-  const id = num(f, 'id');
-  await run('UPDATE candidates SET coach_id=? WHERE id=?', num(f, 'coach_id') || null, id);
-  return back(cpath(id), 'Coach assignée');
+  await run('UPDATE candidates SET coach_id=?, next_point_date=? WHERE id=?', num(f, 'coach_id') || null, str(f, 'next_point_date') || null, id);
+  revalidatePath('/admin', 'layout'); // the menu counts the interests to process
+  return back(cpath(id, tab), 'Suivi enregistré');
 }
 
 export async function addNoteAction(f: FormData) {
@@ -64,21 +63,12 @@ export async function addNoteAction(f: FormData) {
   const id = num(f, 'id');
   const text = str(f, 'text');
   const next = str(f, 'next_point_date') || null;
-  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
-  if (!text && !next) return back(cpath(id), 'Écris une note ou fixe une date', true);
+  if (badDate(next)) return back(cpath(id, 'notes'), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
+  if (!text && !next) return back(cpath(id, 'notes'), 'Écris une note ou fixe une date', true);
   await run('INSERT INTO notes (candidate_id,coach_id,text,next_point_date) VALUES (?,?,?,?)', id, coach.id, text || '(prochain point fixé)', next);
   if (next) await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
   await markUpdated(id);
-  return back(cpath(id), 'Note ajoutée');
-}
-
-export async function setNextPointAction(f: FormData) {
-  await requireCoach();
-  const id = num(f, 'id');
-  const next = str(f, 'next_point_date') || null;
-  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
-  await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
-  return back(cpath(id), 'Prochain point enregistré');
+  return back(cpath(id, 'notes'), 'Note ajoutée');
 }
 
 export async function saveSubjectAction(f: FormData) {
@@ -100,7 +90,7 @@ export async function trackAction(f: FormData) {
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);
   if (op === 'add') {
-    const title = str(f, 'title');
+    const title = oneLine(str(f, 'title'));
     if (!title) return back(cpath(id), 'Titre requis', true);
     await run(`INSERT INTO tracks (candidate_id,title,format,origin,position) VALUES (?,?,?,'coach',?)`, id, title, str(f, 'format') || 'talk', (await getTracks(id)).length);
     return back(cpath(id), 'Piste ajoutée');
@@ -111,7 +101,7 @@ export async function trackAction(f: FormData) {
   }
   if (!track) return back(cpath(id), 'Piste introuvable', true);
   // whichever button she pressed, what she typed in the title and the format of this track is kept (and the subject follows a chosen track)
-  const title = str(f, 'title') || track.title;
+  const title = oneLine(str(f, 'title')) || track.title;
   const format = str(f, 'format') || track.format;
   if (op !== 'delete' && (title !== track.title || format !== track.format)) {
     await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
@@ -151,17 +141,18 @@ export async function selectPhotoAction(f: FormData) {
   const id = num(f, 'id');
   const photoId = num(f, 'photo_id') || null;
   await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', photoId, id);
-  return back(cpath(id), photoId ? 'Photo retenue' : 'Photo non retenue');
+  return back(cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 
 export async function remindNowAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
+  const tab = str(f, 'tab');
   const sent = await sendReminderNow(id);
-  if (sent === 'sent') return back(cpath(id), 'Rappel envoyé par email');
-  if (sent === 'logged') return back(cpath(id), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans l’onglet Emails. Écris-lui sur WhatsApp.', true);
-  if (sent === 'failed') return back(cpath(id), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans l’onglet Emails). Écris-lui sur WhatsApp.', true);
-  return back(cpath(id), 'Impossible : pas d’email ou formulaire déjà terminé', true);
+  if (sent === 'sent') return back(cpath(id, tab), 'Rappel envoyé par email');
+  if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans l’onglet Emails. Écris-lui sur WhatsApp.', true);
+  if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans l’onglet Emails). Écris-lui sur WhatsApp.', true);
+  return back(cpath(id, tab), 'Impossible : pas d’email ou formulaire déjà terminé', true);
 }
 
 export async function deleteCandidateAction(f: FormData) {

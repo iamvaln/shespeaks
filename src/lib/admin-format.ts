@@ -55,3 +55,6 @@ export function pageList(current: number, total: number): (number | '…')[] {
   });
   return out;
 }
+
+/** One value out of a query parameter: ?q=a&q=b arrives as a list, a missing one as undefined. */
+export const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? v[0] : v) ?? '';

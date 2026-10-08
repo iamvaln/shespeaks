@@ -6,12 +6,11 @@ import { fmtDate } from '@/lib/i18n';
 import { norm, initials } from '@/lib/text';
 import { requireCoach } from '@/lib/auth';
 import { screenProgress } from '@/lib/reminders';
-import { BRANCH_SHORT, elapsed, pageList, statusTone } from '@/lib/admin-format';
+import { BRANCH_SHORT, elapsed, one, pageList, statusTone } from '@/lib/admin-format';
 import { AutoSubmitForm } from '@/components/AutoSubmitForm';
 import { Icon } from '@/components/admin-icons';
 
 type SP = Record<'q' | 'event' | 'status' | 'coach' | 'start' | 'order' | 'page' | 'msg', string | string[] | undefined>;
-const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? v[0] : v) ?? ''; // ?q=a&q=b arrives as a list
 
 export const metadata = { title: 'Candidates' };
 export const dynamic = 'force-dynamic';
