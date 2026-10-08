@@ -45,7 +45,7 @@ export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
+  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan, short: d.hero.seePlanShort } : { href: '/interet', label: d.hero.resume, short: d.hero.resumeShort }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
   const navLinks: [string, string][] = [['#qui', d.nav.who], ['#comment', d.nav.how], ['#formats', d.nav.formats], ['#faq', d.nav.faq]];
 
   return (

@@ -70,7 +70,7 @@ h2.title, .title { font-size: 28px; line-height: 34px; font-weight: 700; margin:
 @media (min-width: 1120px) { .site-nav { display: flex; } .site-nav ~ .actions { margin-left: 0; } .site-nav a { padding: 8px 12px; font-size: 15px; } }
 .cta-short { display: none; }
 @media (max-width: 479px) {
-  .site-header .cta-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .site-header .cta-full { display: none; }
   .site-header .cta-short { display: inline; }
   .site-header .bar { gap: 8px; }
   .site-header .brand img { height: 38px; }
@@ -86,6 +86,8 @@ h2.title, .title { font-size: 28px; line-height: 34px; font-weight: 700; margin:
 .footer-row { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; justify-content: space-between; }
 .footer-link { font-size: 14px; color: var(--ink-muted); text-underline-offset: 3px; }
 .footer-link:hover { color: var(--ink); }
+.footer-social { display: flex; gap: 0 20px; }
+.footer-social .footer-link { padding-block: 8px; }
 html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 
 /* ---- buttons ---- */
