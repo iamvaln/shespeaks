@@ -338,7 +338,7 @@ const b1: Screen = {
       label: L('Précise si tu veux (sous-thème, techno…)', 'Narrow it down if you like (sub-topic, tech…)'),
       placeholder: L('Ex. accessibilité web, Jetpack Compose, LLM en local', 'E.g. web accessibility, Jetpack Compose, local LLMs'),
     },
-    { code: 'B3', type: 'single', required: true, label: L('À qui veux-tu t’adresser ?', 'Who do you want to speak to?'), options: AUDIENCES },
+    { code: 'B3', type: 'single', required: true, label: L('À qui s’adresse ton talk ?', 'Who is your talk for?'), options: AUDIENCES },
   ],
 };
 
@@ -349,7 +349,7 @@ const b2: Screen = {
   block: bBlock,
   title: L('Ton angle et ton vécu', 'Your angle and experience'),
   questions: [
-    { code: 'B4', type: 'multi', required: true, min: 1, label: L('Quel angle te ressemble ?', 'Which angle suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
+    { code: 'B4', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
     { code: 'B5', type: 'longtext', required: false, maxLength: 1500, label: L('Ton vécu dans ce domaine : un projet, une réussite, une galère', 'Your experience in this field: a project, a win, a struggle') },
   ],
 };
@@ -397,7 +397,7 @@ const d1: Screen = {
   questions: [
     { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title') },
     { code: 'D1-b', type: 'longtext', required: true, maxLength: 3000, label: L('Le résumé (abstract)', 'The abstract'), help: L('Un texte de 80 à 200 mots : de quoi parle ton talk, à qui il s’adresse, ce que le public y gagne.', 'A text of 80 to 200 words: what your talk is about, who it is for, what the audience gains.') },
-    { code: 'D1-c', type: 'single', required: true, label: L('Niveau du public visé', 'Target audience level'), options: AUDIENCES },
+    { code: 'D1-c', type: 'single', required: true, label: L('À quel niveau s’adresse ton talk ?', 'What level is your talk aimed at?'), options: AUDIENCES },
     { code: 'D1-d', type: 'single', required: true, label: L('Où en est ta candidature à l’appel à speakers ?', 'Where is your application to the call for speakers?'), options: APPLICATION_STATES },
   ],
 };
