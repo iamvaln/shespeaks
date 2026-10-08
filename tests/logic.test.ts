@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_REFS, OTHER_EVENT, SCREENS, flowFor, totalSteps, validateScreen } from '../src/lib/questions.ts';
+import { DEFAULT_REFS, OTHER_EVENT, SCREENS, flowFor, resumeScreen, totalSteps, validateScreen } from '../src/lib/questions.ts';
 import { generateTracks } from '../src/lib/topics.ts';
 import { assembleAbstract } from '../src/lib/abstract.ts';
 import { autoChecks } from '../src/lib/review.ts';
@@ -13,6 +13,17 @@ test('flow: 3 common screens, then the two screens of the branch (no photo scree
   assert.equal(totalSteps('D'), 6);
   assert.equal(totalSteps(undefined), 6);
   assert.equal(SCREENS.photo, undefined);
+});
+
+test('resume pointer: the removed photo screen falls back to the last screen of the branch', () => {
+  assert.equal(resumeScreen('A', 'photo'), 'a2');
+  assert.equal(resumeScreen('B', 'photo'), 'b2');
+  assert.equal(resumeScreen('C', 'photo'), 'c2');
+  assert.equal(resumeScreen('D', 'photo'), 'd2');
+  assert.equal(resumeScreen(null, 'photo'), 'diag2', 'no branch yet: last common screen');
+  assert.equal(resumeScreen('B', 'b1'), 'b1');
+  assert.equal(resumeScreen('A', 'done'), 'done');
+  assert.ok(SCREENS[resumeScreen('C', 'photo')], 'the fallback is a real screen');
 });
 
 const EVENT_REFS = { ...DEFAULT_REFS, events: [{ value: 'douala', label: { fr: 'DevFest Douala 2026', en: 'DevFest Douala 2026' } }, OTHER_EVENT] };

@@ -34,7 +34,7 @@ Hosting: Vercel + Supabase (see README).
 - [x] Bloc 1 Profil (P1–P7) with validation (WhatsApp, email, « Autre » ville)
 - [x] Bloc 2 Diagnostic (D1–D6, pivot question)
 - [x] Branch A (A1–A7) · Branch B (B1–B5) · Branch C (C1, C2 draft summary w/ word counter, no overwrite once hand-edited) · Branch D (D1 proposition, D2 8-criteria grid: 4 auto + 4 checkboxes)
-- [x] Photo screen (1–3 JPG/PNG ≤10 Mo, tips, ring preview, mandatory consent, « Ajouter plus tard »)
+- [x] Speaker photo (1–3 JPG/PNG ≤10 Mo, tips, ring preview, consent): added from the roadmap page, not a form screen
 - [x] Completion: record recap, status « Diagnostic reçu », generate 5 topic tracks (A/B), notify coach
 - [x] Confirmation + Plan de route: badge, next action by branch, 5 steps with ★ personalised actions, DevFest dates of the city, add photo later
 - [x] **Emails (candidate)**: start/resume link, reception confirmation (with plan link), reminder(s) if unfinished

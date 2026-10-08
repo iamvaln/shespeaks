@@ -140,7 +140,7 @@ const profile: Screen = {
       type: 'phone',
       required: true,
       label: L('Ton numéro WhatsApp', 'Your WhatsApp number'),
-      help: L('Avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seule l’équipe SheSpeaks voit ton numéro et ton email.', 'With country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only the SheSpeaks team can see your number and email.'),
+      help: L('Numéro mobile avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seule l’équipe SheSpeaks voit ton numéro et ton email.', 'Mobile number with country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only the SheSpeaks team can see your number and email.'),
       placeholder: L('+237 6XX XX XX XX', '+237 6XX XX XX XX'),
     },
     {
@@ -433,6 +433,14 @@ export const BRANCH_SCREENS: Record<Branch, string[]> = {
 export function flowFor(branch?: Branch | null): string[] {
   const base = ['profile', 'diag1', 'diag2'];
   return branch ? [...base, ...BRANCH_SCREENS[branch]] : base;
+}
+
+/** The screen to show for a stored resume pointer. One that is no longer part of the form (the old 'photo' screen,
+ *  which the previous release can still write while it serves traffic) falls back to the last screen of the branch. */
+export function resumeScreen(branch: Branch | null | undefined, current: string): string {
+  if (current === 'done') return 'done';
+  const flow = flowFor(branch);
+  return flow.includes(current) ? current : flow[flow.length - 1];
 }
 
 /** Total number of steps shown in the progress bar, including the final confirmation screen. */

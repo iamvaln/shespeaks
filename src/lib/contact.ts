@@ -31,7 +31,7 @@ export interface Resolver {
 
 const DNS_TIMEOUT_MS = 3000;
 /** The name server said "no such domain" or "no such record" (as opposed to being slow or unreachable). */
-const definitive = (e: unknown) => ['ENOTFOUND', 'ENODATA'].includes((e as { code?: string })?.code ?? '');
+const definitive = (e: unknown) => ['ENOTFOUND', 'ENODATA', 'EBADNAME'].includes((e as { code?: string })?.code ?? '');
 
 const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
   new Promise<T>((resolve, reject) => {
@@ -46,7 +46,7 @@ const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
  */
 export async function emailDomainAccepts(email: string, resolver: Resolver = dns): Promise<boolean> {
   const host = domainToASCII(email.trim().split('@').pop() ?? '').toLowerCase();
-  if (!host) return false;
+  if (!host || host.endsWith('.')) return false;
   try {
     const mx = await withTimeout(resolver.resolveMx(host));
     if (mx.length > 0) return !(mx.length === 1 && mx[0].exchange === ''); // "0 ." = this domain takes no mail

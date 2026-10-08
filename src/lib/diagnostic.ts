@@ -1,6 +1,6 @@
 // Diagnostic journey service: save a screen, advance, complete (recap, tracks, subject, emails).
 import { get, getSetting, run, tx } from './db.ts';
-import { SCREENS, SELF_CHECKS, flowFor, profileColumns, validateScreen, visibleQuestions, type Answers, type Branch, type FieldErrors, type Locale } from './questions.ts';
+import { SCREENS, SELF_CHECKS, flowFor, profileColumns, resumeScreen, validateScreen, visibleQuestions, type Answers, type Branch, type FieldErrors, type Locale } from './questions.ts';
 import {
   eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getRefs, getSubject, getTracks, setAnswers,
   setStatus, touchCandidate, type Candidate,
@@ -35,7 +35,7 @@ export async function wizardState(c: Candidate): Promise<WizardState> {
     draft = sub?.abstract_edited && stored ? stored : assembleAbstract(answers, c.locale);
   }
   return {
-    candidate: { name: c.name ?? '', branch: c.branch, current: c.current_screen, completed: !!c.completed_at, locale: c.locale },
+    candidate: { name: c.name ?? '', branch: c.branch, current: resumeScreen(c.branch, c.current_screen), completed: !!c.completed_at, locale: c.locale },
     answers,
     refs: await getRefs(),
     draft,
@@ -69,7 +69,7 @@ export async function submitScreen(token: string | null, screenId: string, value
   const errors: FieldErrors = validateScreen(screen, merged, refs);
   // In production the contact details must be real: a number libphonenumber accepts, a domain that takes mail.
   if (screenId === 'profile' && strictContactChecks()) {
-    if (!errors.P3 && !isWhatsappNumber(String(merged['P3'] ?? ''))) errors.P3 = 'invalid_phone';
+    if (!errors.P3 && !isWhatsappNumber(String(merged['P3'] ?? ''))) errors.P3 = 'invalid_whatsapp';
     if (!errors.P4 && !(await emailDomainAccepts(String(merged['P4'] ?? '')))) errors.P4 = 'undeliverable_email';
   }
   if (Object.keys(errors).length) return { ok: false, errors };

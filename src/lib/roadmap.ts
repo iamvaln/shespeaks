@@ -50,7 +50,7 @@ const STEP_TITLES: T[] = [
   t('Sujet et candidature', 'Topic and application'),
   t('Préparation', 'Preparation'),
   t('Slides', 'Slides'),
-  t('Répétition générale', 'Dress rehearsal'),
+  t('Répétition', 'Speech rehearsal'),
   t('Jour J', 'Talk day'),
 ];
 
@@ -59,7 +59,7 @@ const COMMON: T[][] = [
     t('Valider le sujet avec l’équipe SheSpeaks', 'Validate your topic with the SheSpeaks team'),
     t('Finaliser titre et résumé', 'Finalise title and abstract'),
     t('Préparer ta bio', 'Prepare your bio'),
-    t('Choisir ta photo de speaker avec l’équipe SheSpeaks', 'Pick your speaker photo with the SheSpeaks team'),
+    t('Ajouter ta photo de speaker (plus bas sur cette page)', 'Add your speaker photo (further down this page)'),
     t('Soumettre à l’appel à speakers de ton événement avant la date limite', 'Submit to your event’s call for speakers before the deadline'),
   ],
   [

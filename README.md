@@ -129,7 +129,7 @@ Reminders are driven by `/api/cron/reminders` (Vercel Cron, or any scheduler: `c
 
 ## Notes on spec interpretation
 
-- "Écran" split: Profil (1), Diagnostic (2: D1–D3, D4–D6), branch screens (A:2, B:2, C:2, D:2), Photo, final plan → 7 steps in the progress bar.
+- "Écran" split: Profil (1), Diagnostic (2: D1–D3, D4–D6), branch screens (A:2, B:2, C:2, D:2), final plan → 6 steps in the progress bar. The speaker photo is not a form screen: it is added from the roadmap page.
 - A/B tracks: if fewer than 5 are produced by the spec rules (e.g. one domain × one angle), remaining angles on the same domain top up to 5 so the coach always has a full set. Parentheticals in domain names (e.g. "(Android, Flutter, iOS)") are dropped inside generated titles.
 - Branch C abstract: regenerated from C1–C6 until the candidate edits it by hand; English template when she chose English (or "both" and the UI is English).
 - Status « Sujet validé » requires subject title and abstract.

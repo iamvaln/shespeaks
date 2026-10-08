@@ -31,7 +31,7 @@ export default async function Events({ searchParams }: { searchParams: Promise<{
       <h1>Événements</h1>
       {sp.msg && <div className="flash">{sp.msg}</div>}
       {sp.err && <div className="flash err">{sp.err}</div>}
-      <p className="muted" style={{ marginBottom: 24 }}>Les candidates choisissent l’un de ces événements dans le formulaire ; ses dates alimentent leur plan de route et la page d’accueil (événements à venir). Un événement sans dates affiche « Dates à confirmer avec ta coach ».</p>
+      <p className="muted" style={{ marginBottom: 24 }}>Les candidates choisissent l’un de ces événements dans le formulaire ; ses dates alimentent leur plan de route et la page d’accueil (événements à venir). Un événement sans dates affiche « Dates à confirmer avec l’équipe SheSpeaks ».</p>
       <div className="stack">
         {events.map((e) => (
           <form key={e.id} action={saveEventAction} className="card stack">
