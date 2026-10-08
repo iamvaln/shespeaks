@@ -3,6 +3,7 @@ import { candidateRows } from '@/lib/admin-data';
 import { STATUSES, getSetting, statusLabel } from '@/lib/db';
 import { eventName, listEvents } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
+import { requireCoach } from '@/lib/auth';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
 
@@ -13,6 +14,7 @@ const idleLabel = (h: number) => (h < 48 ? `${h} h` : `${Math.round(h / 24)} j`)
 const PREVIEW = 10;
 
 export default async function Dashboard() {
+  await requireCoach();
   const rows = await candidateRows();
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');

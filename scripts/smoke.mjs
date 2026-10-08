@@ -99,6 +99,18 @@ await run('D', 'Danielle Eto', [
   ok(plan.status === 200 && plan.text.includes('Ta photo de speaker'), 'photo: the roadmap offers the photo section');
 }
 
+// the coach space is closed to visitors: a redirect and nothing from the page in the response body
+// (Next renders a page next to its layout, so a check in the layout alone still lets the page's data into the body)
+{
+  const names = ['Aïcha Mbarga', 'Brenda Ndi', 'Carole Fotso', 'Danielle Eto'];
+  for (const path of ['/admin', '/admin/candidates', '/admin/candidates/1', '/admin/events', '/admin/settings', '/admin/emails', '/admin/coaches']) {
+    const r = await fetch(BASE + path, { redirect: 'manual' });
+    const body = await r.text();
+    ok(r.status === 307 && (r.headers.get('location') ?? '').endsWith('/admin/login'), `admin ${path}: a visitor is sent to the login`);
+    ok(body.length < 30000 && !names.some((n) => body.includes(n)) && !/@example\.com/.test(body), `admin ${path}: no page data in the response body (${body.length} bytes)`);
+  }
+}
+
 // resume link
 {
   const c = new Client();

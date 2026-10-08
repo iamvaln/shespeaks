@@ -4,6 +4,7 @@ import { STATUSES, statusLabel } from '@/lib/db';
 import { listCoaches } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
 import { norm } from '@/lib/text';
+import { requireCoach } from '@/lib/auth';
 
 type SP = { q?: string; event?: string; status?: string; coach?: string; sort?: string; dir?: string; msg?: string };
 
@@ -19,6 +20,7 @@ const SORTS: Record<string, (r: Awaited<ReturnType<typeof candidateRows>>[number
 export const dynamic = 'force-dynamic';
 
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireCoach();
   const sp = await searchParams;
   const all = await candidateRows();
   const events_ = [...new Set(all.map((r) => r.event_label))].sort();
