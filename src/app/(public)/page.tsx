@@ -190,7 +190,7 @@ export default async function Home() {
           </div>
         </section>
       </main>
-      <SiteFooter locale={locale} />
+      <SiteFooter />
     </>
   );
 }

@@ -105,7 +105,6 @@ const fr = {
       lead: 'Dis-nous où tu en es. Ta coach s’occupe de la suite avec toi.',
       cta: 'Soumettre mon intérêt',
     },
-    footer: 'Une initiative de Valentine Nguemne, rattachée au département Girls de Techies Connect’, aux côtés de SheBuilds.',
   },
   wiz: {
     screenOf: (n: number, m: number) => `ÉCRAN ${n} SUR ${m}`,
@@ -298,7 +297,6 @@ const en: Dict = {
       lead: 'Tell us where you are. Your coach takes care of the rest with you.',
       cta: 'Submit my interest',
     },
-    footer: 'An initiative by Valentine Nguemne, part of the Girls department of Techies Connect’, alongside SheBuilds.',
   },
   wiz: {
     screenOf: (n, m) => `SCREEN ${n} OF ${m}`,
