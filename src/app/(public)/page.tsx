@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
-import { fmtDate, t } from '@/lib/i18n';
-import { eventName, listEvents } from '@/lib/data';
-import { getSetting } from '@/lib/db';
+import { t } from '@/lib/i18n';
 import { SLIDES } from '@/content/slides';
-import { HeroSlider } from '@/components/HeroSlider';
-import { EventCard } from '@/components/EventCard';
+import { Scene } from '@/components/Scenes';
+import { LANDING } from '@/content/landing';
+import './landing.css';
 import { SiteHeader } from '@/components/SiteHeader';
-import { SiteFooter } from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,23 +26,14 @@ export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const today = new Date().toISOString().slice(0, 10);
-  const events = (await listEvents()).filter((e) => !e.event_date || e.event_date >= today);
-  const internalDeadline = await getSetting('internal_deadline');
-
-  const daysLeft = (iso: string) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86_400_000);
-  const next = events.filter((e) => e.cfp_close_date && daysLeft(e.cfp_close_date) >= 0).sort((a, b) => a.cfp_close_date!.localeCompare(b.cfp_close_date!))[0];
   const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan } : { href: '/interet', label: d.hero.resume }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
-  const slides = SLIDES.map((s) => ({
-    id: s.id, scene: s.scene, photo: s.photo, alt: s.alt?.[locale] ?? s.title[locale], title: s.title[locale], caption: s.caption[locale],
-  }));
 
   return (
-    <>
+    <div className="landing-refresh" data-theme="clair">
       <SiteHeader locale={locale} variant="landing" cta={cta} />
       <main id="main">
         {/* ---------- Hero (night) ---------- */}
-        <section className="band hero" aria-labelledby="h1">
+        <section className="band hero" data-theme="clair" aria-labelledby="h1">
           <div className="container hero-grid">
             <div>
               <h1 id="h1" className="display-xl">{d.hero.h1}</h1>
@@ -54,57 +43,34 @@ export default async function Home() {
                 <a className="btn btn-lg btn-ghost" href="#comment">{d.hero.secondary}</a>
               </div>
             </div>
-            {next && (
-              <aside className="deadline" aria-label={d.hero.next.label}>
-                <p className="label-s">{d.hero.next.label}</p>
-                <p className="deadline-days">
-                  {daysLeft(next.cfp_close_date!) === 0
-                    ? <span className="deadline-today">{d.hero.next.days(0)}</span>
-                    : <><span>{daysLeft(next.cfp_close_date!)}</span> {d.hero.next.days(daysLeft(next.cfp_close_date!))}</>}
-                </p>
-                <p className="deadline-event">{eventName(next)}</p>
-                <p className="deadline-until">{d.hero.next.until} {fmtDate(next.cfp_close_date, locale)}</p>
-                {internalDeadline && <p className="deadline-until">{d.hero.next.internal} : <strong>{fmtDate(internalDeadline, locale)}</strong></p>}
-                <a className="deadline-link" href="#evenements">{d.hero.next.see} →</a>
-              </aside>
-            )}
+            <figure className="landing-hero-media">
+              {LANDING.heroPhoto ? (
+                <img src={LANDING.heroPhoto.src} alt={LANDING.heroPhoto.alt[locale]} width={960} height={1080} fetchPriority="high" />
+              ) : (
+                <Scene kind="talk" />
+              )}
+            </figure>
           </div>
         </section>
 
-        {/* ---------- Upcoming events (night: the posters sit on their own colours) ---------- */}
-        <section id="evenements" className="band band-alt" aria-labelledby="h-events">
-          <div className="container">
-            <p className="label-s">{d.events.eyebrow}</p>
-            <h2 id="h-events" className="h2">{d.events.title}</h2>
-            <p className="section-lead">{d.events.lead}</p>
-            {events.length === 0 ? (
-              <p className="section-lead">{d.events.empty}</p>
-            ) : (
-              <div className="event-grid">
-                {events.map((e) => <EventCard key={e.id} e={e} locale={locale} today={today} interestHref={cta.href} />)}
-              </div>
-            )}
-            {internalDeadline && <p className="note">{d.events.sheDeadline.replace('{date}', fmtDate(internalDeadline, locale))}</p>}
-          </div>
-        </section>
-
-        {/* ---------- Ways to take the floor (night) ---------- */}
-        <section className="band stage" aria-labelledby="h-stage">
+        <section className="band stage" data-theme="nuit" aria-labelledby="h-stage">
           <div className="container">
             <p className="label-s">{d.stage.eyebrow}</p>
             <h2 id="h-stage" className="h2">{d.stage.title}</h2>
             <p className="section-lead">{d.stage.lead}</p>
-          </div>
-          <div className="container slider-wrap">
-            <HeroSlider
-              slides={slides}
-              labels={{ region: d.stage.region, prev: d.stage.prev, next: d.stage.next, pause: d.stage.pause, play: d.stage.play, goTo: d.stage.goTo, announce: d.stage.announce }}
-            />
+            <ul className="landing-formats">
+              {SLIDES.slice(0, 4).map((format) => (
+                <li key={format.id}>
+                  <h3>{format.title[locale]}</h3>
+                  <p>{format.caption[locale]}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
         {/* ---------- Who (light, raised) ---------- */}
-        <section id="qui" className="band band-light band-alt" data-theme="clair" aria-labelledby="h-who">
+        <section id="qui" className="band band-light" data-theme="clair" aria-labelledby="h-who">
           <div className="container who-grid">
             <div>
               <p className="label-s">{d.who.eyebrow}</p>
@@ -125,7 +91,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- How it works (light) ---------- */}
-        <section id="comment" className="band band-light" data-theme="clair" aria-labelledby="h-how">
+        <section id="comment" className="band" data-theme="nuit" aria-labelledby="h-how">
           <div className="container">
             <p className="label-s">{d.how.eyebrow}</p>
             <h2 id="h-how" className="h2">{d.how.title}</h2>
@@ -144,7 +110,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- How to join (light, raised) ---------- */}
-        <section id="participer" className="band band-light band-alt" data-theme="clair" aria-labelledby="h-join">
+        <section id="participer" className="band band-light" data-theme="clair" aria-labelledby="h-join">
           <div className="container">
             <p className="label-s">{d.join.eyebrow}</p>
             <h2 id="h-join" className="h2">{d.join.title}</h2>
@@ -162,7 +128,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- FAQ (light) ---------- */}
-        <section id="faq" className="band band-light" data-theme="clair" aria-labelledby="h-faq">
+        <section id="faq" className="band" data-theme="nuit" aria-labelledby="h-faq">
           <div className="container faq-wrap">
             <div>
               <p className="label-s">{d.faq.eyebrow}</p>
@@ -180,7 +146,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- Final call (night) ---------- */}
-        <section className="band final-cta" aria-labelledby="h-final">
+        <section className="band final-cta" data-theme="clair" aria-labelledby="h-final">
           <div className="container">
             <h2 id="h-final" className="h2">{d.final.title}</h2>
             <p className="section-lead">{d.final.lead}</p>
@@ -188,7 +154,16 @@ export default async function Home() {
           </div>
         </section>
       </main>
-      <SiteFooter />
-    </>
+      <footer className="landing-footer" data-theme="nuit">
+        <div className="container footer-row">
+          <img src="/brand/shespeaks-logo-nuit.svg" alt="SheSpeaks by Techies Connect'" width={153} height={63} />
+          {LANDING.socials.length > 0 && (
+            <nav aria-label={locale === 'fr' ? 'Réseaux sociaux' : 'Social media'}>
+              {LANDING.socials.map((social) => <a key={social.label} href={social.href} rel="noopener noreferrer">{social.label}</a>)}
+            </nav>
+          )}
+        </div>
+      </footer>
+    </div>
   );
 }
