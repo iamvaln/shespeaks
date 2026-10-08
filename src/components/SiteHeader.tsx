@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { LangSwitch } from './LangSwitch';
+import { LangMenu } from './LangMenu';
+import { Icon } from './LandingIcons';
 import type { Locale } from '@/lib/questions';
 import { t } from '@/lib/i18n';
 
@@ -20,15 +22,16 @@ export function SiteHeader({ locale, variant, cta }: { locale: Locale; variant: 
           <nav className="site-nav" aria-label={n.sections}>
             <a href="#qui">{n.who}</a>
             <a href="#comment">{n.how}</a>
-            <a href="#participer">{n.join}</a>
+            <a href="#formats">{n.formats}</a>
             <a href="#faq">{n.faq}</a>
           </nav>
         )}
         <div className="actions">
-          <LangSwitch locale={locale} />
+          {landing ? <LangMenu locale={locale} /> : <LangSwitch locale={locale} />}
           {cta && (
             <Link className="btn btn-sm" href={cta.href}>
               {cta.short ? <><span className="cta-full">{cta.label}</span><span className="cta-short" aria-hidden="true">{cta.short}</span></> : cta.label}
+              {landing && <Icon name="arrow" size={16} className="cta-arrow" />}
             </Link>
           )}
         </div>
