@@ -61,6 +61,7 @@ export default async function Home() {
             <ul className="landing-formats">
               {SLIDES.map((format) => (
                 <li key={format.id}>
+                  {format.photo && <img className="landing-format-photo" src={format.photo} alt={format.alt?.[locale] ?? format.title[locale]} loading="lazy" />}
                   <h3>{format.title[locale]}</h3>
                   <p>{format.caption[locale]}</p>
                 </li>
@@ -159,7 +160,7 @@ export default async function Home() {
           <img src="/brand/shespeaks-logo-nuit.svg" alt="SheSpeaks by Techies Connect'" width={153} height={63} />
           {LANDING.socials.length > 0 && (
             <nav aria-label={locale === 'fr' ? 'Réseaux sociaux' : 'Social media'}>
-              {LANDING.socials.map((social) => <a key={social.label} href={social.href} rel="noopener noreferrer">{social.label}</a>)}
+              {LANDING.socials.map((social) => <a key={social.label} href={social.href} target="_blank" rel="noopener noreferrer">{social.label}</a>)}
             </nav>
           )}
         </div>
