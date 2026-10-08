@@ -17,7 +17,28 @@ export interface Slide {
 }
 
 export const SLIDES: Slide[] = [
-  { id: 'talk', scene: 'talk', title: { fr: 'Talk', en: 'Talk' }, caption: { fr: '20 à 30 minutes devant le public', en: '20 to 30 minutes in front of the audience' } },
-  { id: 'workshop', scene: 'workshop', title: { fr: 'Atelier', en: 'Workshop' }, caption: { fr: 'Les participantes pratiquent avec toi', en: 'Participants practise along with you' } },
-  { id: 'demo', scene: 'demo', title: { fr: 'Démo en direct', en: 'Live demo' }, caption: { fr: 'Montre ce que tu as construit', en: 'Show what you built' } },
+  {
+    id: 'talk',
+    scene: 'talk',
+    photo: '/slider/SheSpeaks_Tech_Talk_Cybersecurite.png',
+    alt: { fr: 'Une intervenante présente un sujet de cybersécurité lors d’un Tech Talk', en: 'A woman presents a cybersecurity topic during a tech talk' },
+    title: { fr: 'Tech Talk', en: 'Tech Talk' },
+    caption: { fr: 'Partage ton expertise avec le public', en: 'Share your expertise with an audience' },
+  },
+  {
+    id: 'workshop',
+    scene: 'workshop',
+    photo: '/slider/Generative AI Workshop_ From Idea to Production.png',
+    alt: { fr: 'Atelier pratique collaboratif autour de l’intelligence artificielle', en: 'Collaborative hands-on workshop about artificial intelligence' },
+    title: { fr: 'Atelier', en: 'Workshop' },
+    caption: { fr: 'Fais pratiquer les participantes', en: 'Guide participants through hands-on activities' },
+  },
+  {
+    id: 'demo',
+    scene: 'demo',
+    photo: '/slider/API Security Webinar in a Cozy Home Office.png',
+    alt: { fr: 'Une intervenante anime un webinaire technique depuis son bureau', en: 'A woman hosts a technical webinar from her desk' },
+    title: { fr: 'Démo en direct / Webinaire', en: 'Live demo / Webinar' },
+    caption: { fr: 'Présente un projet ou une solution en direct', en: 'Show a project or solution live' },
+  },
 ];

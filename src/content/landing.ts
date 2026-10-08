@@ -6,5 +6,6 @@ export const LANDING: {
   heroPhoto?: { src: string; alt: Loc };
   socials: { label: 'LinkedIn' | 'X'; href: string }[];
 } = {
-  socials: [],
+  heroPhoto: { src: '/slider/AI Conference Keynote in Africa.png', alt: { fr: 'Une intervenante prend la parole lors d’une conférence tech', en: 'A woman speaking at a tech conference' } },
+  socials: [{ label: 'LinkedIn', href: 'https://www.linkedin.com/in/iamnv/' }, { label: 'X', href: 'https://x.com/iam_n_v' }],
 };
