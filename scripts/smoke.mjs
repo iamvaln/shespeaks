@@ -136,6 +136,11 @@ else {
   }
   const dash = await admin('/admin');
   ok(/<title>Tableau de bord · Espace coach · SheSpeaks<\/title>/.test(dash.text) && /<div class="admin-root"[^>]*lang="fr"/.test(dash.text), 'coach space: page title and French language marker');
+  // the frame: a menu with the six pages, the current one marked, a skip link, a search that goes to the list
+  const current = (html) => [...html.matchAll(/<a\b[^>]*aria-current="page"[^>]*>/g)].map((m) => m[0].match(/href="([^"]*)"/)?.[1]);
+  ok(/<nav[^>]*aria-label="Navigation principale"/.test(dash.text) && ['/admin', '/admin/candidates', '/admin/events', '/admin/coaches', '/admin/settings', '/admin/emails'].every((h) => dash.text.includes(`href="${h}"`)), 'coach space: the menu links to the six pages');
+  ok(JSON.stringify(current(dash.text)) === '["/admin"]' && JSON.stringify(current((await admin('/admin/candidates')).text)) === '["/admin/candidates"]', 'coach space: the menu marks the current page');
+  ok(/href="#contenu"/.test(dash.text) && /<main[^>]*id="contenu"/.test(dash.text) && /<form[^>]*role="search"[^>]*action="\/admin\/candidates"|<form[^>]*action="\/admin\/candidates"[^>]*role="search"/.test(dash.text), 'coach space: skip link, main landmark and search form');
 
   const id = await ficheId('Aïcha Mbarga');
   const fiche = await admin(`/admin/candidates/${id}`);

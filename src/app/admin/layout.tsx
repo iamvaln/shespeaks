@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import './admin.css';
 export const metadata: Metadata = {
   title: { default: 'Espace coach · SheSpeaks', template: '%s · Espace coach · SheSpeaks' },
   robots: { index: false, follow: false },

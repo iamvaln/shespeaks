@@ -301,19 +301,6 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .confirm p { margin: 0; color: var(--ink-soft); }
 
 /* ================= ADMIN (theme clair) ================= */
-.admin-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; } /* minmax(0,…): a wide table scrolls inside its own box instead of stretching the page */
-.admin-top { background: var(--night); color: #F7F3EC; }
-.admin-top :focus-visible { outline-color: var(--amber); } /* the dark header needs the light ring */
-.admin-top .container { max-width: 1280px; display: flex; align-items: center; gap: var(--s6); flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
-.admin-top img { height: 36px; display: block; }
-.admin-nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
-.admin-nav a { color: #C9CCDA; text-decoration: none; padding: 8px 14px; border-radius: var(--r-pill); font-weight: 500; font-size: 15px; }
-.admin-nav a:hover { color: #fff; background: #1A1F36; }
-.admin-nav a[aria-current='page'] { background: var(--amber); color: #111528; font-weight: 700; }
-.admin-user { font-size: 14px; color: #C9CCDA; display: flex; gap: 12px; align-items: center; }
-.admin-user button { background: none; border: 1px solid #9AA0B8; color: #F7F3EC; border-radius: var(--r-pill); padding: 6px 14px; cursor: pointer; font: inherit; font-size: 14px; }
-.admin-main { padding: var(--s6) 0 var(--s18); }
-.admin-main .container { max-width: 1280px; }
 .admin-main h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; font-weight: 800; font-stretch: 112%; letter-spacing: -.02em; margin: 0 0 var(--s6); }
 .admin-main h2 { font-size: 22px; line-height: 28px; font-weight: 700; margin: 0 0 var(--s4); }
 .admin-main h3 { font-size: 17px; margin: 0 0 8px; }
