@@ -87,18 +87,19 @@ async function migrate(sql) {
 
 // Reference data. `on conflict do nothing` => safe to run on every deploy, never overwrites a coach's edits.
 const EVENTS = [
-  // [slug, city, title, cfp close, cfp note, event date, venue, submission url, submission label]
-  ['yaounde', 'Yaoundé', 'DevFest Yaoundé 2026', '2026-10-31', 'à 23 h 59 (heure de Yaoundé)', '2026-11-21', null, 'https://devfest.gdgyaounde.com/speakers', 'devfest.gdgyaounde.com/speakers (Sessionize)'],
-  ['douala', 'Douala', 'DevFest Douala 2026', '2026-11-01', 'heure non précisée', '2026-11-28', 'Majestic Cinéma', 'https://bit.ly/speakersdevfest26', 'bit.ly/speakersdevfest26 (devfest.gdgdouala.org/cfp)'],
-  ['bamenda', 'Bamenda', 'DevFest Bamenda 2026', null, null, null, null, null, null], // dates to confirm: coaches fill them in Admin → Événements
+  // [slug, city, title, cfp close, cfp note, event date, venue, submission url, submission label, poster]
+  ['yaounde', 'Yaoundé', 'DevFest Yaoundé 2026', '2026-10-31', 'à 23 h 59 (heure de Yaoundé)', '2026-11-21', null, 'https://devfest.gdgyaounde.com/speakers', 'devfest.gdgyaounde.com/speakers (Sessionize)', '/events/devfest-yaounde-2026.jpg'],
+  ['douala', 'Douala', 'DevFest Douala 2026', '2026-11-01', 'heure non précisée', '2026-11-28', 'Majestic Cinéma', 'https://bit.ly/speakersdevfest26', 'bit.ly/speakersdevfest26 (devfest.gdgdouala.org/cfp)', '/events/devfest-douala-2026.jpg'],
+  ['bamenda', 'Bamenda', 'DevFest Bamenda 2026', null, null, null, null, null, null, null], // dates to confirm: coaches fill them in Admin → Événements
 ];
 
 async function seed(sql) {
   let events = 0;
   for (const e of EVENTS) {
     // New rows are inserted; existing rows keep every value a coach may have edited (only empty titles are filled).
-    const inserted = await sql`insert into devfest_events (city,name,title,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label)
-      values (${e[0]},${e[1]},${e[2]},${e[3]},${e[4]},${e[5]},${e[6]},${e[7]},${e[8]})
+    // Posters of existing events come from migration 0004, so removing one in the admin is not undone on the next deploy.
+    const inserted = await sql`insert into devfest_events (city,name,title,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label,poster_url)
+      values (${e[0]},${e[1]},${e[2]},${e[3]},${e[4]},${e[5]},${e[6]},${e[7]},${e[8]},${e[9]})
       on conflict (city) do update set title = coalesce(devfest_events.title, excluded.title)
       returning (xmax = 0) as is_new`;
     events += inserted[0]?.is_new ? 1 : 0;

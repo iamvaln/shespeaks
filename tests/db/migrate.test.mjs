@@ -160,3 +160,36 @@ test('seed gives every event its public title and never overwrites an edited one
   await t.end();
   assert.deepEqual({ ...d }, { title: 'DevFest Douala (édition 2026)', poster_url: '/events/douala.jpg' });
 });
+
+test('0004: official posters are set only where none exists, and a removed poster is not restored by the seed', { skip }, async () => {
+  const { url } = await freshDb();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-'));
+  for (const f of ['0001_init.sql', '0002_email_provider_id.sql', '0003_events_title_poster.sql']) fs.copyFileSync(path.join('supabase/migrations', f), path.join(dir, f));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0); // database as it was before 0004
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  await s`insert into devfest_events (city,name,event_date,poster_url) values ('yaounde','Yaoundé','2026-11-21',null), ('douala','Douala','2026-11-28','/events/my-own.jpg'), ('kribi','Kribi','2027-03-01',null)`;
+  fs.copyFileSync('supabase/migrations/0004_event_posters.sql', path.join(dir, '0004_event_posters.sql'));
+  assert.equal(cli(url, ['migrate'], { MIGRATIONS_DIR: dir }).status, 0);
+  const rows = Object.fromEntries((await s`select city, poster_url from devfest_events`).map((r) => [r.city, r.poster_url]));
+  assert.equal(rows.yaounde, '/events/devfest-yaounde-2026.jpg');
+  assert.equal(rows.douala, '/events/my-own.jpg', 'a poster chosen in the admin is kept');
+  assert.equal(rows.kribi, null, 'other events are untouched');
+  // a coach removes the Yaoundé poster: neither a re-run of the migrations nor the seed brings it back
+  await s`update devfest_events set poster_url = null where city = 'yaounde'`;
+  await s.end();
+  assert.equal(cli(url, ['setup']).status, 0);
+  const t = postgres(url, { max: 1, onnotice: () => {} });
+  const [y] = await t`select poster_url from devfest_events where city='yaounde'`;
+  await t.end();
+  assert.equal(y.poster_url, null);
+});
+
+test('a fresh database gets both posters from the seed, and the files exist', { skip }, async () => {
+  const { url } = await freshDb();
+  assert.equal(cli(url, ['setup']).status, 0);
+  const s = postgres(url, { max: 1, onnotice: () => {} });
+  const rows = Object.fromEntries((await s`select city, poster_url from devfest_events`).map((r) => [r.city, r.poster_url]));
+  await s.end();
+  assert.deepEqual(rows, { yaounde: '/events/devfest-yaounde-2026.jpg', douala: '/events/devfest-douala-2026.jpg', bamenda: null });
+  for (const u of [rows.yaounde, rows.douala]) assert.ok(fs.existsSync(path.join('public', u)), `${u} is missing from public/`);
+});

@@ -70,3 +70,4 @@ DevFest Bamenda dates unknown → shown as « À confirmer »; editable in admin
 - [x] Emails via Resend (replaces SMTP): throttled queue, retry, idempotency, `after()`
 - [x] CI/CD: tracked + checksummed migrations (advisory lock, transactional), idempotent seeding, migrations on every Vercel build (`MIGRATE_ON_BUILD`), GitHub Actions CI, actionable runtime error when the schema is missing
 - [x] Landing page (events, who/how/join, FAQ, slider), light-theme form, "intérêt" vocabulary, events instead of cities (migration 0003: title, poster)
+- [x] Official call-for-speakers posters for DevFest Yaoundé and Douala (`public/events/`, migration `0004` + seed)
