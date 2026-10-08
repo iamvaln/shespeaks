@@ -41,3 +41,17 @@ export function dayLabel(days: number): string {
   if (days === -1) return 'hier';
   return days > 1 ? `dans ${days} jours` : `en retard de ${-days} jours`;
 }
+
+/** Page numbers to show under a list: first, last and the neighbours of the current page, « … » for the gaps. */
+export function pageList(current: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const keep = [...new Set([1, total, current - 1, current, current + 1].filter((n) => n >= 1 && n <= total))].sort((a, b) => a - b);
+  const out: (number | '…')[] = [];
+  keep.forEach((n, i) => {
+    const prev = keep[i - 1];
+    if (i && n - prev === 2) out.push(prev + 1);
+    else if (i && n - prev > 2) out.push('…');
+    out.push(n);
+  });
+  return out;
+}

@@ -131,13 +131,16 @@ else {
   for (const path of ['/admin/candidates/abc', '/admin/candidates/1.5', '/admin/candidates/99999999999', '/admin/candidates/0']) {
     ok((await admin(path)).status === 404, `coach space: ${path} is a 404, not a server error`);
   }
-  for (const sort of ['__proto__', 'constructor', 'hasOwnProperty', 'nope']) {
-    ok((await admin(`/admin/candidates?sort=${sort}`)).status === 200, `coach space: ?sort=${sort} is accepted`);
+  for (const query of ['order=__proto__', 'order=constructor-asc', 'order=name-sideways', 'start=__proto__', 'start=Z', 'status=nope', 'coach=abc', 'page=-3', 'page=99999', 'page=abc', 'q=a&q=b', 'order=name-asc&order=status-desc']) {
+    ok((await admin(`/admin/candidates?${query}`)).status === 200, `coach space: ?${query} is accepted`);
   }
+  const listHtml = (await admin('/admin/candidates')).text.replace(/<!-- -->/g, '');
+  ok(/aria-label="Filtrer par statut"/.test(listHtml) && /Toutes<span>\d+<\/span>/.test(listHtml) && /<a [^>]*aria-sort="descending"|aria-sort="descending"/.test(listHtml), 'coach space: the list has status tabs with counts and a sorted column');
   const dash = await admin('/admin');
   ok(/<title>Tableau de bord · Espace coach · SheSpeaks<\/title>/.test(dash.text) && /<div class="admin-root"[^>]*lang="fr"/.test(dash.text), 'coach space: page title and French language marker');
   // the frame: a menu with the six pages, the current one marked, a skip link, a search that goes to the list
-  const current = (html) => [...html.matchAll(/<a\b[^>]*aria-current="page"[^>]*>/g)].map((m) => m[0].match(/href="([^"]*)"/)?.[1]);
+  const menu = (html) => html.slice(html.indexOf('aria-label="Navigation principale"'), html.indexOf('</nav>', html.indexOf('aria-label="Navigation principale"')));
+  const current = (html) => [...menu(html).matchAll(/<a\b[^>]*aria-current="page"[^>]*>/g)].map((m) => m[0].match(/href="([^"]*)"/)?.[1]);
   ok(/<nav[^>]*aria-label="Navigation principale"/.test(dash.text) && ['/admin', '/admin/candidates', '/admin/events', '/admin/coaches', '/admin/settings', '/admin/emails'].every((h) => dash.text.includes(`href="${h}"`)), 'coach space: the menu links to the six pages');
   ok(JSON.stringify(current(dash.text)) === '["/admin"]' && JSON.stringify(current((await admin('/admin/candidates')).text)) === '["/admin/candidates"]', 'coach space: the menu marks the current page');
   ok(/href="#contenu"/.test(dash.text) && /<main[^>]*id="contenu"/.test(dash.text) && /<form[^>]*role="search"[^>]*action="\/admin\/candidates"|<form[^>]*action="\/admin\/candidates"[^>]*role="search"/.test(dash.text), 'coach space: skip link, main landmark and search form');
