@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="themed-root" data-theme="clair">
       <SiteHeader locale={locale} variant="app" />
       <main id="main">{children}</main>
-      <SiteFooter locale={locale} ellipse={false} />
+      <SiteFooter ellipse={false} />
     </div>
   );
 }

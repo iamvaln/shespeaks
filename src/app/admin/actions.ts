@@ -1,4 +1,5 @@
 'use server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
@@ -7,17 +8,21 @@ import { getSubject, getTracks, setStatus, touchCandidate, type Coach } from '@/
 import { regenerateTracks } from '@/lib/diagnostic';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
+import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
 const back = (path: string, msg?: string, err = false): never => redirect(msg ? `${path}${path.includes('?') ? '&' : '?'}${err ? 'err' : 'msg'}=${encodeURIComponent(msg)}` : path);
 
 // ---- auth ----------------------------------------------------------------------
-export async function loginAction(_: unknown, f: FormData): Promise<{ sent: boolean; devLink?: string }> {
-  const r = await requestLogin(str(f, 'email'));
+export async function loginAction(_: unknown, f: FormData): Promise<{ sent: boolean; devLink?: string; retryMinutes?: number; email?: string }> {
+  const email = str(f, 'email');
+  const r = await requestLogin(email, requestIp(await headers()));
+  if (r.retryAfterSec) return { sent: false, retryMinutes: Math.max(1, Math.ceil(r.retryAfterSec / 60)), email };
   return { sent: true, devLink: r.devLink };
 }
 export async function verifyAction(f: FormData) {
+  if (!(await checkVerifyRate(requestIp(await headers()))).ok) redirect('/admin/login?limited=1');
   const coach = await consumeLoginToken(str(f, 'token'));
   if (!coach) redirect('/admin/login?expired=1');
   await setSession(coach!.id);

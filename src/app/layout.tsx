@@ -7,8 +7,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: "SheSpeaks by Techies Connect'", template: '%s · SheSpeaks' },
     description: locale === 'en'
-      ? 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events, starting with DevFest 2026.'
-      : 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech, à commencer par les DevFest 2026.',
+      ? 'SheSpeaks supports young professionals and students in tech so they take the floor at tech events.'
+      : 'SheSpeaks accompagne les jeunes professionnelles et les étudiantes de la tech pour qu’elles prennent la parole lors des événements tech.',
     robots: { index: true, follow: true },
   };
 }

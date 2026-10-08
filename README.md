@@ -63,6 +63,36 @@ If a table is missing at runtime, the error in the Vercel logs says so and tells
 
 **CI** (`.github/workflows/ci.yml`, on every PR and on pushes to `develop`/`main`), against a throwaway Postgres 16: typecheck → unit tests → migration tests → `db:setup` twice (second run must apply nothing) → production build with the environment check → start the server → smoke test of the four diagnostic branches, photo rules and resume link → cron endpoint auth. **Deployments** are Vercel's Git integration (preview per PR, production from your production branch); Vercel Cron calls `/api/cron/reminders`. To make CI a merge gate, enable branch protection on `develop`/`main` requiring the *CI* check.
 
+## Branches and deployments
+
+| Branch | Role | Deployed as |
+|---|---|---|
+| `main` | **Production.** Only receives reviewed releases. | Vercel **Production** |
+| `develop` | Integration: every feature lands here first. | Vercel Preview |
+| feature branches (`claude/...`) | One change each, opened as a PR **into `develop`**. | Vercel Preview per PR |
+
+Release = a PR from `develop` into `main`. CI runs on every PR and on pushes to `develop` and `main`.
+
+One-time setup (repository owner):
+
+1. GitHub → Settings → General → **Default branch**: `main`.
+2. Vercel → Project → Settings → Git → **Production Branch**: `main`, then redeploy `main` once.
+3. Optionally protect `main` and `develop` (require the *CI* check).
+
+Previews and production share one database (see *Deploy*), so a migration runs as soon as **any** branch builds: keep migrations additive (add first, remove in a later migration).
+
+## Coach login: rate limits
+
+The footer links to the coach space (`/admin/login`), which is public, so the login form is rate limited (`src/lib/ratelimit.ts`, counters in Postgres table `rate_limit_hits` so they hold across serverless instances; keys are HMAC digests, never raw IPs or emails):
+
+| What | Limit |
+|---|---|
+| Login link requests from one IP (whatever the email) | 10 per 10 minutes |
+| Login link requests for one email, **coach or not** | 5 per 10 minutes |
+| Attempts to use a login link, per IP | 20 per 10 minutes |
+
+Requests for unknown addresses count exactly like coaches', and the answer is the same neutral message, so the form does not reveal who is a coach. In production the lookup, the one-time token and the email all run after the response, so the request does the same work for every address and timing does not tell them apart. The client IP comes from `x-real-ip` (set by Vercel, which also overwrites `x-forwarded-for`).
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

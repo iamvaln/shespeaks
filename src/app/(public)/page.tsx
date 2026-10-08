@@ -47,14 +47,12 @@ export default async function Home() {
         <section className="band hero" aria-labelledby="h1">
           <div className="container hero-grid">
             <div>
-              <p className="label">{d.hero.eyebrow}</p>
               <h1 id="h1" className="display-xl">{d.hero.h1}</h1>
               <p className="lead">{d.hero.lead}</p>
               <div className="cta-row">
                 <Link className="btn btn-lg" href={cta.href}>{cta.label}</Link>
                 <a className="btn btn-lg btn-ghost" href="#comment">{d.hero.secondary}</a>
               </div>
-              <ul className="meta-list">{d.hero.meta.map((m) => <li key={m}>{m}</li>)}</ul>
             </div>
             {next && (
               <aside className="deadline" aria-label={d.hero.next.label}>
@@ -190,7 +188,7 @@ export default async function Home() {
           </div>
         </section>
       </main>
-      <SiteFooter locale={locale} />
+      <SiteFooter />
     </>
   );
 }

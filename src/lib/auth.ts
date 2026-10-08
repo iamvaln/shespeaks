@@ -4,17 +4,13 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { get, run } from './db.ts';
 import type { Coach } from './data.ts';
-import { appUrl, coachInvite, coachLogin, sendMail } from './mail.ts';
+import { appUrl, coachInvite, coachLogin, deferMail, sendMail } from './mail.ts';
+import { checkLoginRate } from './ratelimit.ts';
+import { secret } from './secret.ts';
 
 const COOKIE = 'ss_admin';
 const SESSION_DAYS = 14;
 
-function secret(): string {
-  const s = process.env.SESSION_SECRET;
-  if (s && s !== 'change-me') return s;
-  if (process.env.NODE_ENV === 'production') throw new Error('SESSION_SECRET must be set in production');
-  return 'dev-only-secret';
-}
 const sign = (v: string) => crypto.createHmac('sha256', secret()).update(v).digest('base64url');
 const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 
@@ -59,15 +55,6 @@ export async function clearSession() {
   (await cookies()).delete(COOKIE);
 }
 
-// DB-backed throttle (works across serverless instances): max 5 login links per address per 10 minutes
-async function throttled(email: string): Promise<boolean> {
-  const r = await get<{ c: number }>(
-    `SELECT COUNT(*)::int AS c FROM email_log WHERE kind='coach_login' AND to_addr=? AND at > (now() at time zone 'utc') - interval '10 minutes'`,
-    email,
-  );
-  return (r?.c ?? 0) >= 5;
-}
-
 async function createLoginLink(coachId: number): Promise<string> {
   const token = crypto.randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + 15 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
@@ -75,20 +62,36 @@ async function createLoginLink(coachId: number): Promise<string> {
   return `${appUrl()}/admin/verify?token=${token}`;
 }
 
-/** Always behaves the same from the outside (no account enumeration). Returns the link only for the dev console. */
-export async function requestLogin(email: string): Promise<{ devLink?: string }> {
-  const e = email.trim().toLowerCase();
-  if (!e || (await throttled(e))) return {};
+/** Looks the address up and, only if it belongs to a coach, creates a one-time link and emails it. Returns the link when mail is only logged (dev). */
+async function sendLoginLink(e: string): Promise<string | undefined> {
   // First start: the very first login is allowed for ADMIN_EMAIL when no coach exists yet.
   if (process.env.ADMIN_EMAIL && e === process.env.ADMIN_EMAIL.trim().toLowerCase() && !(await get('SELECT 1 FROM coaches LIMIT 1'))) {
     await run('INSERT INTO coaches (name,email) VALUES (?,?)', process.env.ADMIN_NAME || 'Coach', e);
   }
   const coach = await get<Coach>('SELECT * FROM coaches WHERE email=? AND active=1', e);
-  if (!coach) return {};
+  if (!coach) return undefined;
   const link = await createLoginLink(coach.id);
-  const m = coachLogin(coach.name, link);
-  const status = await sendMail({ ...m, to: coach.email, kind: 'coach_login' });
-  return process.env.NODE_ENV !== 'production' && status === 'logged' ? { devLink: link } : {};
+  const status = await sendMail({ ...coachLogin(coach.name, link), to: coach.email, kind: 'coach_login' });
+  return status === 'logged' ? link : undefined;
+}
+
+/**
+ * Rate limited per IP and per email (see ratelimit.ts), counting every request whether or not the email belongs to a coach.
+ * Otherwise answers the same way (no account enumeration): in production the lookup, the token and the mail all run after
+ * the response, so the request does exactly the same work for every address and timing tells nothing.
+ * Returns the link only for the dev console (development, where mail is just logged).
+ */
+export async function requestLogin(email: string, ip: string): Promise<{ devLink?: string; retryAfterSec?: number }> {
+  const e = email.trim().toLowerCase().slice(0, 254);
+  const rate = await checkLoginRate(ip, e);
+  if (!rate.ok) return { retryAfterSec: rate.retryAfterSec };
+  if (!e) return {};
+  if (process.env.NODE_ENV === 'production') {
+    deferMail(() => sendLoginLink(e).catch((err) => console.error('[auth] login link failed', err)));
+    return {};
+  }
+  const devLink = await sendLoginLink(e);
+  return devLink ? { devLink } : {};
 }
 
 export async function inviteCoach(coach: Coach, invitedBy: string) {
