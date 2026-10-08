@@ -83,6 +83,9 @@ h2.title, .title { font-size: 28px; line-height: 34px; font-weight: 700; margin:
 .themed-root > main { flex: 1; }
 .ellipse { aspect-ratio: 760 / 96; width: 100%; max-width: 380px; border-radius: var(--r-pill); background: var(--amber); margin: 0 0 var(--s6); }
 .site-footer p { margin: 0; }
+.footer-row { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; justify-content: space-between; }
+.footer-link { font-size: 14px; color: var(--ink-muted); text-underline-offset: 3px; }
+.footer-link:hover { color: var(--ink); }
 html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 
 /* ---- buttons ---- */

@@ -1,6 +1,6 @@
 import { LoginForm } from './LoginForm';
 export const dynamic = 'force-dynamic';
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ expired?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ expired?: string; limited?: string }> }) {
   const sp = await searchParams;
   return (
     <div className="login-wrap">
@@ -12,6 +12,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <h1 className="display-l" style={{ fontSize: 32, marginTop: 8 }}>Connexion</h1>
         </div>
         {sp.expired && <div className="flash err">Ce lien a expiré ou a déjà été utilisé. Demande-en un nouveau.</div>}
+        {sp.limited && <div className="flash err" role="alert">Trop de tentatives depuis cette connexion. Réessaie dans quelques minutes.</div>}
         <LoginForm />
       </div>
     </div>
