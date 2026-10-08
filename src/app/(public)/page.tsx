@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
 import { t } from '@/lib/i18n';
 import { SLIDES } from '@/content/slides';
-import { Scene } from '@/components/Scenes';
 import { LANDING } from '@/content/landing';
 import './landing.css';
 import { SiteHeader } from '@/components/SiteHeader';
@@ -32,28 +31,25 @@ export default async function Home() {
     <div className="landing-refresh" data-theme="clair">
       <SiteHeader locale={locale} variant="landing" cta={cta} />
       <main id="main">
-        {/* ---------- Hero (night) ---------- */}
+        {/* Editorial hero — one approved photograph, white-to-stage transition */}
         <section className="band hero" data-theme="clair" aria-labelledby="h1">
           <div className="container hero-grid">
-            <div>
+            <div className="hero-content">
+              <p className="label-s">{d.stage.eyebrow}</p>
               <h1 id="h1" className="display-xl">{d.hero.h1}</h1>
               <p className="lead">{d.hero.lead}</p>
               <div className="cta-row">
-                <Link className="btn btn-lg" href={cta.href}>{cta.label}</Link>
+                <Link className="btn btn-lg" href={cta.href}>{cta.label} <span aria-hidden="true">→</span></Link>
                 <a className="btn btn-lg btn-ghost" href="#comment">{d.hero.secondary}</a>
               </div>
             </div>
             <figure className="landing-hero-media">
-              {LANDING.heroPhoto ? (
-                <img src={LANDING.heroPhoto.src} alt={LANDING.heroPhoto.alt[locale]} width={960} height={1080} fetchPriority="high" />
-              ) : (
-                <Scene kind="talk" />
-              )}
+              {LANDING.heroPhoto && <img src={LANDING.heroPhoto.src} alt={LANDING.heroPhoto.alt[locale]} width={960} height={1080} fetchPriority="high" />}
             </figure>
           </div>
         </section>
 
-        <section className="band stage" data-theme="nuit" aria-labelledby="h-stage">
+        <section className="band stage" data-theme="clair" aria-labelledby="h-stage">
           <div className="container">
             <p className="label-s">{d.stage.eyebrow}</p>
             <h2 id="h-stage" className="h2">{d.stage.title}</h2>
@@ -62,15 +58,15 @@ export default async function Home() {
               {SLIDES.map((format) => (
                 <li key={format.id}>
                   {format.photo && <img className="landing-format-photo" src={format.photo} alt={format.alt?.[locale] ?? format.title[locale]} loading="lazy" />}
-                  <h3>{format.title[locale]}</h3>
-                  <p>{format.caption[locale]}</p>
+                  <div className="landing-format-body"><h3>{format.title[locale]}</h3>
+                  <p>{format.caption[locale]}</p></div>
                 </li>
               ))}
             </ul>
           </div>
         </section>
 
-        {/* ---------- Who (light, raised) ---------- */}
+        {/* ---------- Who can join ---------- */}
         <section id="qui" className="band band-light" data-theme="clair" aria-labelledby="h-who">
           <div className="container who-grid">
             <div>
@@ -92,7 +88,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- How it works (light) ---------- */}
-        <section id="comment" className="band" data-theme="nuit" aria-labelledby="h-how">
+        <section id="comment" className="band" data-theme="clair" aria-labelledby="h-how">
           <div className="container">
             <p className="label-s">{d.how.eyebrow}</p>
             <h2 id="h-how" className="h2">{d.how.title}</h2>
@@ -106,7 +102,7 @@ export default async function Home() {
                 </li>
               ))}
             </ol>
-            <p className="note">{d.how.note}</p>
+            
           </div>
         </section>
 
@@ -129,7 +125,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- FAQ (light) ---------- */}
-        <section id="faq" className="band" data-theme="nuit" aria-labelledby="h-faq">
+        <section id="faq" className="band" data-theme="clair" aria-labelledby="h-faq">
           <div className="container faq-wrap">
             <div>
               <p className="label-s">{d.faq.eyebrow}</p>
@@ -147,7 +143,7 @@ export default async function Home() {
         </section>
 
         {/* ---------- Final call (night) ---------- */}
-        <section className="band final-cta" data-theme="clair" aria-labelledby="h-final">
+        <section className="band final-cta" data-theme="nuit" aria-labelledby="h-final">
           <div className="container">
             <h2 id="h-final" className="h2">{d.final.title}</h2>
             <p className="section-lead">{d.final.lead}</p>
