@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from 'react';
 
 // Small stroke icons of the coach space (one family, 24px grid). Plain components: usable from server and client code.
-export type IconName = 'dashboard' | 'users' | 'calendar' | 'coach' | 'sliders' | 'mail' | 'search' | 'menu' | 'close' | 'logout' | 'external';
+export type IconName = 'dashboard' | 'users' | 'calendar' | 'coach' | 'sliders' | 'mail' | 'search' | 'menu' | 'close' | 'logout' | 'external' | 'message' | 'clock' | 'chevron' | 'check';
 
 const PATHS: Record<IconName, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>,
@@ -15,6 +15,10 @@ const PATHS: Record<IconName, ReactNode> = {
   close: <path d="M18 6 6 18M6 6l12 12" />,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
   external: <path d="M7 17 17 7M8 7h9v9" />,
+  message: <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />,
+  clock: <><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>,
+  chevron: <path d="m9 18 6-6-6-6" />,
+  check: <path d="M20 6 9 17l-5-5" />,
 };
 
 export function Icon({ name, size = 18, ...rest }: { name: IconName; size?: number } & Omit<SVGProps<SVGSVGElement>, 'name'>) {
