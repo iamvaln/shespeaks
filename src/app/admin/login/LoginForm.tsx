@@ -15,10 +15,15 @@ export function LoginForm() {
     );
   return (
     <form action={action} className="stack">
+      {state?.retryMinutes && (
+        <div className="flash err" role="alert">
+          Trop de demandes de lien. Vérifie ta boîte mail (les liens déjà envoyés restent valables 15 minutes) ou réessaie dans {state.retryMinutes} minute{state.retryMinutes > 1 ? 's' : ''}.
+        </div>
+      )}
       <div className="q" style={{ marginBottom: 0 }}>
         <label className="q-label" htmlFor="email">Ton email de coach</label>
         <p className="help">On t’envoie un lien de connexion, sans mot de passe.</p>
-        <input id="email" name="email" type="email" required autoComplete="email" className="input" />
+        <input id="email" name="email" type="email" required autoComplete="email" maxLength={254} defaultValue={state?.email ?? ''} className="input" />
       </div>
       <button className="btn" disabled={pending}>{pending ? 'Envoi…' : 'Recevoir mon lien'}</button>
     </form>
