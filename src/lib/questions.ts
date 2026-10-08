@@ -395,7 +395,7 @@ const d1: Screen = {
   block: dBlock,
   title: L('Ta proposition', 'Your proposal'),
   questions: [
-    { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title') },
+    { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title'), help: L('Court et clair : 12 mots maximum.', 'Short and clear: 12 words maximum.') },
     { code: 'D1-b', type: 'longtext', required: true, maxLength: 3000, label: L('Le résumé (abstract)', 'The abstract'), help: L('Un texte de 80 à 200 mots : de quoi parle ton talk, à qui il s’adresse, ce que le public y gagne.', 'A text of 80 to 200 words: what your talk is about, who it is for, what the audience gains.') },
     { code: 'D1-c', type: 'single', required: true, label: L('À quel niveau s’adresse ton talk ?', 'What level is your talk aimed at?'), options: AUDIENCES },
     { code: 'D1-d', type: 'single', required: true, label: L('Où en est ta candidature à l’appel à speakers ?', 'Where is your application to the call for speakers?'), options: APPLICATION_STATES },
@@ -406,7 +406,7 @@ export const SELF_CHECKS = [
   { code: 'ideas', label: L('Deux ou trois idées clés repérables', 'Two or three identifiable key ideas'), rule: L('Auto-évaluation', 'Self-check') },
   { code: 'duration', label: L('Contenu adapté à la durée du format', 'Content fits the format length'), rule: L('Auto-évaluation', 'Self-check') },
   { code: 'bio', label: L('Bio de speaker prête', 'Speaker bio ready'), rule: L('3 lignes, écrites à la 3e personne (« Aïcha est développeuse mobile… »)', '3 lines, written in the third person (“Aïcha is a mobile developer…”)') },
-  { code: 'photo', label: L('Photo de profil prête', 'Profile photo ready'), rule: L('Nette et récente', 'Sharp and recent') },
+  { code: 'photo', label: L('Photo de speaker prête', 'Speaker photo ready'), rule: L('Nette et récente', 'Sharp and recent') },
 ] as const;
 
 const d2: Screen = {

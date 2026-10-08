@@ -74,6 +74,14 @@ test('review grid automatic checks', () => {
   assert.deepEqual(bad.map((c) => c.ok), [false, false, false, false]);
 });
 
+test('review: the audience is recognised in more ways, and a text without one is still flagged', () => {
+  const audience = (abstract: string) => autoChecks('Un titre', abstract).find((c) => c.code === 'audience')!.ok;
+  for (const t of ['Un talk pour les femmes qui veulent se lancer.', 'Ouvert à tous niveaux.', 'Pour celles qui débutent en cloud.', 'For women starting out in tech.', 'Suitable for all levels.', 'Pour les équipes produit.'])
+    assert.equal(audience(t), true, t);
+  assert.equal(audience('Un texte sans aucune précision sur les personnes visées.'), false);
+  assert.equal(audience('A text with no detail about its readers.'), false);
+});
+
 test('roadmap: personalised actions and next action', () => {
   const a = { P1: 'Aïcha', P2: 'douala', P5: 'en', P6: 'dev', D1: 'premiere', D2: 2, D3: ['legitime', 'trac', 'candidature'], D4: 'atelier', D5: '1-2', D6: 'A' };
   const r = buildRoadmap({ answers: a, branch: 'A', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
