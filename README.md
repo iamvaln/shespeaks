@@ -3,7 +3,7 @@
 Interest form and coaching platform for women in tech (front office) + coach follow-up space (admin), per
 `SheSpeaks-Specification-plateforme.pdf` and the brand guide. See [`PLAN.md`](PLAN.md) for the build checklist.
 
-- **Front office** (`/`): home → diagnostic (profile, diagnostic, branch A/B/C/D, speaker photo) → confirmation + personalised roadmap. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
+- **Front office** (`/`): home → interest form (profile, experience, project, then the two screens of branch A/B/C/D) → confirmation + personalised roadmap, where the speaker photo is added when she prepares her submission. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
 - **Admin** (`/admin`): passwordless coach login, dashboard, candidates list + fiche (answers, topic tracks review, subject, review grid, roadmap preview, status history, notes, photos), DevFest calendar, coaches, settings, email log.
 
 ## Public site
@@ -39,7 +39,9 @@ npm test                        # unit tests (pure logic)
 node scripts/smoke.mjs          # API journey for the 4 branches (server must be running)
 ```
 
-Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `RESEND_API_KEY`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without Resend, the link is shown on screen).
+Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only).
+
+Contact checks (first form screen): the email is required everywhere; on the **production deployment only** (`VERCEL_ENV=production`) the WhatsApp number must also be a real mobile number in international format (checked with libphonenumber) and the email's domain must be able to receive mail (MX, then address record; only a definitive "no such domain/record" refuses: a slow DNS never blocks anyone). Previews, CI and local runs accept test numbers and `@example.com`. `STRICT_CONTACT_CHECKS=1` (or `0`) forces the checks on (or off) anywhere. Without `RESEND_API_KEY`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without Resend, the link is shown on screen).
 
 ## Database, CI and deployments
 

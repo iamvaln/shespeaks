@@ -29,9 +29,9 @@ async function photo(c) {
   return { status: r.status, json: await r.json() };
 }
 
-const profile = (n, extra = {}) => ({ P1: n, P2: 'douala', P3: '+237 612 345 678', P4: `${n.toLowerCase().replace(/\W/g, '')}@example.com`, P5: 'fr', P6: 'développeuse mobile', P7: '1-3', ...extra });
+const profile = (n, extra = {}) => ({ P1: n, P2: 'douala', P3: '+237 612 345 678', P4: `${n.toLowerCase().replace(/\W/g, '')}@example.com`, P6: 'développeuse mobile', P7: '1-3', ...extra });
 const diag1 = { D1: 'premiere', D2: 2, D3: ['legitime', 'trac'] };
-const diag2 = (b) => ({ D4: 'atelier', D5: '1-2', D6: b });
+const diag2 = (b) => ({ D4: 'atelier', P5: 'fr', D5: '1-2', D6: b });
 
 async function run(branch, name, branchScreens, finalExtra) {
   const c = new Client();
@@ -43,13 +43,15 @@ async function run(branch, name, branchScreens, finalExtra) {
   ok(r.json?.ok && r.json.next === 'diag1' && c.jar.ss_token, `${branch}: profile saved, cookie set`);
   r = await c.save('diag1', diag1); ok(r.json?.next === 'diag2', `${branch}: diag1 -> diag2`);
   r = await c.save('diag2', diag2(branch)); ok(r.json?.ok, `${branch}: pivot saved`);
-  for (const [screen, values] of branchScreens) {
+  for (const [i, [screen, values]] of branchScreens.entries()) {
     r = await c.save(screen, values);
     ok(r.json?.ok, `${branch}: ${screen} saved (next=${r.json?.next})`);
     if (!r.json?.ok) console.log(JSON.stringify(r.json));
+    if (i < branchScreens.length - 1) ok(!r.json?.completed, `${branch}: ${screen} does not complete the form`);
   }
-  r = await c.save('photo', { later: '1' });
-  ok(r.json?.ok && r.json.completed, `${branch}: completed via "add later"`);
+  ok(r.json?.ok && r.json.completed && r.json.next === 'done', `${branch}: the last screen of the branch completes the form`);
+  r = await c.save('photo', {});
+  ok(r.status === 422 || r.status === 409 || r.json?.fatal === 'unknown_screen', `${branch}: there is no photo screen any more`);
   const plan = await c.get('/plan');
   ok(plan.status === 200 && plan.text.includes(name), `${branch}: plan page shows name`);
   ok(plan.text.includes('Ta prochaine action') || plan.text.includes('prochaine action'), `${branch}: plan has next action`);
@@ -74,18 +76,16 @@ await run('D', 'Danielle Eto', [
   ['d2', { chk_ideas: '1', chk_duration: '', chk_bio: '1', chk_photo: '' }],
 ]);
 
-// photo upload + consent rules
+// speaker photo: added from the roadmap, once the form is sent
 {
   const c = new Client();
   await c.save('profile', profile('Eve Photo'));
   await c.save('diag1', diag1); await c.save('diag2', diag2('B'));
-  await c.save('b1', { B1: 'web', B3: 'tous' }); await c.save('b2', { B4: ['retour'] });
-  let r = await c.save('photo', {});
-  ok(r.status === 422 && r.json.errors.photo === 'photo_or_later', 'photo: needs a photo or "later"');
+  await c.save('b1', { B1: 'web', B3: 'tous' });
+  let r = await c.save('b2', { B4: ['retour'] });
+  ok(r.json?.completed, 'photo: the form is complete without any photo');
   const up = await photo(c);
-  ok(up.status === 200 && up.json.photos.length === 1 && up.json.photos[0].width === 1, 'photo: PNG accepted, dims parsed');
-  r = await c.save('photo', {});
-  ok(r.status === 422 && r.json.errors.consent === 'consent_required', 'photo: consent mandatory once a photo is uploaded');
+  ok(up.status === 200 && up.json.photos.length === 1 && up.json.photos[0].width === 1, 'photo: PNG accepted after the form, dims parsed');
   const bad = new FormData(); bad.append('file', new Blob(['not an image'], { type: 'image/png' }), 'x.png');
   const br = await fetch(BASE + '/api/diag/photo', { method: 'POST', body: bad, headers: { cookie: c.cookie() } });
   ok(br.status === 422, 'photo: non-image rejected');
@@ -93,8 +93,10 @@ await run('D', 'Danielle Eto', [
   ok(img.status === 200 && img.headers.get('content-type') === 'image/png', 'photo: owner can read it');
   const anon = await fetch(BASE + `/api/photos/${up.json.photos[0].id}`);
   ok(anon.status === 403, 'photo: anonymous cannot read it');
-  r = await c.save('photo', { consent: '1' });
-  ok(r.json?.completed, 'photo: completes with consent');
+  r = await c.post('/api/diag/consent', { consent: true });
+  ok(r.status === 200 && r.json?.ok, 'photo: consent is recorded from the roadmap');
+  const plan = await c.get('/plan');
+  ok(plan.status === 200 && plan.text.includes('Ta photo de speaker'), 'photo: the roadmap offers the photo section');
 }
 
 // resume link

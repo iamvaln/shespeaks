@@ -2,12 +2,13 @@
 import { get, getSetting, run, tx } from './db.ts';
 import { SCREENS, SELF_CHECKS, flowFor, profileColumns, validateScreen, visibleQuestions, type Answers, type Branch, type FieldErrors, type Locale } from './questions.ts';
 import {
-  eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, setAnswers,
+  eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getRefs, getSubject, getTracks, setAnswers,
   setStatus, touchCandidate, type Candidate,
 } from './data.ts';
 import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
+import { emailDomainAccepts, isWhatsappNumber, strictContactChecks } from './contact.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
 export const BRANCH_LABEL: Record<Branch, string> = {
@@ -21,8 +22,6 @@ export interface WizardState {
   candidate: { name: string; branch: Branch | null; current: string; completed: boolean; locale: Locale };
   answers: Answers;
   refs: Awaited<ReturnType<typeof getRefs>>;
-  photos: { id: number; width: number | null; height: number | null; size: number }[];
-  consent: boolean;
   /** abstract draft for C2 (assembled unless hand-edited) */
   draft: string | null;
 }
@@ -39,8 +38,6 @@ export async function wizardState(c: Candidate): Promise<WizardState> {
     candidate: { name: c.name ?? '', branch: c.branch, current: c.current_screen, completed: !!c.completed_at, locale: c.locale },
     answers,
     refs: await getRefs(),
-    photos: (await getPhotos(c.id)).map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size })),
-    consent: !!c.consent_photo,
     draft,
   };
 }
@@ -69,12 +66,11 @@ export async function submitScreen(token: string | null, screenId: string, value
     return { ok: false, errors: {}, fatal: 'wrong_branch' };
   }
 
-  let errors: FieldErrors = validateScreen(screen, merged, refs);
-  const photos = c ? await getPhotos(c.id) : [];
-  if (screen.kind === 'photo') {
-    errors = {};
-    if (photos.length > 0 && !values['consent']) errors['consent'] = 'consent_required';
-    if (photos.length === 0 && !values['later']) errors['photo'] = 'photo_or_later';
+  const errors: FieldErrors = validateScreen(screen, merged, refs);
+  // In production the contact details must be real: a number libphonenumber accepts, a domain that takes mail.
+  if (screenId === 'profile' && strictContactChecks()) {
+    if (!errors.P3 && !isWhatsappNumber(String(merged['P3'] ?? ''))) errors.P3 = 'invalid_phone';
+    if (!errors.P4 && !(await emailDomainAccepts(String(merged['P4'] ?? '')))) errors.P4 = 'undeliverable_email';
   }
   if (Object.keys(errors).length) return { ok: false, errors };
 
@@ -126,16 +122,15 @@ export async function submitScreen(token: string | null, screenId: string, value
     if (screenId === 'profile') {
       const p = profileColumns({ ...existing, ...toSave });
       await run(
-        `UPDATE candidates SET name=?, city=?, city_other=?, whatsapp=?, email=?, talk_language=?, role=?, seniority=? WHERE id=?`,
-        p.name, p.city, p.city_other, p.whatsapp, p.email, p.talk_language, p.role, p.seniority, id,
+        `UPDATE candidates SET name=?, city=?, city_other=?, whatsapp=?, email=?, role=?, seniority=? WHERE id=?`,
+        p.name, p.city, p.city_other, p.whatsapp, p.email, p.role, p.seniority, id,
       );
     }
     let newBranch = cur.branch;
     if (screenId === 'diag2') {
       newBranch = String(merged['D6']) as Branch;
-      await run('UPDATE candidates SET branch=? WHERE id=?', newBranch, id);
+      await run('UPDATE candidates SET branch=?, talk_language=? WHERE id=?', newBranch, String(merged['P5'] ?? ''), id);
     }
-    if (screen.kind === 'photo') await run('UPDATE candidates SET consent_photo=? WHERE id=?', values['consent'] ? 1 : 0, id);
 
     // Advance
     const flow = flowFor(newBranch);

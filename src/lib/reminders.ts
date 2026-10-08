@@ -19,7 +19,7 @@ export interface ReminderReport {
 export function screenProgress(c: Candidate) {
   const flow = flowFor(c.branch);
   const idx = Math.max(0, flow.indexOf(c.current_screen));
-  return { done: idx + 1, total: (c.branch ? flow.length : 6) + 1, label: SCREENS[c.current_screen]?.title.fr ?? c.current_screen };
+  return { done: idx + 1, total: (c.branch ? flow.length : 5) + 1, label: SCREENS[c.current_screen]?.title.fr ?? c.current_screen };
 }
 
 export async function runReminders(now = new Date()): Promise<ReminderReport> {

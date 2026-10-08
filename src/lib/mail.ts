@@ -176,18 +176,18 @@ export function candidateStarted(c: { name: string }, resumeUrl: string, loc: Lo
 
 export function candidateConfirmation(c: { name: string }, planUrl: string, loc: Locale): Built {
   return loc === 'fr'
-    ? build('Ta coach a bien reçu ton formulaire d’intérêt', {
+    ? build('L’équipe SheSpeaks a bien reçu ton formulaire d’intérêt', {
         heading: `C’est reçu, ${first(c.name)} !`,
         paragraphs: [
-          'Ta coach SheSpeaks a bien reçu ton formulaire d’intérêt. Elle le relit et revient vers toi sur WhatsApp pour la suite.',
+          'L’équipe SheSpeaks a bien reçu ton formulaire d’intérêt. Elle le relit et revient vers toi sur WhatsApp pour la suite.',
           'Ton plan de route personnalisé est prêt : retrouve-le quand tu veux avec le lien ci-dessous.',
         ],
         cta: { label: 'Voir mon plan de route', url: planUrl },
       })
-    : build('Your coach has received your interest form', {
+    : build('The SheSpeaks team has received your interest form', {
         heading: `Got it, ${first(c.name)}!`,
         paragraphs: [
-          'Your SheSpeaks coach has received your interest form. She is reading it and will get back to you on WhatsApp.',
+          'The SheSpeaks team has received your interest form. We are reading it and will get back to you on WhatsApp.',
           'Your personalised roadmap is ready: come back to it anytime with the link below.',
         ],
         cta: { label: 'See my roadmap', url: planUrl },
@@ -200,7 +200,7 @@ export function candidateReminder(c: { name: string }, resumeUrl: string, loc: L
         heading: `${first(c.name)}, ta scène t’attend`,
         paragraphs: [
           `Tu as commencé ton formulaire d’intérêt SheSpeaks (écran ${step.done} sur ${step.total}) mais tu ne l’as pas terminé. Il te reste quelques minutes : tes réponses sont déjà enregistrées.`,
-          'Une fois terminé, ta coach reçoit ton dossier et tu obtiens ton plan de route personnalisé.',
+          'Une fois terminé, l’équipe SheSpeaks reçoit ton dossier et tu obtiens ton plan de route personnalisé.',
         ],
         cta: { label: 'Reprendre là où je me suis arrêtée', url: resumeUrl },
       })
@@ -208,7 +208,7 @@ export function candidateReminder(c: { name: string }, resumeUrl: string, loc: L
         heading: `${first(c.name)}, your stage is waiting`,
         paragraphs: [
           `You started your SheSpeaks interest form (screen ${step.done} of ${step.total}) but haven’t finished it. It only takes a few minutes: your answers are already saved.`,
-          'Once you’re done, your coach receives your file and you get your personalised roadmap.',
+          'Once you’re done, the SheSpeaks team receives your file and you get your personalised roadmap.',
         ],
         cta: { label: 'Pick up where I left off', url: resumeUrl },
       });

@@ -31,7 +31,7 @@ export interface Question {
   showIf?: (a: Answers) => boolean;
 }
 
-export type ScreenKind = 'form' | 'draft' | 'review' | 'photo';
+export type ScreenKind = 'form' | 'draft' | 'review';
 export interface Screen {
   id: string;
   kind: ScreenKind;
@@ -113,8 +113,8 @@ const profile: Screen = {
   block: L('Ton profil', 'About you'),
   title: L('Faisons connaissance', 'Let’s get to know you'),
   intro: L(
-    'Ces infos permettent à ta coach de te contacter et de préparer avec toi ta prise de parole à l’événement de ton choix.',
-    'This helps your coach reach you and prepare, with you, your talk at the event of your choice.',
+    'Ces infos nous permettent de te contacter et de préparer avec toi ta prise de parole à l’événement de ton choix.',
+    'This helps us reach you and prepare, with you, your talk at the event of your choice.',
   ),
   questions: [
     { code: 'P1', type: 'text', required: true, maxLength: 120, label: L('Ton nom complet', 'Your full name') },
@@ -140,25 +140,18 @@ const profile: Screen = {
       type: 'phone',
       required: true,
       label: L('Ton numéro WhatsApp', 'Your WhatsApp number'),
-      help: L('Avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seules les coachs SheSpeaks voient ton numéro et ton email.', 'With country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only SheSpeaks coaches can see your number and email.'),
+      help: L('Avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seule l’équipe SheSpeaks voit ton numéro et ton email.', 'With country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only the SheSpeaks team can see your number and email.'),
       placeholder: L('+237 6XX XX XX XX', '+237 6XX XX XX XX'),
     },
     {
       code: 'P4',
       type: 'email',
-      required: false,
+      required: true,
       label: L('Ton email', 'Your email'),
       help: L(
-        'Facultatif, mais recommandé : on t’envoie la confirmation, ton plan de route et un lien pour reprendre si tu t’interromps.',
-        'Optional but recommended: we send you the confirmation, your roadmap and a link to resume if you get interrupted.',
+        'On t’envoie la confirmation, ton plan de route et un lien pour reprendre si tu t’interromps. Utilise une adresse que tu consultes.',
+        'We send you the confirmation, your roadmap and a link to resume if you get interrupted. Use an address you actually check.',
       ),
-    },
-    {
-      code: 'P5',
-      type: 'single',
-      required: true,
-      label: L('Dans quelle langue veux-tu présenter ?', 'Which language do you want to present in?'),
-      options: [opt('fr', 'Français', 'French'), opt('en', 'Anglais', 'English'), opt('both', 'Les deux me vont', 'Both are fine')],
     },
     {
       code: 'P6',
@@ -241,6 +234,13 @@ const diag2: Screen = {
       required: true,
       label: L('Quel format te tente ?', 'Which format appeals to you?'),
       options: FORMATS,
+    },
+    {
+      code: 'P5',
+      type: 'single',
+      required: true,
+      label: L('Dans quelle langue veux-tu présenter ?', 'Which language do you want to present in?'),
+      options: [opt('fr', 'Français', 'French'), opt('en', 'Anglais', 'English'), opt('both', 'Les deux me vont', 'Both are fine')],
     },
     {
       code: 'D5',
@@ -359,7 +359,7 @@ const c1: Screen = {
   branch: 'C',
   block: cBlock,
   title: L('Décris ton sujet', 'Describe your topic'),
-  intro: L('On en fait un premier jet de résumé que tu retravailleras avec ta coach.', 'We turn it into a first draft abstract that you will refine with your coach.'),
+  intro: L('On en fait un premier jet de résumé que tu retravailleras avec l’équipe SheSpeaks.', 'We turn it into a first draft abstract that you will refine with the SheSpeaks team.'),
   questions: [
     { code: 'C1', type: 'text', required: true, maxLength: 160, label: L('Le titre (même provisoire)', 'The title (even a provisional one)') },
     { code: 'C2', type: 'single', required: true, label: L('À qui s’adresse ton talk ?', 'Who is your talk for?'), options: AUDIENCES },
@@ -383,7 +383,7 @@ const c2: Screen = {
   branch: 'C',
   block: cBlock,
   title: L('Ton premier jet de résumé', 'Your first draft abstract'),
-  intro: L('Modifie-le librement : il vise 80 mots minimum. Ta coach le relira avec toi.', 'Edit it freely: aim for at least 80 words. Your coach will review it with you.'),
+  intro: L('Modifie-le librement : il vise 80 mots minimum. L’équipe SheSpeaks le relira avec toi.', 'Edit it freely: aim for at least 80 words. The SheSpeaks team will review it with you.'),
   questions: [{ code: 'C-abstract', type: 'longtext', required: true, maxLength: 3000, label: L('Résumé', 'Abstract') }],
 };
 
@@ -418,16 +418,7 @@ const d2: Screen = {
   questions: [],
 };
 
-const photo: Screen = {
-  id: 'photo',
-  kind: 'photo',
-  block: L('Photo de speaker', 'Speaker photo'),
-  title: L('Ta photo de speaker', 'Your speaker photo'),
-  intro: L('Elle accompagnera ta candidature et ton visuel d’annonce.', 'It will go with your application and your announcement visual.'),
-  questions: [],
-};
-
-export const SCREENS: Record<string, Screen> = { profile, diag1, diag2, a1, a2, b1, b2, c1, c2, d1, d2, photo };
+export const SCREENS: Record<string, Screen> = { profile, diag1, diag2, a1, a2, b1, b2, c1, c2, d1, d2 };
 
 export const BRANCH_SCREENS: Record<Branch, string[]> = {
   A: ['a1', 'a2'],
@@ -436,15 +427,16 @@ export const BRANCH_SCREENS: Record<Branch, string[]> = {
   D: ['d1', 'd2'],
 };
 
-/** Ordered screens of the whole journey for a given branch (undefined = pivot not answered yet). */
+/** Ordered screens of the whole form for a given branch (undefined = pivot not answered yet).
+ *  The speaker photo is not part of it: it comes with the preparation of the submission, from the roadmap. */
 export function flowFor(branch?: Branch | null): string[] {
   const base = ['profile', 'diag1', 'diag2'];
-  return branch ? [...base, ...BRANCH_SCREENS[branch], 'photo'] : base;
+  return branch ? [...base, ...BRANCH_SCREENS[branch]] : base;
 }
 
 /** Total number of steps shown in the progress bar, including the final confirmation screen. */
 export function totalSteps(branch?: Branch | null): number {
-  return (branch ? flowFor(branch).length : 3 + 2 + 1) + 1;
+  return (branch ? flowFor(branch).length : 3 + 2) + 1;
 }
 
 export function visibleQuestions(screen: Screen, a: Answers): Question[] {
@@ -523,7 +515,6 @@ export function profileColumns(a: Answers) {
     city_other: a['P2'] === 'autre' ? String(a['P2o'] ?? '').trim() : null,
     whatsapp: String(a['P3'] ?? '').trim(),
     email: a['P4'] ? String(a['P4']).trim().toLowerCase() : null,
-    talk_language: String(a['P5'] ?? ''),
     role: String(a['P6'] ?? '').trim(),
     seniority: String(a['P7'] ?? ''),
   };
