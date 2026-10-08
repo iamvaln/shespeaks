@@ -3,7 +3,7 @@
 import { all, getSetting, run, nowSql } from './db.ts';
 import { eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
-import { SCREENS, flowFor } from './questions.ts';
+import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
@@ -18,8 +18,9 @@ export interface ReminderReport {
 
 export function screenProgress(c: Candidate) {
   const flow = flowFor(c.branch);
-  const idx = Math.max(0, flow.indexOf(c.current_screen));
-  return { done: idx + 1, total: (c.branch ? flow.length : 6) + 1, label: SCREENS[c.current_screen]?.title.fr ?? c.current_screen };
+  const current = resumeScreen(c.branch, c.current_screen);
+  const idx = Math.max(0, flow.indexOf(current));
+  return { done: idx + 1, total: (c.branch ? flow.length : 5) + 1, label: SCREENS[current]?.title.fr ?? current };
 }
 
 export async function runReminders(now = new Date()): Promise<ReminderReport> {

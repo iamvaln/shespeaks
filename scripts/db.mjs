@@ -89,7 +89,7 @@ async function migrate(sql) {
 const EVENTS = [
   // [slug, city, title, cfp close, cfp note, event date, venue, submission url, submission label, poster]
   ['yaounde', 'Yaoundé', 'DevFest Yaoundé 2026', '2026-10-31', 'à 23 h 59 (heure de Yaoundé)', '2026-11-21', null, 'https://devfest.gdgyaounde.com/speakers', 'devfest.gdgyaounde.com/speakers (Sessionize)', '/events/devfest-yaounde-2026.jpg'],
-  ['douala', 'Douala', 'DevFest Douala 2026', '2026-11-01', 'heure non précisée', '2026-11-28', 'Majestic Cinéma', 'https://bit.ly/speakersdevfest26', 'bit.ly/speakersdevfest26 (devfest.gdgdouala.org/cfp)', '/events/devfest-douala-2026.jpg'],
+  ['douala', 'Douala', 'DevFest Douala 2026', '2026-11-01', null, '2026-11-28', 'Majestic Cinéma', 'https://bit.ly/speakersdevfest26', 'bit.ly/speakersdevfest26 (devfest.gdgdouala.org/cfp)', '/events/devfest-douala-2026.jpg'],
   ['bamenda', 'Bamenda', 'DevFest Bamenda 2026', null, null, null, null, null, null, null], // dates to confirm: coaches fill them in Admin → Événements
 ];
 

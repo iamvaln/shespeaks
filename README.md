@@ -3,7 +3,7 @@
 Interest form and coaching platform for women in tech (front office) + coach follow-up space (admin), per
 `SheSpeaks-Specification-plateforme.pdf` and the brand guide. See [`PLAN.md`](PLAN.md) for the build checklist.
 
-- **Front office** (`/`): home → diagnostic (profile, diagnostic, branch A/B/C/D, speaker photo) → confirmation + personalised roadmap. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
+- **Front office** (`/`): home → interest form (profile, experience, project, then the two screens of branch A/B/C/D) → confirmation + personalised roadmap, where the speaker photo is added when she prepares her submission. FR/EN, mobile first, no account, autosave at every screen, resume via cookie or emailed link.
 - **Admin** (`/admin`): passwordless coach login, dashboard, candidates list + fiche (answers, topic tracks review, subject, review grid, roadmap preview, status history, notes, photos), DevFest calendar, coaches, settings, email log.
 
 ## Public site
@@ -39,7 +39,9 @@ npm test                        # unit tests (pure logic)
 node scripts/smoke.mjs          # API journey for the 4 branches (server must be running)
 ```
 
-Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only). Without `RESEND_API_KEY`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without Resend, the link is shown on screen).
+Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only).
+
+Contact checks (first form screen): the email is required everywhere; on the **production deployment only** (`VERCEL_ENV=production`) the WhatsApp number must also be a real mobile number in international format (checked with libphonenumber) and the email's domain must be able to receive mail (MX, then address record; only a definitive "no such domain/record" refuses: a slow DNS never blocks anyone). Previews, CI and local runs accept test numbers and `@example.com`. `STRICT_CONTACT_CHECKS=1` (or `0`) forces the checks on (or off) anywhere. Without `RESEND_API_KEY`, emails are only recorded in Admin → Emails. The first coach logs in at `/admin/login` with an emailed one-time link (in dev without Resend, the link is shown on screen).
 
 ## Database, CI and deployments
 
@@ -127,7 +129,7 @@ Reminders are driven by `/api/cron/reminders` (Vercel Cron, or any scheduler: `c
 
 ## Notes on spec interpretation
 
-- "Écran" split: Profil (1), Diagnostic (2: D1–D3, D4–D6), branch screens (A:2, B:2, C:2, D:2), Photo, final plan → 7 steps in the progress bar.
+- "Écran" split: Profil (1), Diagnostic (2: D1–D3, D4–D6), branch screens (A:2, B:2, C:2, D:2), final plan → 6 steps in the progress bar. The speaker photo is not a form screen: it is added from the roadmap page.
 - A/B tracks: if fewer than 5 are produced by the spec rules (e.g. one domain × one angle), remaining angles on the same domain top up to 5 so the coach always has a full set. Parentheticals in domain names (e.g. "(Android, Flutter, iOS)") are dropped inside generated titles.
 - Branch C abstract: regenerated from C1–C6 until the candidate edits it by hand; English template when she chose English (or "both" and the UI is English).
 - Status « Sujet validé » requires subject title and abstract.

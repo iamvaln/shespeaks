@@ -31,7 +31,7 @@ export interface Question {
   showIf?: (a: Answers) => boolean;
 }
 
-export type ScreenKind = 'form' | 'draft' | 'review' | 'photo';
+export type ScreenKind = 'form' | 'draft' | 'review';
 export interface Screen {
   id: string;
   kind: ScreenKind;
@@ -95,7 +95,7 @@ export const FORMATS: Option[] = [
   opt('talk', 'Talk (20–30 min)', 'Talk (20–30 min)'),
   opt('lightning', 'Lightning talk (5–10 min)', 'Lightning talk (5–10 min)'),
   opt('atelier', 'Atelier pratique (codelab)', 'Hands-on workshop (codelab)'),
-  opt('ouverte', 'Je suis ouverte, conseille-moi', 'I’m open, advise me'),
+  opt('ouverte', 'Je suis ouverte, conseillez-moi', 'I’m open, advise me'),
 ];
 
 export const APPLICATION_STATES: Option[] = [
@@ -113,8 +113,8 @@ const profile: Screen = {
   block: L('Ton profil', 'About you'),
   title: L('Faisons connaissance', 'Let’s get to know you'),
   intro: L(
-    'Ces infos permettent à ta coach de te contacter et de préparer avec toi ta prise de parole à l’événement de ton choix.',
-    'This helps your coach reach you and prepare, with you, your talk at the event of your choice.',
+    'Ces infos nous permettent de te contacter et de préparer avec toi ta prise de parole à l’événement de ton choix.',
+    'This helps us reach you and prepare, with you, your talk at the event of your choice.',
   ),
   questions: [
     { code: 'P1', type: 'text', required: true, maxLength: 120, label: L('Ton nom complet', 'Your full name') },
@@ -140,25 +140,18 @@ const profile: Screen = {
       type: 'phone',
       required: true,
       label: L('Ton numéro WhatsApp', 'Your WhatsApp number'),
-      help: L('Avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seules les coachs SheSpeaks voient ton numéro et ton email.', 'With country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only SheSpeaks coaches can see your number and email.'),
+      help: L('Numéro mobile avec l’indicatif, ex. +237 6XX XX XX XX. C’est notre canal de suivi principal. Seule l’équipe SheSpeaks voit ton numéro et ton email.', 'Mobile number with country code, e.g. +237 6XX XX XX XX. This is our main follow-up channel. Only the SheSpeaks team can see your number and email.'),
       placeholder: L('+237 6XX XX XX XX', '+237 6XX XX XX XX'),
     },
     {
       code: 'P4',
       type: 'email',
-      required: false,
+      required: true,
       label: L('Ton email', 'Your email'),
       help: L(
-        'Facultatif, mais recommandé : on t’envoie la confirmation, ton plan de route et un lien pour reprendre si tu t’interromps.',
-        'Optional but recommended: we send you the confirmation, your roadmap and a link to resume if you get interrupted.',
+        'On t’envoie la confirmation, ton plan de route et un lien pour reprendre si tu t’interromps. Utilise une adresse que tu consultes.',
+        'We send you the confirmation, your roadmap and a link to resume if you get interrupted. Use an address you actually check.',
       ),
-    },
-    {
-      code: 'P5',
-      type: 'single',
-      required: true,
-      label: L('Dans quelle langue veux-tu présenter ?', 'Which language do you want to present in?'),
-      options: [opt('fr', 'Français', 'French'), opt('en', 'Anglais', 'English'), opt('both', 'Les deux me vont', 'Both are fine')],
     },
     {
       code: 'P6',
@@ -208,7 +201,7 @@ const diag1: Screen = {
       type: 'scale',
       required: true,
       label: L('À quel point te sens-tu à l’aise à l’oral ?', 'How comfortable do you feel speaking in public?'),
-      scaleLabels: [L('1 = le trac total', '1 = total stage fright'), L('5 = très à l’aise', '5 = very comfortable')],
+      scaleLabels: [L('1 = pas du tout à l’aise', '1 = not comfortable at all'), L('5 = très à l’aise', '5 = very comfortable')],
     },
     {
       code: 'D3',
@@ -243,17 +236,25 @@ const diag2: Screen = {
       options: FORMATS,
     },
     {
+      code: 'P5',
+      type: 'single',
+      required: true,
+      label: L('Dans quelle langue veux-tu présenter ?', 'Which language do you want to present in?'),
+      options: [opt('fr', 'Français', 'French'), opt('en', 'Anglais', 'English'), opt('both', 'Les deux me vont', 'Both are fine')],
+    },
+    {
       code: 'D5',
       type: 'single',
       required: true,
       label: L('Combien de temps peux-tu y consacrer par semaine ?', 'How much time can you spend on it each week?'),
-      options: [opt('1-2', '1 à 2 heures', '1 to 2 hours'), opt('3-4', '3 à 4 heures', '3 to 4 hours'), opt('5+', '5 heures ou plus', '5 hours or more')],
+      options: [opt('lt1', 'Moins d’1 heure', 'Less than 1 hour'), opt('1-2', '1 à 2 heures', '1 to 2 hours'), opt('3-4', '3 à 4 heures', '3 to 4 hours'), opt('5+', '5 heures ou plus', '5 hours or more')],
     },
     {
       code: 'D6',
       type: 'single',
       required: true,
       label: L('Où en es-tu avec ton sujet ?', 'Where are you with your topic?'),
+      help: L('Selon ta réponse, les écrans suivants s’adaptent.', 'Depending on your answer, the next screens adapt.'),
       options: [
         opt('A', 'Je cherche encore mon sujet', 'I’m still looking for my topic'),
         opt('B', 'J’ai un domaine qui m’intéresse, mais pas encore de sujet précis', 'I have a field I like, but no specific topic yet'),
@@ -276,7 +277,7 @@ const a1: Screen = {
   branch: 'A',
   block: aBlock,
   title: L('Ce qui t’occupe au quotidien', 'What keeps you busy every day'),
-  intro: L('Les questions ouvertes sont facultatives : plus tu réponds, plus tes pistes seront personnelles.', 'Open questions are optional: the more you share, the more personal your topic ideas.'),
+  intro: L('Réponds comme tu veux : plus tu en dis, plus nos idées de sujets seront personnelles.', 'Answer as you like: the more you share, the more personal our topic ideas will be.'),
   questions: [
     { code: 'A1', type: 'longtext', required: false, maxLength: 1500, label: L('Sur quoi travailles-tu au quotidien (job, études, projets perso) ?', 'What do you work on day to day (job, studies, personal projects)?') },
     {
@@ -307,6 +308,7 @@ const a2: Screen = {
   block: aBlock,
   title: L('Ton expérience, tes questions', 'Your experience, your questions'),
   questions: [
+    { code: 'A7', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
     {
       code: 'A4',
       type: 'longtext',
@@ -317,7 +319,6 @@ const a2: Screen = {
     },
     { code: 'A5', type: 'text', required: false, maxLength: 160, label: L('Sur quoi te pose-t-on souvent des questions ?', 'What do people often ask you about?') },
     { code: 'A6', type: 'longtext', required: false, maxLength: 1500, label: L('Qu’aurais-tu aimé savoir à tes débuts ?', 'What do you wish you had known when you started?') },
-    { code: 'A7', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
   ],
 };
 
@@ -337,7 +338,7 @@ const b1: Screen = {
       label: L('Précise si tu veux (sous-thème, techno…)', 'Narrow it down if you like (sub-topic, tech…)'),
       placeholder: L('Ex. accessibilité web, Jetpack Compose, LLM en local', 'E.g. web accessibility, Jetpack Compose, local LLMs'),
     },
-    { code: 'B3', type: 'single', required: true, label: L('À qui veux-tu t’adresser ?', 'Who do you want to speak to?'), options: AUDIENCES },
+    { code: 'B3', type: 'single', required: true, label: L('À qui s’adresse ton talk ?', 'Who is your talk for?'), options: AUDIENCES },
   ],
 };
 
@@ -348,7 +349,7 @@ const b2: Screen = {
   block: bBlock,
   title: L('Ton angle et ton vécu', 'Your angle and experience'),
   questions: [
-    { code: 'B4', type: 'multi', required: true, min: 1, label: L('Quel angle te ressemble ?', 'Which angle suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
+    { code: 'B4', type: 'multi', required: true, min: 1, label: L('Quel style de prise de parole te ressemble ?', 'Which speaking style suits you?'), help: L('Plusieurs choix possibles.', 'Several choices possible.'), options: 'angles' },
     { code: 'B5', type: 'longtext', required: false, maxLength: 1500, label: L('Ton vécu dans ce domaine : un projet, une réussite, une galère', 'Your experience in this field: a project, a win, a struggle') },
   ],
 };
@@ -359,11 +360,11 @@ const c1: Screen = {
   branch: 'C',
   block: cBlock,
   title: L('Décris ton sujet', 'Describe your topic'),
-  intro: L('On en fait un premier jet de résumé que tu retravailleras avec ta coach.', 'We turn it into a first draft abstract that you will refine with your coach.'),
+  intro: L('On en fait un premier jet de résumé que tu retravailleras avec l’équipe SheSpeaks.', 'We turn it into a first draft abstract that you will refine with the SheSpeaks team.'),
   questions: [
     { code: 'C1', type: 'text', required: true, maxLength: 160, label: L('Le titre (même provisoire)', 'The title (even a provisional one)') },
     { code: 'C2', type: 'single', required: true, label: L('À qui s’adresse ton talk ?', 'Who is your talk for?'), options: AUDIENCES },
-    { code: 'C3', type: 'text', required: true, maxLength: 200, label: L('Idée clé n° 1', 'Key idea #1') },
+    { code: 'C3', type: 'text', required: true, maxLength: 200, label: L('Idée clé n° 1', 'Key idea #1'), help: L('Une idée clé, c’est une chose que le public doit retenir de ton talk.', 'A key idea is one thing the audience should remember from your talk.') },
     { code: 'C4', type: 'text', required: false, maxLength: 200, label: L('Idée clé n° 2', 'Key idea #2') },
     { code: 'C5', type: 'text', required: false, maxLength: 200, label: L('Idée clé n° 3', 'Key idea #3') },
     {
@@ -372,7 +373,7 @@ const c1: Screen = {
       required: true,
       maxLength: 200,
       label: L('Avec quoi le public repart-il ?', 'What does the audience take away?'),
-      help: L('Complète la phrase « Le public repart avec… » par un nom. Ex. une méthode, un outil, une checklist, l’envie de se lancer.', 'Finish the sentence “The audience leaves with…” with a noun. E.g. a method, a tool, a checklist, the confidence to get started.'),
+      help: L('Complète : « Le public repart avec… » Ex. une méthode, un outil, une checklist, l’envie de se lancer.', 'Complete: “The audience leaves with…” E.g. a method, a tool, a checklist, the confidence to get started.'),
     },
   ],
 };
@@ -383,7 +384,7 @@ const c2: Screen = {
   branch: 'C',
   block: cBlock,
   title: L('Ton premier jet de résumé', 'Your first draft abstract'),
-  intro: L('Modifie-le librement : il vise 80 mots minimum. Ta coach le relira avec toi.', 'Edit it freely: aim for at least 80 words. Your coach will review it with you.'),
+  intro: L('Voici un premier jet construit à partir de tes réponses. Modifie-le librement : un bon résumé fait au moins 80 mots. L’équipe SheSpeaks le relira avec toi.', 'Here is a first draft built from your answers. Edit it freely: a good abstract is at least 80 words. The SheSpeaks team will review it with you.'),
   questions: [{ code: 'C-abstract', type: 'longtext', required: true, maxLength: 3000, label: L('Résumé', 'Abstract') }],
 };
 
@@ -394,9 +395,9 @@ const d1: Screen = {
   block: dBlock,
   title: L('Ta proposition', 'Your proposal'),
   questions: [
-    { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title') },
+    { code: 'D1-a', type: 'text', required: true, maxLength: 200, label: L('Le titre', 'The title'), help: L('Court et clair : 12 mots maximum.', 'Short and clear: 12 words maximum.') },
     { code: 'D1-b', type: 'longtext', required: true, maxLength: 3000, label: L('Le résumé (abstract)', 'The abstract'), help: L('Un texte de 80 à 200 mots : de quoi parle ton talk, à qui il s’adresse, ce que le public y gagne.', 'A text of 80 to 200 words: what your talk is about, who it is for, what the audience gains.') },
-    { code: 'D1-c', type: 'single', required: true, label: L('Niveau du public visé', 'Target audience level'), options: AUDIENCES },
+    { code: 'D1-c', type: 'single', required: true, label: L('À quel niveau s’adresse ton talk ?', 'What level is your talk aimed at?'), options: AUDIENCES },
     { code: 'D1-d', type: 'single', required: true, label: L('Où en est ta candidature à l’appel à speakers ?', 'Where is your application to the call for speakers?'), options: APPLICATION_STATES },
   ],
 };
@@ -405,7 +406,7 @@ export const SELF_CHECKS = [
   { code: 'ideas', label: L('Deux ou trois idées clés repérables', 'Two or three identifiable key ideas'), rule: L('Auto-évaluation', 'Self-check') },
   { code: 'duration', label: L('Contenu adapté à la durée du format', 'Content fits the format length'), rule: L('Auto-évaluation', 'Self-check') },
   { code: 'bio', label: L('Bio de speaker prête', 'Speaker bio ready'), rule: L('3 lignes, écrites à la 3e personne (« Aïcha est développeuse mobile… »)', '3 lines, written in the third person (“Aïcha is a mobile developer…”)') },
-  { code: 'photo', label: L('Photo de profil prête', 'Profile photo ready'), rule: L('Nette et récente', 'Sharp and recent') },
+  { code: 'photo', label: L('Photo de speaker prête', 'Speaker photo ready'), rule: L('Nette et récente', 'Sharp and recent') },
 ] as const;
 
 const d2: Screen = {
@@ -418,16 +419,7 @@ const d2: Screen = {
   questions: [],
 };
 
-const photo: Screen = {
-  id: 'photo',
-  kind: 'photo',
-  block: L('Photo de speaker', 'Speaker photo'),
-  title: L('Ta photo de speaker', 'Your speaker photo'),
-  intro: L('Elle accompagnera ta candidature et ton visuel d’annonce.', 'It will go with your application and your announcement visual.'),
-  questions: [],
-};
-
-export const SCREENS: Record<string, Screen> = { profile, diag1, diag2, a1, a2, b1, b2, c1, c2, d1, d2, photo };
+export const SCREENS: Record<string, Screen> = { profile, diag1, diag2, a1, a2, b1, b2, c1, c2, d1, d2 };
 
 export const BRANCH_SCREENS: Record<Branch, string[]> = {
   A: ['a1', 'a2'],
@@ -436,15 +428,24 @@ export const BRANCH_SCREENS: Record<Branch, string[]> = {
   D: ['d1', 'd2'],
 };
 
-/** Ordered screens of the whole journey for a given branch (undefined = pivot not answered yet). */
+/** Ordered screens of the whole form for a given branch (undefined = pivot not answered yet).
+ *  The speaker photo is not part of it: it comes with the preparation of the submission, from the roadmap. */
 export function flowFor(branch?: Branch | null): string[] {
   const base = ['profile', 'diag1', 'diag2'];
-  return branch ? [...base, ...BRANCH_SCREENS[branch], 'photo'] : base;
+  return branch ? [...base, ...BRANCH_SCREENS[branch]] : base;
+}
+
+/** The screen to show for a stored resume pointer. One that is no longer part of the form (the old 'photo' screen,
+ *  which the previous release can still write while it serves traffic) falls back to the last screen of the branch. */
+export function resumeScreen(branch: Branch | null | undefined, current: string): string {
+  if (current === 'done') return 'done';
+  const flow = flowFor(branch);
+  return flow.includes(current) ? current : flow[flow.length - 1];
 }
 
 /** Total number of steps shown in the progress bar, including the final confirmation screen. */
 export function totalSteps(branch?: Branch | null): number {
-  return (branch ? flowFor(branch).length : 3 + 2 + 1) + 1;
+  return (branch ? flowFor(branch).length : 3 + 2) + 1;
 }
 
 export function visibleQuestions(screen: Screen, a: Answers): Question[] {
@@ -523,7 +524,6 @@ export function profileColumns(a: Answers) {
     city_other: a['P2'] === 'autre' ? String(a['P2o'] ?? '').trim() : null,
     whatsapp: String(a['P3'] ?? '').trim(),
     email: a['P4'] ? String(a['P4']).trim().toLowerCase() : null,
-    talk_language: String(a['P5'] ?? ''),
     role: String(a['P6'] ?? '').trim(),
     seniority: String(a['P7'] ?? ''),
   };

@@ -17,10 +17,10 @@ export default async function InteretPage() {
   let init: WizardInit;
   if (c) {
     const s = await wizardState(c);
-    init = { candidate: s.candidate, answers: s.answers, refs: s.refs, photos: s.photos, consent: s.consent };
+    init = { candidate: s.candidate, answers: s.answers, refs: s.refs };
     if (s.draft && c.branch === 'C' && s.answers['C-abstract'] === undefined) init.answers = { ...s.answers, 'C-abstract': s.draft };
   } else {
-    init = { candidate: null, answers: {}, refs: await getRefs(), photos: [], consent: false };
+    init = { candidate: null, answers: {}, refs: await getRefs() };
   }
   return <Wizard key={c?.token ?? 'new'} init={init} locale={locale} />;
 }

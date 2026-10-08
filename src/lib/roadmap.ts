@@ -50,16 +50,16 @@ const STEP_TITLES: T[] = [
   t('Sujet et candidature', 'Topic and application'),
   t('Préparation', 'Preparation'),
   t('Slides', 'Slides'),
-  t('Répétition générale', 'Dress rehearsal'),
+  t('Répétition', 'Speech rehearsal'),
   t('Jour J', 'Talk day'),
 ];
 
 const COMMON: T[][] = [
   [
-    t('Valider le sujet avec ta coach', 'Validate your topic with your coach'),
+    t('Valider le sujet avec l’équipe SheSpeaks', 'Validate your topic with the SheSpeaks team'),
     t('Finaliser titre et résumé', 'Finalise title and abstract'),
     t('Préparer ta bio', 'Prepare your bio'),
-    t('Choisir ta photo de speaker avec ta coach', 'Pick your speaker photo with your coach'),
+    t('Ajouter ta photo de speaker (plus bas sur cette page)', 'Add your speaker photo (further down this page)'),
     t('Soumettre à l’appel à speakers de ton événement avant la date limite', 'Submit to your event’s call for speakers before the deadline'),
   ],
   [
@@ -69,7 +69,7 @@ const COMMON: T[][] = [
   ],
   [
     t('Une idée par slide, peu de texte, visuels lisibles de loin', 'One idea per slide, little text, visuals readable from afar'),
-    t('Revue avec ta coach', 'Review with your coach'),
+    t('Revue avec l’équipe SheSpeaks', 'Review with the SheSpeaks team'),
     t('Version finale une semaine avant l’événement', 'Final version one week before the event'),
   ],
   [
@@ -86,13 +86,13 @@ const COMMON: T[][] = [
 
 const NEXT: Record<string, T> = {
   AB: t(
-    'Ta coach, notifiée automatiquement, revient vers toi avec une sélection de pistes ; vous choisissez le sujet et rédigez le résumé ensemble.',
-    'Your coach, notified automatically, comes back to you with a selection of topic ideas; together you choose the topic and write the abstract.',
+    'L’équipe SheSpeaks, notifiée automatiquement, revient vers toi avec une sélection de pistes ; vous choisissez le sujet et rédigez le résumé ensemble.',
+    'The SheSpeaks team, notified automatically, comes back to you with a selection of topic ideas; together you choose the topic and write the abstract.',
   ),
-  C: t('Retravaille ton premier jet de résumé ; ta coach le relira lors de votre premier échange.', 'Rework your first draft abstract; your coach will review it in your first conversation.'),
-  D_a_soumettre: t('Corrige les points à revoir ; ta coach fait une dernière relecture avant soumission.', 'Fix the points to review; your coach does a final read-through before submission.'),
-  D_soumise: t('Démarre la préparation du talk avec ta coach pendant que les organisateurs décident.', 'Start preparing your talk with your coach while the organisers decide.'),
-  D_retenue: t('Félicitations : on attaque directement la préparation avec ta coach.', 'Congratulations: we jump straight into preparation with your coach.'),
+  C: t('Retravaille ton premier jet de résumé ; l’équipe SheSpeaks le relira lors de votre premier échange.', 'Rework your first draft abstract; the SheSpeaks team will review it in your first conversation.'),
+  D_a_soumettre: t('Corrige les points à revoir ; l’équipe SheSpeaks fait une dernière relecture avant soumission.', 'Fix the points to review; the SheSpeaks team does a final read-through before submission.'),
+  D_soumise: t('Démarre la préparation du talk avec l’équipe SheSpeaks pendant que les organisateurs décident.', 'Start preparing your talk with the SheSpeaks team while the organisers decide.'),
+  D_retenue: t('Félicitations : on attaque directement la préparation avec l’équipe SheSpeaks.', 'Congratulations: we jump straight into preparation with the SheSpeaks team.'),
 };
 
 export function nextActionKey(branch: Branch, appState?: string): string {
@@ -112,8 +112,8 @@ export function buildRoadmap(i: RoadmapInput): Roadmap {
 
   const extra: Record<number, T[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
   if (has('D3', 'legitime')) extra[1].push(t('Lister trois situations où tu as aidé quelqu’un à résoudre un problème', 'List three situations where you helped someone solve a problem'));
-  if (has('D3', 'candidature') && !submitted) extra[1].push(t('Relecture de ta candidature par ta coach avant envoi', 'Your coach reviews your application before you send it'));
-  if (has('D3', 'temps') || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
+  if (has('D3', 'candidature') && !submitted) extra[1].push(t('Relecture de ta candidature par l’équipe SheSpeaks avant envoi', 'The SheSpeaks team reviews your application before you send it'));
+  if (has('D3', 'temps') || a['D5'] === 'lt1' || a['D5'] === '1-2') extra[2].push(t('Bloquer deux créneaux fixes par semaine', 'Block two fixed slots per week'));
   if (a['D4'] === 'atelier') extra[2].push(t('Préparer les prérequis participants et un environnement prêt à l’emploi', 'Prepare participant prerequisites and a ready-to-use environment'));
   if (has('D3', 'slides')) extra[3].push(t('Partir d’un modèle sobre et d’un plan de tes slides dessiné sur papier', 'Start from a clean template and a paper sketch of your slides (storyboard)'));
   if (has('D3', 'anglais') || a['P5'] === 'en') extra[3].push(t('Relecture en anglais des slides et du script', 'English proofreading of the slides and script'));

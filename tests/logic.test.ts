@@ -1,26 +1,41 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_REFS, OTHER_EVENT, SCREENS, flowFor, totalSteps, validateScreen } from '../src/lib/questions.ts';
+import { DEFAULT_REFS, OTHER_EVENT, SCREENS, flowFor, resumeScreen, totalSteps, validateScreen } from '../src/lib/questions.ts';
 import { generateTracks } from '../src/lib/topics.ts';
 import { assembleAbstract } from '../src/lib/abstract.ts';
 import { autoChecks } from '../src/lib/review.ts';
 import { buildRoadmap } from '../src/lib/roadmap.ts';
 
-test('flow: 3 common screens, branch screens, photo', () => {
-  assert.deepEqual(flowFor('A'), ['profile', 'diag1', 'diag2', 'a1', 'a2', 'photo']);
-  assert.deepEqual(flowFor('C'), ['profile', 'diag1', 'diag2', 'c1', 'c2', 'photo']);
+test('flow: 3 common screens, then the two screens of the branch (no photo screen)', () => {
+  assert.deepEqual(flowFor('A'), ['profile', 'diag1', 'diag2', 'a1', 'a2']);
+  assert.deepEqual(flowFor('C'), ['profile', 'diag1', 'diag2', 'c1', 'c2']);
   assert.equal(flowFor(undefined).length, 3);
-  assert.equal(totalSteps('D'), 7);
+  assert.equal(totalSteps('D'), 6);
+  assert.equal(totalSteps(undefined), 6);
+  assert.equal(SCREENS.photo, undefined);
+});
+
+test('resume pointer: the removed photo screen falls back to the last screen of the branch', () => {
+  assert.equal(resumeScreen('A', 'photo'), 'a2');
+  assert.equal(resumeScreen('B', 'photo'), 'b2');
+  assert.equal(resumeScreen('C', 'photo'), 'c2');
+  assert.equal(resumeScreen('D', 'photo'), 'd2');
+  assert.equal(resumeScreen(null, 'photo'), 'diag2', 'no branch yet: last common screen');
+  assert.equal(resumeScreen('B', 'b1'), 'b1');
+  assert.equal(resumeScreen('A', 'done'), 'done');
+  assert.ok(SCREENS[resumeScreen('C', 'photo')], 'the fallback is a real screen');
 });
 
 const EVENT_REFS = { ...DEFAULT_REFS, events: [{ value: 'douala', label: { fr: 'DevFest Douala 2026', en: 'DevFest Douala 2026' } }, OTHER_EVENT] };
 
 test('validation: required, phone, email, "Autre" event', () => {
-  const e = validateScreen(SCREENS.profile, { P1: 'Aïcha', P2: 'autre', P3: 'abc', P4: 'nope', P5: 'fr', P6: 'dev', P7: '1-3' }, EVENT_REFS);
+  const e = validateScreen(SCREENS.profile, { P1: 'Aïcha', P2: 'autre', P3: 'abc', P4: 'nope', P6: 'dev', P7: '1-3' }, EVENT_REFS);
   assert.equal(e.P3, 'invalid_phone');
   assert.equal(e.P4, 'invalid_email');
   assert.equal(e.P2o, 'required');
-  const ok = validateScreen(SCREENS.profile, { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P5: 'fr', P6: 'dev', P7: '1-3' }, EVENT_REFS);
+  const noEmail = validateScreen(SCREENS.profile, { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P6: 'dev', P7: '1-3' }, EVENT_REFS);
+  assert.deepEqual(noEmail, { P4: 'required' }, 'the email is required');
+  const ok = validateScreen(SCREENS.profile, { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P4: 'a@example.com', P6: 'dev', P7: '1-3' }, EVENT_REFS);
   assert.deepEqual(ok, {});
 });
 
@@ -70,6 +85,14 @@ test('review grid automatic checks', () => {
   assert.deepEqual(bad.map((c) => c.ok), [false, false, false, false]);
 });
 
+test('review: the audience is recognised in more ways, and a text without one is still flagged', () => {
+  const audience = (abstract: string) => autoChecks('Un titre', abstract).find((c) => c.code === 'audience')!.ok;
+  for (const t of ['Un talk pour les femmes qui veulent se lancer.', 'Ouvert à tous niveaux.', 'Pour celles qui débutent en cloud.', 'For women starting out in tech.', 'Suitable for all levels.', 'Pour les équipes produit.'])
+    assert.equal(audience(t), true, t);
+  assert.equal(audience('Un texte sans aucune précision sur les personnes visées.'), false);
+  assert.equal(audience('A text with no detail about its readers.'), false);
+});
+
 test('roadmap: personalised actions and next action', () => {
   const a = { P1: 'Aïcha', P2: 'douala', P5: 'en', P6: 'dev', D1: 'premiere', D2: 2, D3: ['legitime', 'trac', 'candidature'], D4: 'atelier', D5: '1-2', D6: 'A' };
   const r = buildRoadmap({ answers: a, branch: 'A', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
@@ -80,7 +103,10 @@ test('roadmap: personalised actions and next action', () => {
   assert.equal(stars(4), 3); // filming and the 2-minute pitch are two separate actions + the extra first-time rehearsal
   assert.equal(stars(5), 1);
   assert.equal(r.steps.length, 5);
-  assert.match(r.nextAction, /Ta coach, notifiée automatiquement/);
+  const step2Stars = (D5: string) => buildRoadmap({ answers: { ...a, D5 }, branch: 'A', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' }).steps[1].actions.filter((x) => x.personalized).length;
+  assert.equal(step2Stars('lt1'), step2Stars('1-2'), 'less than an hour a week gets the fixed-slots action, like 1 to 2 hours');
+  assert.equal(step2Stars('3-4'), step2Stars('1-2') - 1, 'three hours or more does not');
+  assert.match(r.nextAction, /L’équipe SheSpeaks, notifiée automatiquement/);
   const d = buildRoadmap({ answers: { ...a, 'D1-d': 'retenue' }, branch: 'D', locale: 'fr', event: null, eventName: 'DevFest Douala 2026' });
   assert.equal(d.steps[0].done, true);
   assert.match(d.nextAction, /Félicitations/);

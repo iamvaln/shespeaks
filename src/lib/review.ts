@@ -11,7 +11,9 @@ export interface AutoCheck {
 
 const AUDIENCE_KW = [
   'debutant', 'developpeu', 'etudiant', "s'adresse", 'intermediaire', 'confirme', 'designer', 'professionnel',
+  'femme', 'jeunes', 'tous niveaux', 'tout public', 'equipe', 'manager', 'entrepreneu', 'celles qui', 'ceux qui',
   'beginner', 'student', 'developer', 'aimed at', 'is for', 'junior', 'engineer', 'practitioner', 'anyone',
+  'women', 'young', 'all levels', 'everyone', 'teams', 'managers', 'entrepreneur', 'those who',
 ];
 const BENEFIT_KW = [
   'repartir', 'repartez', 'apprendr', 'appris', 'decouvr', 'saurez', 'maitris', 'comprendr', 'serez capable', 'gagn', 'emporter',
