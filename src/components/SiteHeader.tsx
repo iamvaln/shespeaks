@@ -30,7 +30,7 @@ export function SiteHeader({ locale, variant, cta }: { locale: Locale; variant: 
           {landing ? <LangMenu locale={locale} /> : <LangSwitch locale={locale} />}
           {cta && (
             <Link className="btn btn-sm" href={cta.href}>
-              {cta.short ? <><span className="cta-full">{cta.label}</span><span className="cta-short" aria-hidden="true">{cta.short}</span></> : cta.label}
+              {cta.short ? <><span className="cta-full">{cta.label}</span><span className="cta-short">{cta.short}</span></> : cta.label}
               {landing && <Icon name="arrow" size={16} className="cta-arrow" />}
             </Link>
           )}
