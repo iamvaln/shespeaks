@@ -395,7 +395,7 @@ const en: Dict = {
     done: 'Interest submitted',
     title: 'Your roadmap',
     confirmH: 'The SheSpeaks team has received your form',
-    confirmP: 'She is reading it and will get back to you on WhatsApp.',
+    confirmP: 'We are reading it and will get back to you on WhatsApp.',
     emailSent: 'We are sending you a confirmation email with the link to your roadmap. Check your spam folder if you don’t see it.',
     notYetApplication: 'This is not yet your application to the call for speakers: you prepare it next with the SheSpeaks team.',
     badge: 'SHESPEAKER',
