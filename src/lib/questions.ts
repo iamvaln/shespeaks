@@ -364,7 +364,7 @@ const c1: Screen = {
   questions: [
     { code: 'C1', type: 'text', required: true, maxLength: 160, label: L('Le titre (même provisoire)', 'The title (even a provisional one)') },
     { code: 'C2', type: 'single', required: true, label: L('À qui s’adresse ton talk ?', 'Who is your talk for?'), options: AUDIENCES },
-    { code: 'C3', type: 'text', required: true, maxLength: 200, label: L('Idée clé n° 1', 'Key idea #1') },
+    { code: 'C3', type: 'text', required: true, maxLength: 200, label: L('Idée clé n° 1', 'Key idea #1'), help: L('Une idée clé, c’est une chose que le public doit retenir de ton talk.', 'A key idea is one thing the audience should remember from your talk.') },
     { code: 'C4', type: 'text', required: false, maxLength: 200, label: L('Idée clé n° 2', 'Key idea #2') },
     { code: 'C5', type: 'text', required: false, maxLength: 200, label: L('Idée clé n° 3', 'Key idea #3') },
     {
@@ -373,7 +373,7 @@ const c1: Screen = {
       required: true,
       maxLength: 200,
       label: L('Avec quoi le public repart-il ?', 'What does the audience take away?'),
-      help: L('Complète la phrase « Le public repart avec… » par un nom. Ex. une méthode, un outil, une checklist, l’envie de se lancer.', 'Finish the sentence “The audience leaves with…” with a noun. E.g. a method, a tool, a checklist, the confidence to get started.'),
+      help: L('Complète : « Le public repart avec… » Ex. une méthode, un outil, une checklist, l’envie de se lancer.', 'Complete: “The audience leaves with…” E.g. a method, a tool, a checklist, the confidence to get started.'),
     },
   ],
 };
@@ -384,7 +384,7 @@ const c2: Screen = {
   branch: 'C',
   block: cBlock,
   title: L('Ton premier jet de résumé', 'Your first draft abstract'),
-  intro: L('Modifie-le librement : il vise 80 mots minimum. L’équipe SheSpeaks le relira avec toi.', 'Edit it freely: aim for at least 80 words. The SheSpeaks team will review it with you.'),
+  intro: L('Voici un premier jet construit à partir de tes réponses. Modifie-le librement : un bon résumé fait au moins 80 mots. L’équipe SheSpeaks le relira avec toi.', 'Here is a first draft built from your answers. Edit it freely: a good abstract is at least 80 words. The SheSpeaks team will review it with you.'),
   questions: [{ code: 'C-abstract', type: 'longtext', required: true, maxLength: 3000, label: L('Résumé', 'Abstract') }],
 };
 
