@@ -171,7 +171,7 @@ export default async function Home() {
               <figure className="lp-quote-figure">
                 <QuoteMark />
                 <blockquote><p>{d.quote.text}</p></blockquote>
-                <figcaption>{d.quote.name}</figcaption>
+                <figcaption><strong>{d.quote.name}</strong><span>{d.quote.role}</span></figcaption>
               </figure>
             </div>
           </section>

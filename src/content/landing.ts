@@ -7,7 +7,7 @@ export const LANDING: {
   formats: Record<'talk' | 'workshop' | 'demo', string>;
   quotePhoto: string;
   ctaPhoto: string;
-  /** The quote band shows a PLACEHOLDER text (src/lib/i18n.ts → home.quote). Set to false to hide it until a real quote is approved. */
+  /** Quote band: the founder's words (src/lib/i18n.ts → home.quote). Set to false to hide the band. */
   showQuote: boolean;
   socials: { label: 'LinkedIn' | 'X'; href: string }[];
 } = {
