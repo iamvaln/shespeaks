@@ -16,7 +16,7 @@ export interface ReminderReport {
   due: { id: number; name: string; tier: number }[];
 }
 
-export function screenProgress(c: Candidate) {
+export function screenProgress(c: Pick<Candidate, 'branch' | 'current_screen'>) {
   const flow = flowFor(c.branch);
   const current = resumeScreen(c.branch, c.current_screen);
   const idx = Math.max(0, flow.indexOf(current));

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { all } from '@/lib/db';
 import { fmtDate } from '@/lib/i18n';
 import { mailConfigured } from '@/lib/mail';
+import { requireCoach } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ const KINDS: Record<string, string> = {
 };
 
 export default async function Emails({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  await requireCoach();
   const sp = await searchParams;
   const rows = await all<{ id: number; kind: string; to_addr: string; subject: string; status: string; error: string | null; at: string; body_text: string; candidate_id: number | null }>(
     'SELECT * FROM email_log ORDER BY id DESC LIMIT 200');

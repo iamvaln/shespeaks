@@ -1,4 +1,5 @@
 // Email sending via Resend (https://resend.com), or logged-only when RESEND_API_KEY is not set, + bilingual templates.
+import { logText } from './maillog.ts';
 import crypto from 'node:crypto';
 import { after } from 'next/server';
 import { run } from './db.ts';
@@ -81,10 +82,10 @@ export async function sendMail(m: Mail): Promise<'sent' | 'logged' | 'failed'> {
       console.error('[mail] failed', m.kind, m.to, error);
     }
   } else {
-    console.log(`[mail:logged] ${m.kind} → ${m.to}\n  ${m.subject}\n  ${m.text.split('\n').join('\n  ')}`);
+    console.log(`[mail:logged] ${m.kind} → ${m.to}\n  ${m.subject}\n  ${logText(m).split('\n').join('\n  ')}`);
   }
   try {
-    await run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id,provider_id) VALUES (?,?,?,?,?,?,?,?)', m.kind, m.to, m.subject, m.text, status, error, m.candidateId ?? null, providerId);
+    await run('INSERT INTO email_log (kind,to_addr,subject,body_text,status,error,candidate_id,provider_id) VALUES (?,?,?,?,?,?,?,?)', m.kind, m.to, m.subject, logText(m), status, error, m.candidateId ?? null, providerId);
   } catch (e) {
     console.error('[mail] could not write email_log', e);
   }
