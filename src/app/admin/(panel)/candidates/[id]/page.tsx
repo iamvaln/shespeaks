@@ -24,10 +24,12 @@ export const dynamic = 'force-dynamic';
 const TRACK_STATE: Record<string, string> = { generee: 'Générée', retenue_coach: 'Retenue par la coach', ecartee: 'Écartée', choisie: 'Choisie' };
 const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach' };
 
+export const metadata = { title: 'Fiche candidate' };
 export default async function Fiche({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; err?: string }> }) {
   await requireCoach();
   const { id: rawId } = await params;
   const sp = await searchParams;
+  if (!/^[1-9]\d{0,8}$/.test(rawId)) notFound(); // hand-typed ids (abc, 1.5, 99999999999) are a 404, not a database error
   const id = Number(rawId);
   const c = await getCandidate(id);
   if (!c || !c.name) notFound();
@@ -52,6 +54,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     if (q.type === 'scale') return `${v} / 5`;
     return String(v);
   };
+  const question = (sid: 'profile' | 'diag2', code: string) => SCREENS[sid].questions.find((q) => q.code === code)!;
   const screens = flowFor(c.branch).filter((s) => SCREENS[s].kind === 'form' || SCREENS[s].kind === 'draft');
 
   return (
@@ -78,8 +81,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}</dd>
               <dt>Événement</dt><dd>{evLabel}</dd>
               <dt>Rôle</dt><dd>{c.role}</dd>
-              <dt>Ancienneté tech</dt><dd>{String(a['P7'] ?? '—').replace('lt1', 'Moins d’un an')}</dd>
-              <dt>Langue du talk</dt><dd>{labelOf(resolveOptions(SCREENS.diag2.questions.find((q) => q.code === 'P5')!, refs), String(a['P5'] ?? ''), 'fr')}</dd>
+              <dt>Ancienneté tech</dt><dd>{fmtVal(question('profile', 'P7'), a['P7'])}</dd>
+              <dt>Langue du talk</dt><dd>{fmtVal(question('diag2', 'P5'), a['P5'])}</dd>
               <dt>Inscrite le</dt><dd>{fmtDate(c.created_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
               <dt>Formulaire terminé</dt><dd>{c.completed_at ? fmtDate(c.completed_at, 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : <>Non — écran « {SCREENS[resumeScreen(c.branch, c.current_screen)]?.title.fr ?? c.current_screen} », {c.reminders_sent} relance(s) auto</>}</dd>
             </dl>
@@ -114,7 +117,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             <section className="card">
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <h2 style={{ margin: 0 }}>Revue des pistes de sujets</h2>
-                <form action={trackAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="btn btn-sm btn-ghost">Régénérer</button></form>
+                <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="btn btn-sm btn-ghost">Régénérer</button></form>
               </div>
               <p className="small" style={{ margin: '8px 0 16px' }}>
                 Relis chaque piste, ajuste le titre, écarte ou ajoute la tienne. « Choisir » fait de la piste le sujet de la candidate.
@@ -126,7 +129,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <div key={t.id} className={`track${t.state === 'choisie' ? ' chosen' : ''}${t.state === 'ecartee' ? ' discarded' : ''}`}>
                     <div className="tag">{TRACK_STATE[t.state]} · {ORIGIN[t.origin] ?? t.origin}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</div>
                     <form action={trackAction} className="inline">
-                      <input type="hidden" name="id" value={id} /><input type="hidden" name="track_id" value={t.id} />
+                      <input type="hidden" name="cid" value={id} /><input type="hidden" name="track_id" value={t.id} />
                       <input className="input" name="title" defaultValue={t.title} aria-label="Titre de la piste" style={{ flex: 1, minWidth: 220 }} />
                       <select className="select" name="format" defaultValue={t.format ?? 'talk'} aria-label="Format" style={{ width: 'auto' }}>
                         <option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option>
@@ -142,7 +145,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 ))}
               </div>
               <form action={trackAction} className="row" style={{ marginTop: 16, gap: 8 }}>
-                <input type="hidden" name="id" value={id} /><input type="hidden" name="op" value="add" />
+                <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
                 <input className="input" name="title" placeholder="Ajouter ma piste…" aria-label="Nouvelle piste" style={{ flex: 1, minWidth: 220 }} />
                 <select className="select" name="format" aria-label="Format" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
                 <button className="btn btn-sm">Ajouter</button>

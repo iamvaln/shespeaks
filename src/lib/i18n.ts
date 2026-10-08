@@ -1,6 +1,7 @@
 // UI dictionary for the public site (FR/EN). Admin space is French only.
 import type { Locale } from './questions.ts';
 import { typoFr } from './text.ts';
+import { TIME_ZONE } from './dates.ts';
 
 export const LOCALES: Locale[] = ['fr', 'en'];
 export const LANG_COOKIE = 'ss_lang';
@@ -442,6 +443,8 @@ export const t = (l: Locale): Dict => DICT[l];
 
 export function fmtDate(iso: string | null | undefined, l: Locale, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }): string {
   if (!iso) return '';
-  const d = new Date(iso.length <= 10 ? iso + 'T12:00:00Z' : iso.replace(' ', 'T') + 'Z');
-  return new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: 'UTC', ...opts }).format(d);
+  const dateOnly = iso.length <= 10;
+  const d = new Date(dateOnly ? iso + 'T12:00:00Z' : iso.replace(' ', 'T') + 'Z');
+  // A calendar date is the same everywhere; a timestamp is stored in UTC and shown on the programme's clock (Douala, UTC+1).
+  return new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: dateOnly ? 'UTC' : TIME_ZONE, ...opts }).format(d);
 }

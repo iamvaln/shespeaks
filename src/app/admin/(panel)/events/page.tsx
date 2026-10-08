@@ -24,6 +24,7 @@ function EventFields({ e }: { e?: Awaited<ReturnType<typeof listEvents>>[number]
   );
 }
 
+export const metadata = { title: 'Événements' };
 export default async function Events({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   await requireCoach();
   const sp = await searchParams;
@@ -31,8 +32,8 @@ export default async function Events({ searchParams }: { searchParams: Promise<{
   return (
     <>
       <h1>Événements</h1>
-      {sp.msg && <div className="flash">{sp.msg}</div>}
-      {sp.err && <div className="flash err">{sp.err}</div>}
+      {sp.msg && <div className="flash" role="status">{sp.msg}</div>}
+      {sp.err && <div className="flash err" role="alert">{sp.err}</div>}
       <p className="muted" style={{ marginBottom: 24 }}>Les candidates choisissent l’un de ces événements dans le formulaire ; ses dates alimentent leur plan de route et la page d’accueil (événements à venir). Un événement sans dates affiche « Dates à confirmer avec l’équipe SheSpeaks ».</p>
       <div className="stack">
         {events.map((e) => (

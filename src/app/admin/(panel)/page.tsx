@@ -3,18 +3,21 @@ import { candidateRows } from '@/lib/admin-data';
 import { STATUSES, getSetting, statusLabel } from '@/lib/db';
 import { eventName, listEvents } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
+import { countdown, daysUntil as daysBetween, todayIso } from '@/lib/dates';
 import { requireCoach } from '@/lib/auth';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
 
-const daysUntil = (iso: string | null) => (iso ? Math.ceil((new Date(iso + 'T23:59:59Z').getTime() - Date.now()) / 86_400_000) : null);
 const idleH = (s: string) => Math.round((Date.now() - new Date(s.replace(' ', 'T') + 'Z').getTime()) / 3_600_000);
 const idleLabel = (h: number) => (h < 48 ? `${h} h` : `${Math.round(h / 24)} j`);
 /** Long lists show their first lines only; the rest is one click away in the filtered candidates list. */
 const PREVIEW = 10;
 
+export const metadata = { title: 'Tableau de bord' };
 export default async function Dashboard() {
   await requireCoach();
+  const today = todayIso();
+  const daysUntil = (iso: string | null) => daysBetween(iso, today);
   const rows = await candidateRows();
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');
@@ -34,7 +37,7 @@ export default async function Dashboard() {
         <Link className={`stat${received.length ? ' hot' : ''}`} href="/admin/candidates?status=diagnostic_recu"><div className="n">{received.length}</div><div className="l">Intérêts à traiter</div></Link>
         <Link className="stat" href="/admin/candidates?status=en_cours"><div className="n">{stalled.length}</div><div className="l">Parcours en cours</div></Link>
         <div className="stat">
-          <div className="n">{left === null ? '—' : left >= 0 ? `J-${left}` : 'dépassée'}</div>
+          <div className="n">{left === null ? '—' : countdown(left, 'dépassée')}</div>
           <div className="l">Date limite interne · {deadline ? fmtDate(deadline, 'fr', { day: 'numeric', month: 'short' }) : ''}</div>
         </div>
       </div>
@@ -108,7 +111,7 @@ export default async function Dashboard() {
               return (
                 <li key={e.city}>
                   <strong>{eventName(e)}</strong> — {e.cfp_close_date ? fmtDate(e.cfp_close_date, 'fr') : 'à confirmer'}
-                  {d !== null && <div className="countdown" style={{ fontSize: 20 }}>{d >= 0 ? `J-${d}` : 'clôturé'}</div>}
+                  {d !== null && <div className="countdown" style={{ fontSize: 20 }}>{countdown(d, 'clôturé')}</div>}
                   <div className="small">{e.event_date ? `Événement : ${fmtDate(e.event_date, 'fr')}` : 'Événement : à confirmer'}</div>
                 </li>
               );

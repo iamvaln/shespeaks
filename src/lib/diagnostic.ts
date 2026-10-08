@@ -164,8 +164,11 @@ export async function completeDiagnostic(id: number) {
   if (c.completed_at) return;
   const a = await getAnswers(id);
   const refs = await getRefs();
-  await tx(async () => {
-    await run(`UPDATE candidates SET completed_at=(now() at time zone 'utc'), current_screen='done' WHERE id=?`, id);
+  const claimed = await tx(async () => {
+    // Claim the completion in one statement: of two simultaneous submissions (two devices, a retry), only one changes the row.
+    // The other waits for the first to commit, finds completed_at set and does nothing, so tracks and emails are never doubled.
+    const won = await run(`UPDATE candidates SET completed_at=(now() at time zone 'utc'), current_screen='done' WHERE id=? AND completed_at IS NULL`, id);
+    if (won === 0) return false;
     await setStatus(id, 'diagnostic_recu', 'système');
     const fmt = a['D4'] && a['D4'] !== 'ouverte' ? String(a['D4']) : null;
     if (c.branch === 'A' || c.branch === 'B') {
@@ -188,8 +191,9 @@ export async function completeDiagnostic(id: number) {
         id, String(a['D1-a'] ?? ''), String(a['D1-b'] ?? ''), String(a['D1-c'] ?? ''), fmt, String(a['D1-d'] ?? 'a_soumettre'),
       );
     }
+    return true;
   });
-  deferMail(() => notifyCompletion(id)); // after the response: the candidate never waits on email
+  if (claimed) deferMail(() => notifyCompletion(id)); // after the response: the candidate never waits on email
 }
 
 export async function coachRecipients(c: Candidate): Promise<{ name: string; email: string }[]> {

@@ -43,54 +43,54 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
 
   // --- database: needed everywhere ---------------------------------------------
   const db = resolveDatabaseUrl(env);
-  if (!db) add('error', ['DATABASE_URL'], 'Missing. Set DATABASE_URL (or let the Supabase integration provide POSTGRES_URL): the Transaction pooler string, port 6543.');
-  else if (!/^postgres(ql)?:\/\//i.test(db)) add('error', ['DATABASE_URL'], 'Must start with postgresql:// (check you copied the connection string, not the project URL).');
-  else if (/\[YOUR-PASSWORD\]|\[PASSWORD\]/i.test(db)) add('error', ['DATABASE_URL'], 'Still contains the [YOUR-PASSWORD] placeholder.');
+  if (!db) add('error', ['DATABASE_URL'], 'Manquante. Renseigne DATABASE_URL (ou laisse l’intégration Supabase fournir POSTGRES_URL) : la chaîne du Transaction pooler, port 6543.');
+  else if (!/^postgres(ql)?:\/\//i.test(db)) add('error', ['DATABASE_URL'], 'Doit commencer par postgresql:// (vérifie que tu as copié la chaîne de connexion, pas l’URL du projet).');
+  else if (/\[YOUR-PASSWORD\]|\[PASSWORD\]/i.test(db)) add('error', ['DATABASE_URL'], 'Contient encore le texte [YOUR-PASSWORD] : remplace-le par le mot de passe de la base.');
   else if (onVercel && !/:6543\b/.test(db)) {
-    add('warn', ['DATABASE_URL'], 'On Vercel, use the Supabase Transaction pooler (port 6543); direct connections (5432) exhaust connections under serverless.');
+    add('warn', ['DATABASE_URL'], 'Sur Vercel, utilise le Transaction pooler de Supabase (port 6543) : les connexions directes (5432) saturent la base en serverless.');
   }
 
   if (!opts.production) return out; // everything below only matters when real users are involved
 
   // --- public URL ------------------------------------------------------------------
   const app = resolveAppUrl(env);
-  if (app.source === 'default') add('error', ['APP_URL'], 'Missing. Links in emails (resume, coach login) would point to localhost.');
-  else if (/localhost|127\.0\.0\.1/.test(app.url)) add('error', ['APP_URL'], 'Points to localhost in production: emailed links would not work for candidates.');
-  else if (app.source === 'vercel') add('warn', ['APP_URL'], `Not set: emailed links will use ${app.url}. Set APP_URL to your real domain.`);
-  else if (!/^https:\/\//i.test(app.url)) add('warn', ['APP_URL'], 'Should start with https://.');
+  if (app.source === 'default') add('error', ['APP_URL'], 'Manquante. Les liens des emails (reprise du parcours, connexion des coachs) pointeraient vers localhost.');
+  else if (/localhost|127\.0\.0\.1/.test(app.url)) add('error', ['APP_URL'], 'Pointe vers localhost en production : les liens envoyés par email ne fonctionneraient pas pour les candidates.');
+  else if (app.source === 'vercel') add('warn', ['APP_URL'], `Non renseignée : les liens des emails utiliseront ${app.url}. Renseigne APP_URL avec ton vrai domaine.`);
+  else if (!/^https:\/\//i.test(app.url)) add('warn', ['APP_URL'], 'Doit commencer par https://.');
 
   // --- secrets -----------------------------------------------------------------------
-  if (!isSet(env.SESSION_SECRET)) add('error', ['SESSION_SECRET'], 'Missing or still "change-me". Generate one: openssl rand -hex 32');
-  else if ((env.SESSION_SECRET ?? '').length < 16) add('error', ['SESSION_SECRET'], 'Too short (use at least 16 characters, ideally 32+ random bytes in hex).');
-  if (!isSet(env.CRON_SECRET)) add('error', ['CRON_SECRET'], 'Missing or still "change-me": the reminder cron endpoint refuses to run, so no reminders would ever be sent.');
+  if (!isSet(env.SESSION_SECRET)) add('error', ['SESSION_SECRET'], 'Manquant ou encore « change-me ». Génère-en un : openssl rand -hex 32');
+  else if ((env.SESSION_SECRET ?? '').length < 16) add('error', ['SESSION_SECRET'], 'Trop court (au moins 16 caractères, idéalement 32 octets aléatoires en hexadécimal).');
+  if (!isSet(env.CRON_SECRET)) add('error', ['CRON_SECRET'], 'Manquant ou encore « change-me » : la route des relances refuse de s’exécuter, donc aucune relance ne partirait.');
 
   // --- photo storage -----------------------------------------------------------------
   const sbUrl = isSet(env.SUPABASE_URL);
   const sbKey = isSet(env.SUPABASE_SERVICE_ROLE_KEY);
   if (sbUrl !== sbKey) {
-    add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Set both or neither: one is missing, so photo uploads would break.');
+    add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'À renseigner ensemble ou pas du tout : il en manque une, les dépôts de photos ne fonctionneraient pas.');
   } else if (!sbUrl) {
-    if (onVercel) add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Missing. Vercel has no persistent disk, so speaker photos cannot be stored.');
-    else add('warn', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Not set: photos are written to the local disk (DATA_DIR), which is not durable on most hosts.');
+    if (onVercel) add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Manquantes. Vercel n’a pas de disque persistant : les photos de speaker ne pourraient pas être conservées.');
+    else add('warn', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Non renseignées : les photos sont écrites sur le disque local (DATA_DIR), ce qui n’est pas durable chez la plupart des hébergeurs.');
   } else if (!/^https:\/\/.+/i.test(env.SUPABASE_URL!.trim())) {
-    add('error', ['SUPABASE_URL'], 'Must be the project URL, e.g. https://xxxx.supabase.co');
+    add('error', ['SUPABASE_URL'], 'Doit être l’URL du projet, par exemple https://xxxx.supabase.co');
   }
 
   // --- first coach -------------------------------------------------------------------
-  if (!isSet(env.ADMIN_EMAIL)) add('warn', ['ADMIN_EMAIL'], 'Not set: if no coach exists yet, nobody can log in to the admin. (Ignore once a coach has been created.)');
+  if (!isSet(env.ADMIN_EMAIL)) add('warn', ['ADMIN_EMAIL'], 'Non renseigné : tant qu’aucune coach n’existe, personne ne peut se connecter à l’espace coach. (À ignorer une fois la première coach créée.)');
 
   // --- email (Resend) -------------------------------------------------------------------
   if (!isSet(env.RESEND_API_KEY)) {
-    add('warn', ['RESEND_API_KEY'], 'Not set: confirmations, reminders and coach notifications are only recorded in Admin → Emails, never sent. Coach login links will not be delivered.');
+    add('warn', ['RESEND_API_KEY'], 'Non renseignée : les confirmations, relances et notifications aux coachs sont seulement enregistrées dans l’onglet Emails, jamais envoyées. Les liens de connexion des coachs ne seront pas livrés.');
   } else {
-    if (!/^re_/.test(env.RESEND_API_KEY!.trim())) add('error', ['RESEND_API_KEY'], 'Resend API keys start with "re_" (Resend dashboard → API Keys).');
+    if (!/^re_/.test(env.RESEND_API_KEY!.trim())) add('error', ['RESEND_API_KEY'], 'Les clés API Resend commencent par « re_ » (tableau de bord Resend → API Keys).');
     const from = env.MAIL_FROM?.trim();
     const addr = from ? (/<([^>]+)>/.exec(from)?.[1] ?? from).trim() : '';
-    if (!from) add('error', ['MAIL_FROM'], 'Required with Resend: a sender on a domain you verified in Resend, e.g. "SheSpeaks <no-reply@yourdomain.com>".');
-    else if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test(addr)) add('error', ['MAIL_FROM'], 'Not a valid sender address. Expected: SheSpeaks <no-reply@yourdomain.com>');
-    else if (/@resend\.dev$/i.test(addr)) add('warn', ['MAIL_FROM'], 'resend.dev is Resend\'s test sender: it can only deliver to the email of your own Resend account. Verify your domain and use it here.');
+    if (!from) add('error', ['MAIL_FROM'], 'Obligatoire avec Resend : un expéditeur sur un domaine vérifié dans Resend, par exemple « SheSpeaks <no-reply@tondomaine.com> ».');
+    else if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test(addr)) add('error', ['MAIL_FROM'], 'Adresse d’expéditeur non valide. Format attendu : SheSpeaks <no-reply@tondomaine.com>');
+    else if (/@resend\.dev$/i.test(addr)) add('warn', ['MAIL_FROM'], 'resend.dev est l’expéditeur de test de Resend : il ne peut écrire qu’à l’adresse de ton propre compte Resend. Vérifie ton domaine et utilise-le ici.');
     if (env.MAIL_REPLY_TO?.trim() && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test((/<([^>]+)>/.exec(env.MAIL_REPLY_TO)?.[1] ?? env.MAIL_REPLY_TO).trim())) {
-      add('warn', ['MAIL_REPLY_TO'], 'Not a valid address; replies would not reach a coach.');
+      add('warn', ['MAIL_REPLY_TO'], 'Adresse non valide : les réponses n’atteindraient aucune coach.');
     }
   }
   return out;
@@ -99,9 +99,9 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
 export const hasErrors = (issues: EnvIssue[]) => issues.some((i) => i.level === 'error');
 
 export function formatIssues(issues: EnvIssue[]): string {
-  if (!issues.length) return 'Environment check: all good.';
+  if (!issues.length) return 'Vérification de l’environnement : tout est en ordre.';
   return [
-    'Environment check:',
-    ...issues.map((i) => `  ${i.level === 'error' ? '✖ ERROR' : '⚠ warn '}  ${i.vars.join(' + ')} — ${i.message}`),
+    'Vérification de l’environnement :',
+    ...issues.map((i) => `  ${i.level === 'error' ? '✖ ERREUR' : '⚠ alerte'}  ${i.vars.join(' + ')} — ${i.message}`),
   ].join('\n');
 }

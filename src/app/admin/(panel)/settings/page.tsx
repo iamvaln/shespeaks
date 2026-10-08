@@ -8,6 +8,7 @@ import { saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Paramètres' };
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   await requireCoach();
   const sp = await searchParams;
@@ -27,7 +28,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   return (
     <>
       <h1>Paramètres</h1>
-      {sp.msg && <div className="flash">{sp.msg}</div>}
+      {sp.msg && <div className="flash" role="status">{sp.msg}</div>}
       <section className="card stack-sm" style={{ maxWidth: 820, marginBottom: 24 }} aria-label="Configuration du serveur">
         <h2 style={{ margin: 0 }}>Configuration du serveur</h2>
         {migrations && migrations.length > 0 ? (

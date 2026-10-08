@@ -300,8 +300,9 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .confirm p { margin: 0; color: var(--ink-soft); }
 
 /* ================= ADMIN (theme clair) ================= */
-.admin-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+.admin-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; } /* minmax(0,…): a wide table scrolls inside its own box instead of stretching the page */
 .admin-top { background: var(--night); color: #F7F3EC; }
+.admin-top :focus-visible { outline-color: var(--amber); } /* the dark header needs the light ring */
 .admin-top .container { max-width: 1280px; display: flex; align-items: center; gap: var(--s6); flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
 .admin-top img { height: 36px; display: block; }
 .admin-nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
@@ -342,6 +343,7 @@ table.t td.num, table.t th.num { text-align: center; }
 .admin-main .btn-sm { min-height: 32px; padding: 4px 14px; }
 .admin-main .btn-ghost { color: var(--ink); border-color: var(--ink-muted); }
 .admin-cols { display: grid; gap: var(--s6); }
+.admin-cols > * { min-width: 0; }
 @media (min-width: 980px) { .admin-cols { grid-template-columns: 1.6fr 1fr; align-items: start; } }
 .kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; font-size: 15px; }
 .kv dt { color: var(--ink-muted); } .kv dd { margin: 0; overflow-wrap: anywhere; } .kv dd a { overflow-wrap: anywhere; }
