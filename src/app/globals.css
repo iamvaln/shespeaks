@@ -366,3 +366,34 @@ table.t td.num, table.t th.num { text-align: center; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 html:has(.admin-root), body:has(.admin-root) { background: #F4F3F7; }
 .admin-root { background: var(--surface); color: var(--ink); min-height: 100vh; }
+
+/* Landing refresh: bright editorial sections, restrained amber, brand-night closing. */
+.landing-header { background: #fff; border-bottom-color: #E6E4EC; }
+.landing-header .site-nav a { color: #2E3350; }
+.landing-header .site-nav a:hover { color: #111528; background: #F4F3F7; }
+.landing-header .lang-btn { color: #111528; border-color: #D9D7E2; }
+.landing-hero { background: #fff; padding-block: clamp(52px, 7vw, 100px); }
+.landing-hero .hero-grid { gap: clamp(32px, 5vw, 80px); }
+.landing-hero .hero-copy { max-width: 600px; }
+.landing-hero .hero-copy .label-s { color: #8A5300; margin-bottom: 22px; }
+.landing-hero .display-xl { color: #111528; font-size: clamp(44px, 6vw, 76px); max-width: 13ch; }
+.landing-hero .lead { color: #4F5570; max-width: 45ch; }
+.landing-hero .cta-row { margin-top: 30px; }
+.hero-visual { position: relative; min-height: 360px; border-radius: 18px; overflow: hidden; background: radial-gradient(ellipse at 62% 28%, #424965 0%, #1A1F36 38%, #111528 76%); display: flex; align-items: end; padding: 34px; }
+.hero-stage-ellipse { position: absolute; width: 74%; aspect-ratio: 1; border: 4px solid #F5A524; border-radius: 50%; top: -35%; right: -26%; opacity: .85; }
+.hero-visual-label { position: relative; color: #F7F3EC; font-size: clamp(26px, 3vw, 42px); font-weight: 800; line-height: 1.1; max-width: 10ch; }
+@media (min-width: 900px) { .landing-hero .hero-grid { grid-template-columns: 1.1fr .9fr; } .hero-visual { min-height: 450px; } }
+@media (max-width: 899px) { .hero-visual { min-height: 260px; } }
+.band-light { background: #fff; }
+.band-light.band-alt { background: #F4F3F7; }
+.stage .slide { flex-basis: min(78%, 360px); }
+.stage .slide-media { aspect-ratio: 16 / 10; }
+.stage .slider-wrap { margin-top: 32px; }
+.band-light .label-s { color: #8A5300; }
+.band-light .section-lead { color: #4F5570; }
+.band-light .ring-num { background: #fff; }
+.final-cta { background: #111528; color: #F7F3EC; }
+.final-cta .section-lead { color: #C9CCDA; }
+.site-footer { background: #111528; color: #F7F3EC; }
+.site-footer .footer-link { color: #C9CCDA; }
+.site-footer .footer-link:hover { color: #fff; }
