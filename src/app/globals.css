@@ -151,7 +151,7 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 /* events */
 .event-grid { display: grid; gap: var(--s6); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); margin-top: var(--s10); align-items: stretch; }
 .event-card { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
-.event-poster { width: 100%; aspect-ratio: 4 / 5; height: auto; object-fit: contain; display: block; background: var(--night); }
+.event-poster { width: 100%; height: auto; display: block; background: var(--night); }
 .event-art { aspect-ratio: 16 / 9; background: var(--night); color: var(--ink); display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: var(--s6); border-bottom: 1px solid var(--line); }
 .event-art strong { font-size: clamp(24px, 3vw, 32px); line-height: 1.1; font-weight: 800; font-stretch: 112%; letter-spacing: -0.02em; }
 .event-body { padding: var(--s6); display: grid; gap: var(--s4); align-content: start; flex: 1; }

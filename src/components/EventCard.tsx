@@ -21,7 +21,7 @@ export function EventCard({ e, locale, today, interestHref }: { e: EventRow; loc
       ) : (
         <div className="event-art" data-theme="nuit" aria-hidden="true">
           <span className="label-s">{d.cfpLabel}</span>
-          <strong>{e.event_date ? fmtDay(e.event_date, locale) : d.toConfirm}</strong>
+          <strong>{e.event_date ? fmtDay(e.event_date, locale) : e.name}</strong>
         </div>
       )}
       <div className="event-body">
