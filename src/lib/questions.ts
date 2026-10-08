@@ -201,7 +201,7 @@ const diag1: Screen = {
       type: 'scale',
       required: true,
       label: L('À quel point te sens-tu à l’aise à l’oral ?', 'How comfortable do you feel speaking in public?'),
-      scaleLabels: [L('1 = le trac total', '1 = total stage fright'), L('5 = très à l’aise', '5 = very comfortable')],
+      scaleLabels: [L('1 = pas du tout à l’aise', '1 = not comfortable at all'), L('5 = très à l’aise', '5 = very comfortable')],
     },
     {
       code: 'D3',
