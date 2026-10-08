@@ -96,8 +96,7 @@ const fr = {
         ['Je n’ai pas encore de sujet.', 'Ce n’est pas un problème. Le formulaire fait le point sur tes intérêts et ton quotidien ; ta coach te propose ensuite une sélection d’idées de sujets et vous choisissez ensemble.'],
         ['Ma candidature sera-t-elle forcément retenue ?', 'Ce sont les organisateurs de chaque événement qui choisissent les talks. SheSpeaks t’aide à préparer la meilleure candidature ; si elle n’est pas retenue, ta coach peut t’orienter vers un autre événement.'],
         ['En quelle langue puis-je présenter ?', 'En français, en anglais, ou les deux. Le formulaire existe aussi dans les deux langues.'],
-        ['Quels événements ?', 'Les prochains événements sont listés plus haut : DevFest Douala, DevFest Yaoundé… Si tu vises un autre événement tech, indique-le dans le formulaire : ta coach complète les dates avec toi.'],
-        ['Qui porte SheSpeaks ?', 'SheSpeaks est une initiative de Valentine Nguemne, rattachée au département Girls de Techies Connect’, aux côtés de SheBuilds.'],
+        ['Quels événements ?', 'Tout événement tech : talk, workshop, talk en ligne, keynote… Les prochains DevFest sont listés plus haut. Si tu vises un autre événement, indique-le dans le formulaire : ta coach complète les dates avec toi.'],
       ],
     },
     final: {
@@ -288,8 +287,7 @@ const en: Dict = {
         ['I don’t have a topic yet.', 'That’s fine. The form asks about your interests and daily work; your coach then suggests a selection of topic ideas and you choose together.'],
         ['Will my application definitely be accepted?', 'The organisers of each event choose the talks. SheSpeaks helps you prepare the strongest application; if it is not accepted, your coach can point you to another event.'],
         ['Which language can I present in?', 'French, English, or both. The form is also available in both languages.'],
-        ['Which events?', 'The upcoming events are listed above: DevFest Douala, DevFest Yaoundé… If you aim at another tech event, tell us in the form: your coach fills in the dates with you.'],
-        ['Who runs SheSpeaks?', 'SheSpeaks is an initiative by Valentine Nguemne, part of the Girls department of Techies Connect’, alongside SheBuilds.'],
+        ['Which events?', 'Any tech event: talk, workshop, online talk, keynote… The upcoming DevFests are listed above. If you are aiming at another event, tell us in the form: your coach fills in the dates with you.'],
       ],
     },
     final: {
