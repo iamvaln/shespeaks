@@ -1,6 +1,7 @@
 import { listCoaches } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
 import { requireCoach } from '@/lib/auth';
+import { initials } from '@/lib/text';
 import { inviteCoachAction, toggleCoachAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -11,32 +12,52 @@ export default async function Coaches({ searchParams }: { searchParams: Promise<
   const me = await requireCoach();
   const coaches = await listCoaches();
   return (
-    <>
-      <h1>Coachs</h1>
-      {sp.msg && <div className="flash" role="status">{sp.msg}</div>}
-      {sp.err && <div className="flash err" role="alert">{sp.err}</div>}
-      <div className="table-wrap" style={{ marginBottom: 32 }}>
-        <table className="t">
-          <thead><tr><th>Nom</th><th>Email</th><th>WhatsApp</th><th className="num">Candidates suivies</th><th>Accès</th><th></th></tr></thead>
-          <tbody>{coaches.map((c) => (
-            <tr key={c.id}>
-              <td><strong>{c.name}</strong>{c.id === me.id ? <span className="small"> (toi)</span> : null}<div className="small">depuis le {fmtDate(c.created_at, 'fr')}</div></td>
-              <td>{c.email}</td><td>{c.whatsapp ?? '—'}</td><td className="num">{c.load}</td>
-              <td><span className={`status ${c.active ? 's-retenue' : 's-non_retenue'}`}>{c.active ? 'Actif' : 'Désactivé'}</span></td>
-              <td>{c.id !== me.id && <form action={toggleCoachAction}><input type="hidden" name="id" value={c.id} /><button className="btn btn-sm btn-ghost">{c.active ? 'Désactiver' : 'Réactiver'}</button></form>}</td>
-            </tr>))}</tbody>
-        </table>
-      </div>
-      <form action={inviteCoachAction} className="card stack" style={{ maxWidth: 640 }}>
-        <h2>Inviter une coach</h2>
-        <p className="small">Elle reçoit un email avec un lien de connexion. Ensuite, elle se connecte avec son email. Tu pourras lui assigner des candidates depuis leur fiche.</p>
-        <div className="grid grid-2">
-          <label className="small">Nom<input className="input" name="name" required /></label>
-          <label className="small">Email<input className="input" type="email" name="email" required /></label>
-          <label className="small">WhatsApp (facultatif)<input className="input" name="whatsapp" /></label>
+    <div className="a-page" style={{ gap: 20 }}>
+      <h1 className="a-h1" style={{ margin: 0 }}>Coachs</h1>
+      {sp.msg && <div className="flash" role="status" style={{ margin: 0 }}>{sp.msg}</div>}
+      {sp.err && <div className="flash err" role="alert" style={{ margin: 0 }}>{sp.err}</div>}
+
+      <section className="a-card is-flush" aria-label="Coachs">
+        <div role="table" aria-label="Coachs" style={{ ['--cols' as string]: 'minmax(0,2.2fr) minmax(0,2fr) minmax(0,1.3fr) 96px 110px 130px' }}>
+          <div role="row" className="a-th">
+            <span role="columnheader">Nom</span><span role="columnheader" className="a-hide-s">Email</span><span role="columnheader" className="a-hide-s">WhatsApp</span><span role="columnheader" className="a-hide-s">Candidates</span><span role="columnheader">Accès</span><span role="columnheader" aria-label="Action" />
+          </div>
+          {coaches.map((c) => (
+            <div role="row" className="a-tr" key={c.id}>
+              <div role="cell" className="a-cell-name">
+                <span className={`a-coach${c.id === me.id ? ' is-me' : ''}`} aria-hidden="true">{initials(c.name)}</span>
+                <span style={{ minWidth: 0 }}>
+                  <strong className="a-name">{c.name}{c.id === me.id ? <span className="a-muted" style={{ fontWeight: 400 }}> (toi)</span> : null}</strong>
+                  <span className="a-sub">depuis le {fmtDate(c.created_at, 'fr', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                  <span className="a-sub a-only-s">{c.email} · {c.load} candidate{c.load > 1 ? 's' : ''}</span>
+                </span>
+              </div>
+              <span role="cell" className="a-trunc a-hide-s">{c.email}</span>
+              <span role="cell" className="a-trunc a-hide-s">{c.whatsapp ?? '—'}</span>
+              <span role="cell" className="a-hide-s" style={{ fontVariantNumeric: 'tabular-nums' }}>{c.load}</span>
+              <span role="cell"><span className={`a-pill ${c.active ? 'is-green' : 'is-red'}`}>{c.active ? 'Actif' : 'Désactivé'}</span></span>
+              <span role="cell">
+                {c.id !== me.id && (
+                  <form action={toggleCoachAction}><input type="hidden" name="id" value={c.id} /><button className="a-btn is-ghost is-sm">{c.active ? 'Désactiver' : 'Réactiver'}</button></form>
+                )}
+              </span>
+            </div>
+          ))}
         </div>
-        <div><button className="btn">Envoyer l’invitation</button></div>
+      </section>
+
+      <form action={inviteCoachAction} className="a-card a-stack" style={{ maxWidth: 640 }}>
+        <div>
+          <h2 className="a-h2">Inviter une coach</h2>
+          <p className="a-muted" style={{ margin: '4px 0 0' }}>Elle reçoit un email avec un lien de connexion. Ensuite, elle se connecte avec son email. Tu pourras lui assigner des candidates depuis leur fiche.</p>
+        </div>
+        <div className="a-grid-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <label className="a-label">Nom<input className="a-input" name="name" required /></label>
+          <label className="a-label">Email<input className="a-input" type="email" name="email" required /></label>
+          <label className="a-label">WhatsApp (facultatif)<input className="a-input" name="whatsapp" /></label>
+        </div>
+        <div><button className="a-btn">Envoyer l’invitation</button></div>
       </form>
-    </>
+    </div>
   );
 }
