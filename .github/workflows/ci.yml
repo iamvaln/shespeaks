@@ -82,8 +82,10 @@ jobs:
           SESSION_SECRET: ci-session-secret-0123456789abcdef
           CRON_SECRET: ci-cron-secret-0123456789abcdef
 
-      - name: Smoke test (the four diagnostic branches, photo rules, resume link)
+      - name: Smoke test (the four diagnostic branches, photo rules, coach space, resume link)
         run: node scripts/smoke.mjs
+        env:
+          SESSION_SECRET: ci-session-secret-0123456789abcdef
 
       - name: Reminder endpoint is protected
         run: |

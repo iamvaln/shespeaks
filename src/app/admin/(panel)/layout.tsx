@@ -1,25 +1,23 @@
 import { requireCoach } from '@/lib/auth';
-import { AdminNav } from '@/components/AdminNav';
+import { countToProcess } from '@/lib/admin-data';
+import { initials } from '@/lib/text';
+import { AdminShell } from '@/components/AdminShell';
+import { Icon } from '@/components/admin-icons';
 import { logoutAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
   const coach = await requireCoach();
+  const toProcess = await countToProcess();
   return (
-    <div className="admin-shell">
-      <header className="admin-top">
-        <div className="container">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/shespeaks-logo-nuit.svg" alt="SheSpeaks" height={36} />
-          <AdminNav />
-          <form action={logoutAction} className="admin-user">
-            <span>{coach.name}</span>
-            <button type="submit">Déconnexion</button>
-          </form>
-        </div>
-      </header>
-      <main className="admin-main"><div className="container">{children}</div></main>
-    </div>
+    <AdminShell
+      toProcess={toProcess}
+      coachName={coach.name}
+      initials={initials(coach.name)}
+      signOut={<form action={logoutAction}><button type="submit" className="app-signout" aria-label="Se déconnecter"><Icon name="logout" /></button></form>}
+    >
+      {children}
+    </AdminShell>
   );
 }

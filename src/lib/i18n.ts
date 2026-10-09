@@ -1,6 +1,7 @@
 // UI dictionary for the public site (FR/EN). Admin space is French only.
 import type { Locale } from './questions.ts';
 import { typoFr } from './text.ts';
+import { TIME_ZONE } from './dates.ts';
 
 export const LOCALES: Locale[] = ['fr', 'en'];
 export const LANG_COOKIE = 'ss_lang';
@@ -442,6 +443,10 @@ export const t = (l: Locale): Dict => DICT[l];
 
 export function fmtDate(iso: string | null | undefined, l: Locale, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }): string {
   if (!iso) return '';
-  const d = new Date(iso.length <= 10 ? iso + 'T12:00:00Z' : iso.replace(' ', 'T') + 'Z');
-  return new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: 'UTC', ...opts }).format(d);
+  const dateOnly = iso.length <= 10;
+  const d = new Date(dateOnly ? iso + 'T12:00:00Z' : iso.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return iso; // a stray value (« 12/05/2026 » typed in an old browser) is shown as it is, never an error page
+  // A calendar date is the same everywhere; a timestamp is stored in UTC and shown on the programme's clock (Douala, UTC+1).
+  const out = new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: dateOnly ? 'UTC' : TIME_ZONE, ...opts }).format(d);
+  return l === 'fr' ? out.replace(/(^|\s)1(?= [a-zéûô])/, '$11er') : out; // « 1er novembre »
 }

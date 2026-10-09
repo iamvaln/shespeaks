@@ -33,3 +33,12 @@ export function textLocale(talkLanguage: unknown, ui: Locale): Locale {
 
 /** French typography: a no-break space before : ? ! ; » and after «, so punctuation never starts a line. */
 export const typoFr = (s: string): string => s.replace(/ ([:?!;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
+
+/** Two letters for an avatar: first letters of the first and last words (« Valentine Nguemne » → VN). */
+export function initials(name: string): string {
+  const w = name.trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
+  const first = [...w[0]][0];
+  const last = w.length > 1 ? [...w[w.length - 1]][0] : '';
+  return (first + last).toLocaleUpperCase('fr');
+}

@@ -5,6 +5,7 @@ import { generateTracks } from '../src/lib/topics.ts';
 import { assembleAbstract } from '../src/lib/abstract.ts';
 import { autoChecks } from '../src/lib/review.ts';
 import { buildRoadmap } from '../src/lib/roadmap.ts';
+import { initials } from '../src/lib/text.ts';
 
 test('flow: 3 common screens, then the two screens of the branch (no photo screen)', () => {
   assert.deepEqual(flowFor('A'), ['profile', 'diag1', 'diag2', 'a1', 'a2']);
@@ -112,4 +113,11 @@ test('roadmap: personalised actions and next action', () => {
   assert.match(d.nextAction, /Félicitations/);
   assert.equal(stars(1), 2); // not affected
   assert.equal(d.steps[0].actions.filter((x) => x.personalized).length, 1); // "rédiger candidature" skipped when already accepted
+});
+
+test('initials: first and last word, accents kept', () => {
+  assert.equal(initials('Valentine Nguemne'), 'VN');
+  assert.equal(initials('  chantal  '), 'C');
+  assert.equal(initials('Éloïse Ngo Bayiha'), 'ÉB');
+  assert.equal(initials(''), '?');
 });

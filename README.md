@@ -36,7 +36,7 @@ npm install
 npm run db:setup                # creates tables, seeds the DevFest calendar and the first coach
 npm run dev                     # http://localhost:3000  — admin: /admin
 npm test                        # unit tests (pure logic)
-node scripts/smoke.mjs          # API journey for the 4 branches (server must be running)
+node scripts/smoke.mjs          # API journey for the 4 branches (server must be running); add SESSION_SECRET=<the server's secret> to run the coach-space checks too
 ```
 
 Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only).
