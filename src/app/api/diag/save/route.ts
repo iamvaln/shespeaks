@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     if (!r.ok) return NextResponse.json({ ok: false, errors: {}, fatal: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(r.retryAfterSec) } });
   }
   const locale = await getLocale();
-  const res = await submitScreen(token, body.screen, body.values, locale);
+  const res = await submitScreen(token, body.screen, body.values, locale, requestIp(req.headers));
   if (!res.ok) return NextResponse.json(res, { status: res.fatal === 'rate_limited' || res.fatal === 'email_rate_limited' ? 429 : res.fatal ? 409 : 422 });
   const out = NextResponse.json({ ok: true, next: res.next, completed: res.completed });
   if (res.created) out.cookies.set(TOKEN_COOKIE, res.token, tokenCookieOptions);

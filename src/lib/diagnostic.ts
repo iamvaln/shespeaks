@@ -9,7 +9,7 @@ import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
 import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
-import { checkCreateEmail } from './ratelimit.ts';
+import { checkChangeRate, checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
 export const BRANCH_LABEL: Record<Branch, string> = {
@@ -50,7 +50,7 @@ export type SubmitResult =
 /**
  * Persist one screen (autosave at every step). `token` null = no candidate yet (only the profile screen can create one).
  */
-export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale): Promise<SubmitResult> {
+export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown'): Promise<SubmitResult> {
   const screen = SCREENS[screenId];
   if (!screen) return { ok: false, errors: {}, fatal: 'unknown_screen' };
   const refs = await getRefs();
@@ -81,8 +81,11 @@ export async function submitScreen(token: string | null, screenId: string, value
   // same mailbox again (Back, then Next) costs nothing.
   if (screenId === 'profile') {
     const email = String(merged['P4'] ?? '').trim();
-    if (email && (!c || mailboxKey(email) !== mailboxKey(c.email ?? '')) && !(await checkCreateEmail(email)).ok) {
-      return { ok: false, errors: {}, fatal: 'email_rate_limited' };
+    const changing = !!c && mailboxKey(email) !== mailboxKey(c.email ?? '');
+    if (email && (!c || changing)) {
+      // a change needs no new cookie, so it has its own ceilings, charged before the mailbox so a refusal there spares the target's allowance
+      if (c && !(await checkChangeRate(ip, c.id)).ok) return { ok: false, errors: {}, fatal: 'rate_limited' };
+      if (!(await checkCreateEmail(email)).ok) return { ok: false, errors: {}, fatal: 'email_rate_limited' };
     }
   }
 

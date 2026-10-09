@@ -461,6 +461,8 @@ export function resolveOptions(q: Question, refs: Refs): Option[] {
 
 const PHONE_RE = /^\+?[0-9][0-9 ().-]{6,19}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Shape of an email address. The length is checked first: the pattern backtracks on very long input (254 is RFC 5321's limit). */
+export const isEmail = (v: string): boolean => v.length <= 254 && EMAIL_RE.test(v);
 
 export type FieldErrors = Record<string, string>;
 
@@ -484,7 +486,7 @@ export function validateScreen(screen: Screen, a: Answers, refs: Refs): FieldErr
         if (typeof v !== 'string' || !PHONE_RE.test(v.trim())) errors[q.code] = 'invalid_phone';
         break;
       case 'email':
-        if (typeof v !== 'string' || v.trim().length > 254 || !EMAIL_RE.test(v.trim())) errors[q.code] = 'invalid_email'; // length first: the pattern backtracks on very long input
+        if (typeof v !== 'string' || !isEmail(v.trim())) errors[q.code] = 'invalid_email';
         break;
       case 'single': {
         const ok = resolveOptions(q, refs).some((o) => o.value === v);

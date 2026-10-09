@@ -51,8 +51,9 @@ after(async () => {
 /** An unfinished candidate, idle for three days, with an address. */
 async function candidate(over = {}) {
   const token = crypto.randomBytes(8).toString('hex');
+  const email = over.email ?? token + '@example.org';
   const [{ id }] = await raw`insert into candidates (token, name, email, status, current_screen, last_activity_at)
-    values (${token}, ${'Test ' + token}, ${token + '@example.org'}, 'en_cours', 'c2', now() at time zone 'utc' - interval '3 days') returning id`;
+    values (${token}, ${'Test ' + token}, ${email}, 'en_cours', 'c2', now() at time zone 'utc' - interval '3 days') returning id`;
   if (over.completed) await raw`update candidates set completed_at = now() at time zone 'utc', status = 'diagnostic_recu', current_screen = 'done' where id = ${id}`;
   if (over.status) await raw`update candidates set status = ${over.status} where id = ${id}`;
   return id;
@@ -97,4 +98,20 @@ test('the run reminds an unfinished candidate once per slot and skips one who fi
   const again = await reminders.runReminders();
   assert.ok(!again.due.some((d) => d.id === waiting), 'a second run right after finds nothing due');
   assert.deepEqual(await mails(waiting), ['candidate_reminder_1']);
+});
+
+test('candidates parked on one mailbox get one reminder email per run, and every one of them is still claimed and reported to the coaches', { skip }, async () => {
+  const a = await candidate({ email: 'Parked.Person+one@gmail.com' });
+  const b = await candidate({ email: 'parkedperson+two@googlemail.com' });
+  const c = await candidate({ email: 'parkedperson@gmail.com' });
+  const other = await candidate({ email: 'someone-else@example.org' });
+  const report = await reminders.runReminders();
+  const ids = report.due.map((d) => d.id);
+  for (const id of [a, b, c, other]) assert.ok(ids.includes(id), `candidate ${id} is reported (coach digest)`);
+  const sent = (await Promise.all([a, b, c].map(mails))).flat();
+  assert.deepEqual(sent, ['candidate_reminder_1'], 'one email for the three candidates of that mailbox');
+  assert.deepEqual(await mails(other), ['candidate_reminder_1'], 'another mailbox is not affected');
+  for (const id of [a, b, c]) assert.equal((await row(id)).reminders_sent, 1, `candidate ${id} is claimed`);
+  const again = await reminders.runReminders();
+  assert.ok(![a, b, c].some((id) => again.due.some((d) => d.id === id)), 'none of them is due again right away');
 });

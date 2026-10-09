@@ -87,5 +87,17 @@ export const CREATE_MAX_PER_EMAIL = 3; // candidates created for one mailbox («
 export const checkCreateIp = (ip: string): Promise<RateResult> =>
   hit({ bucket: 'create:ip', key: rateKey(ipBucket(ip)), max: CREATE_MAX_PER_IP, windowSec: CREATE_WINDOW_SEC });
 
+// Changing the address of an existing candidate also uses the mailbox allowance (the reminders and the confirmation follow the
+// address on the profile), but it needs no new cookie, so it has its own ceilings: without them one cookie could use up the
+// allowance of any number of mailboxes at API speed.
+export const CHANGE_MAX_PER_CANDIDATE = 5; // address changes per candidate and day
+export const CHANGE_MAX_PER_IP = 20; // address changes from one address and hour
+
+export async function checkChangeRate(ip: string, candidateId: number): Promise<RateResult> {
+  const byCandidate = await hit({ bucket: 'change:candidate', key: rateKey(`candidate:${candidateId}`), max: CHANGE_MAX_PER_CANDIDATE, windowSec: 86400 });
+  if (!byCandidate.ok) return byCandidate;
+  return hit({ bucket: 'change:ip', key: rateKey(ipBucket(ip)), max: CHANGE_MAX_PER_IP, windowSec: CREATE_WINDOW_SEC });
+}
+
 export const checkCreateEmail = (email: string): Promise<RateResult> =>
   hit({ bucket: 'create:email', key: rateKey(mailboxKey(email)), max: CREATE_MAX_PER_EMAIL, windowSec: CREATE_WINDOW_SEC });

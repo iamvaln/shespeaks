@@ -276,6 +276,10 @@ else {
   const resaves = [];
   for (let i = 0; i < 4; i++) resaves.push((await changer.save('profile', profile('Limite Change', { P4: `Fresh${RUN}+x@example.com` }))).json?.ok === true);
   ok(resaves.every(Boolean), 'creation limit: saving the same mailbox again (Back, then Next) costs nothing');
+  // one cookie must not be able to use up the allowance of any number of mailboxes: 5 changes per candidate and day (2 used above)
+  const moves = [];
+  for (let i = 1; i <= 4; i++) moves.push(await changer.save('profile', profile('Limite Change', { P4: `move${i}${RUN}@example.com` })));
+  ok(moves.slice(0, 3).every((m) => m.json?.ok === true) && moves[3].status === 429 && moves[3].json?.fatal === 'rate_limited', `creation limit: a candidate can change her address 5 times a day, the next one is refused (${moves.map((m) => m.status).join(',')})`);
 
   const flood = new Client();
   let refusedAt = 0;

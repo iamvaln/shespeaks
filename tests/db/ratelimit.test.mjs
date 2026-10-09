@@ -172,3 +172,21 @@ test('IPv6: a client rotating inside its /64 shares one counter', { skip }, asyn
   assert.equal((await rl.checkCreateIp('2001:db8:55:66:dead:beef::1')).ok, false, 'a new address in the same /64 is refused');
   assert.equal((await rl.checkCreateIp('2001:db8:55:67::1')).ok, true, 'another /64 is not');
 });
+
+test('address changes: 5 per candidate and day, 20 per address and hour, each with its own counters', { skip }, async () => {
+  for (let i = 0; i < rl.CHANGE_MAX_PER_CANDIDATE; i++) assert.equal((await rl.checkChangeRate('203.0.113.201', 9001)).ok, true, `change ${i + 1}`);
+  const refused = await rl.checkChangeRate('203.0.113.201', 9001);
+  assert.equal(refused.ok, false, 'the sixth change of one candidate is refused');
+  assert.ok(refused.retryAfterSec > 3600, 'the candidate budget is per day');
+  assert.equal((await rl.checkChangeRate('203.0.113.201', 9002)).ok, true, 'another candidate is not affected');
+  // twenty candidates from one address (one change each), then the twenty-first is refused whoever she is
+  for (let i = 0; i < rl.CHANGE_MAX_PER_IP - 1; i++) assert.equal((await rl.checkChangeRate('198.51.100.77', 9100 + i)).ok, true, `candidate ${i + 1}`);
+  assert.equal((await rl.checkChangeRate('198.51.100.77', 9200)).ok, true, 'the twentieth');
+  assert.equal((await rl.checkChangeRate('198.51.100.77', 9201)).ok, false, 'the twenty-first from the same address');
+  assert.equal((await rl.checkChangeRate('198.51.100.78', 9202)).ok, true, 'another address');
+});
+
+test('address changes use their own counters: they do not use up the starts of the same address', { skip }, async () => {
+  for (let i = 0; i < 3; i++) await rl.checkChangeRate('192.0.2.50', 9300 + i);
+  for (let i = 0; i < rl.CREATE_MAX_PER_IP; i++) assert.equal((await rl.checkCreateIp('192.0.2.50')).ok, true, `start ${i + 1}`);
+});
