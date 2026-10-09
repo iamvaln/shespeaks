@@ -4,6 +4,7 @@
 import crypto from 'node:crypto';
 import { get, run, tx } from './db.ts';
 import { secret } from './secret.ts';
+import { mailboxKey } from './contact.ts';
 
 export interface RateLimit { bucket: string; key: string; max: number; windowSec: number }
 export interface RateResult { ok: boolean; retryAfterSec: number }
@@ -52,3 +53,17 @@ export async function checkLoginRate(ip: string, email: string): Promise<RateRes
 
 export const checkVerifyRate = (ip: string): Promise<RateResult> =>
   hit({ bucket: 'verify:ip', key: rateKey(ip), max: VERIFY_MAX_PER_IP, windowSec: LOGIN_WINDOW_SEC });
+
+// ---- candidate creation (public interest form) --------------------------------------------------------------------
+// Creating a candidate emails the address typed in the form, so it is an unauthenticated way to make the platform write to
+// anyone. The address limit is what protects a third party; the IP limit only stops automation and is kept high enough for a
+// room of candidates sharing one Wi-Fi.
+export const CREATE_WINDOW_SEC = 3600;
+export const CREATE_MAX_PER_IP = 30; // attempts to start the form from one address, valid or not
+export const CREATE_MAX_PER_EMAIL = 3; // candidates created for one mailbox (« +tag » and Gmail dots count as the same)
+
+export const checkCreateIp = (ip: string): Promise<RateResult> =>
+  hit({ bucket: 'create:ip', key: rateKey(ip), max: CREATE_MAX_PER_IP, windowSec: CREATE_WINDOW_SEC });
+
+export const checkCreateEmail = (email: string): Promise<RateResult> =>
+  hit({ bucket: 'create:email', key: rateKey(mailboxKey(email)), max: CREATE_MAX_PER_EMAIL, windowSec: CREATE_WINDOW_SEC });

@@ -9,6 +9,7 @@ import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
 import { emailDomainAccepts, isWhatsappNumber, strictContactChecks } from './contact.ts';
+import { checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
 export const BRANCH_LABEL: Record<Branch, string> = {
@@ -73,6 +74,13 @@ export async function submitScreen(token: string | null, screenId: string, value
     if (!errors.P4 && !(await emailDomainAccepts(String(merged['P4'] ?? '')))) errors.P4 = 'undeliverable_email';
   }
   if (Object.keys(errors).length) return { ok: false, errors };
+
+  // Creating a candidate emails the address she typed: at most a few candidates per mailbox and hour, counted only now that the
+  // form is valid (a typo elsewhere on the screen must not use up the allowance) and before anything is created or queued.
+  if (!c) {
+    const email = String(merged['P4'] ?? '').trim();
+    if (email && !(await checkCreateEmail(email)).ok) return { ok: false, errors: {}, fatal: 'email_rate_limited' };
+  }
 
   const result = await tx(async () => {
     let created = false;

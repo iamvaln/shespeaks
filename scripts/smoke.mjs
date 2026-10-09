@@ -5,10 +5,16 @@ const BASE = process.env.BASE || 'http://localhost:3000';
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) failures++; };
 
+// Starting the form is limited per address and per mailbox, counted in the database: every client of this run gets its own
+// address (x-real-ip is what Vercel sets) and its own mailbox, so re-running the test never meets the limits of the last run.
+const RUN = crypto.randomBytes(3).toString('hex');
+const randomIp = () => `198.51.${crypto.randomInt(0, 256)}.${crypto.randomInt(1, 255)}`;
+
 class Client {
   jar = {};
+  ip = randomIp();
   async post(path, body) {
-    const r = await fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/json', cookie: this.cookie() }, body: JSON.stringify(body), redirect: 'manual' });
+    const r = await fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/json', cookie: this.cookie(), 'x-real-ip': this.ip }, body: JSON.stringify(body), redirect: 'manual' });
     this.store(r);
     return { status: r.status, json: await r.json().catch(() => null) };
   }
@@ -30,7 +36,7 @@ async function photo(c) {
   return { status: r.status, json: await r.json() };
 }
 
-const profile = (n, extra = {}) => ({ P1: n, P2: 'douala', P3: '+237 612 345 678', P4: `${n.toLowerCase().replace(/\W/g, '')}@example.com`, P6: 'développeuse mobile', P7: '1-3', ...extra });
+const profile = (n, extra = {}) => ({ P1: n, P2: 'douala', P3: '+237 612 345 678', P4: `${n.toLowerCase().replace(/\W/g, '')}${RUN}@example.com`, P6: 'développeuse mobile', P7: '1-3', ...extra });
 const diag1 = { D1: 'premiere', D2: 2, D3: ['legitime', 'trac'] };
 const diag2 = (b) => ({ D4: 'atelier', P5: 'fr', D5: '1-2', D6: b });
 
@@ -227,5 +233,28 @@ else {
   const limited = await formPost('/admin/verify', [...verify, ['token', 'x']], ip2);
   ok(limited.location.includes('limited=1'), 'login link: the 21st attempt from the same IP is refused');
 }
+// Starting the form emails the address typed: at most 3 starts per mailbox and hour (« +tag » is the same mailbox), and 30 attempts per address.
+{
+  const base = `limite${RUN}`;
+  const starts = [];
+  for (const email of [`${base}@example.com`, `${base}+a@example.com`, `${base.toUpperCase()}+b@example.com`]) {
+    const c = new Client();
+    starts.push((await c.save('profile', profile('Limite Email', { P4: email }))).json?.ok === true);
+  }
+  ok(starts.every(Boolean), 'creation limit: three starts for one mailbox are accepted');
+  const fourth = await new Client().save('profile', profile('Limite Email', { P4: `${base}+c@example.com` }));
+  ok(fourth.status === 429 && fourth.json?.fatal === 'email_rate_limited', 'creation limit: the fourth start for the same mailbox is refused (429, no candidate created)');
+  const other = await new Client().save('profile', profile('Limite Autre'));
+  ok(other.json?.ok === true, 'creation limit: another mailbox is not affected');
+
+  const flood = new Client();
+  let refusedAt = 0;
+  for (let i = 1; i <= 31 && !refusedAt; i++) if ((await flood.save('profile', {})).status === 429) refusedAt = i;
+  ok(refusedAt === 31, `creation limit: the 31st attempt from one address in an hour is refused (refused at attempt ${refusedAt || 'never'})`);
+  flood.jar.ss_token = 'made-up-token';
+  const bogus = await flood.save('profile', {});
+  ok(bogus.status === 429 && bogus.json?.fatal === 'rate_limited', 'creation limit: a made-up cookie does not skip the limit');
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');
 process.exit(failures ? 1 : 0);

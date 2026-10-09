@@ -62,3 +62,16 @@ export async function emailDomainAccepts(email: string, resolver: Resolver = dns
   }
   return false;
 }
+
+/**
+ * The mailbox an address delivers to, for counting purposes only (never stored or shown): lower case, without a « +tag » and,
+ * for Gmail, without dots, so victim+1@gmail.com, v.ictim@gmail.com and Victim@googlemail.com count as one mailbox.
+ */
+export function mailboxKey(email: string): string {
+  const [rawLocal, rawDomain = ''] = email.trim().toLowerCase().split('@');
+  let domain = rawDomain;
+  let local = rawLocal.split('+')[0];
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') local = local.replace(/\./g, '');
+  return `${local}@${domain}`;
+}

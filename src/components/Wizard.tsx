@@ -70,7 +70,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
         setErrors(j.errors ?? {});
         const fieldErrors = j.errors && Object.keys(j.errors).length > 0;
         // A failed save is not always the candidate's fault: say what really happened.
-        setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : d.fatal.other);
+        setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : j.fatal === 'email_rate_limited' ? d.fatal.emailBusy : d.fatal.other);
         const firstErr = Object.keys(j.errors ?? {})[0];
         if (firstErr) requestAnimationFrame(() => document.getElementById(`q-${firstErr}`)?.focus());
         setBusy(false);

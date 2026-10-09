@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emailDomainAccepts, isWhatsappNumber, strictContactChecks, type Resolver } from '../src/lib/contact.ts';
+import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks, type Resolver } from '../src/lib/contact.ts';
 
 test('strict contact checks: on for the production deployment, switchable with STRICT_CONTACT_CHECKS', () => {
   assert.equal(strictContactChecks({}), false);
@@ -58,4 +58,13 @@ test('email domain: international domain names are looked up in their ASCII form
   const seen: string[] = [];
   await emailDomainAccepts('a@exemple.café', resolver(async (h) => { seen.push(h); return [{ exchange: 'mx.example.net', priority: 1 }]; }));
   assert.deepEqual(seen, ['exemple.xn--caf-dma']);
+});
+
+test('mailbox key: « +tags », case and Gmail dots do not make a new mailbox; other providers keep their dots', () => {
+  assert.equal(mailboxKey('Ada.Lovelace+club@Gmail.com'), 'adalovelace@gmail.com');
+  assert.equal(mailboxKey(' a.d.a.lovelace@googlemail.com '), 'adalovelace@gmail.com');
+  assert.equal(mailboxKey('bob+1@example.org'), 'bob@example.org');
+  assert.equal(mailboxKey('a.b@example.org'), 'a.b@example.org', 'dots matter outside Gmail');
+  assert.notEqual(mailboxKey('a.b@example.org'), mailboxKey('ab@example.org'));
+  assert.equal(mailboxKey('nobody'), 'nobody@', 'not an address: still a stable key, never an error');
 });

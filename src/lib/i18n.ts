@@ -143,6 +143,7 @@ const fr = {
     fatal: {
       lost: 'Nous ne retrouvons plus ton formulaire. Si tu as reçu un email de SheSpeaks, ouvre le lien « Reprendre mon formulaire » ; sinon, recommence au premier écran.',
       busy: 'Beaucoup de personnes utilisent cette connexion en ce moment. Réessaie dans quelques minutes.',
+      emailBusy: 'Cette adresse email a déjà servi plusieurs fois à commencer le formulaire. Réessaie dans une heure.',
       other: 'Un problème est survenu de notre côté. Réessaie dans un instant.',
     },
     fixErrors: 'Quelques réponses sont à corriger.',
@@ -355,6 +356,7 @@ const en: Dict = {
     fatal: {
       lost: 'We can’t find your form any more. If you received an email from SheSpeaks, open its “Resume my form” link; otherwise, start again from the first screen.',
       busy: 'Many people are using this connection right now. Try again in a few minutes.',
+      emailBusy: 'This email address has already been used several times to start the form. Try again in an hour.',
       other: 'Something went wrong on our side. Try again in a moment.',
     },
     fixErrors: 'A few answers need fixing.',

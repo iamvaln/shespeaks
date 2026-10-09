@@ -189,6 +189,3 @@ export async function eventLabelFor(c: Pick<Candidate, 'city' | 'city_other'>, l
   return eventLabel(c, await listEvents(), locale);
 }
 
-export function clientIp(h: Headers): string {
-  return h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || 'unknown';
-}

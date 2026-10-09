@@ -110,3 +110,19 @@ test('keys are opaque and the client IP comes from the platform headers', { skip
   assert.equal(rl.requestIp(new Headers({ 'x-forwarded-for': '9.9.9.9, 2.2.2.2' })), '9.9.9.9');
   assert.equal(rl.requestIp(new Headers()), 'unknown');
 });
+
+test('candidate creation: 3 per mailbox and hour; +tags and Gmail dots are the same mailbox; dots elsewhere are not', { skip }, async () => {
+  for (const e of ['ada.lovelace@gmail.com', 'AdaLovelace+club@Gmail.com', 'a.d.a.lovelace@googlemail.com']) assert.equal((await rl.checkCreateEmail(e)).ok, true, e);
+  const refused = await rl.checkCreateEmail('adalovelace@gmail.com');
+  assert.equal(refused.ok, false, 'the fourth start for the same mailbox is refused');
+  assert.ok(refused.retryAfterSec > 0 && refused.retryAfterSec <= rl.CREATE_WINDOW_SEC);
+  assert.equal((await rl.checkCreateEmail('grace@gmail.com')).ok, true, 'another mailbox is not affected');
+  for (let i = 0; i < rl.CREATE_MAX_PER_EMAIL; i++) assert.equal((await rl.checkCreateEmail(i % 2 ? 'a.b@example.org' : 'A.B+x@example.org')).ok, true);
+  assert.equal((await rl.checkCreateEmail('ab@example.org')).ok, true, 'a.b and ab are two mailboxes outside Gmail');
+});
+
+test('candidate creation: 30 attempts per address and hour, then refused; another address is not affected', { skip }, async () => {
+  for (let i = 0; i < rl.CREATE_MAX_PER_IP; i++) assert.equal((await rl.checkCreateIp('203.0.113.9')).ok, true, `attempt ${i + 1}`);
+  assert.equal((await rl.checkCreateIp('203.0.113.9')).ok, false);
+  assert.equal((await rl.checkCreateIp('203.0.113.10')).ok, true);
+});
