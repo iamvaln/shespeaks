@@ -65,6 +65,11 @@ function crossTitle(angle: string, domain: string, techno: string, loc: Locale, 
 export const shownToCandidate = (t: { state: string; origin: string }): boolean =>
   t.state !== 'ecartee' && !(t.origin === 'ia' && t.state === 'generee');
 
+/** The tracks the plan page lists: none when the setting is off, else the ones she may see. */
+export function tracksForCandidate<T extends { state: string; origin: string }>(tracks: T[], show: boolean): T[] {
+  return show ? tracks.filter(shownToCandidate) : [];
+}
+
 /** The domains of a candidate of branch A or B as they read in titles (a precise B2 sub-topic replaces the domain name). */
 export function domainLabelsOf(a: Answers, branch: 'A' | 'B', refs: Refs, loc: Locale): string[] {
   // parenthetical detail (e.g. "(Android, Flutter, iOS)") reads badly inside a title

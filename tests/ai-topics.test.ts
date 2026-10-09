@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AI_MODEL, aiConfigured, buildPrompt, facts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
-import { DEFAULT_REFS } from '../src/lib/questions.ts';
-import { shownToCandidate } from '../src/lib/topics.ts';
+import { AI_MODEL, aiConfigured, buildPrompt, describeError, facts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
+import { AI_NOTICE, DEFAULT_REFS, SCREENS } from '../src/lib/questions.ts';
+import { shownToCandidate, tracksForCandidate } from '../src/lib/topics.ts';
+import { typoFr } from '../src/lib/text.ts';
 
 const refs = DEFAULT_REFS;
 const base: AiInput = {
@@ -87,7 +88,8 @@ test('suggestions are cleaned and checked: quotes, final dot, repeats, length, u
   assert.deepEqual(out.map((t) => t.title), ['Flutter sans stress : mon premier projet mobile', 'Trois leçons tirées de Firebase en production réelle', 'Tester son appli mobile sans y passer ses nuits']);
   assert.equal(out[1].angle, null, 'an angle that is not in the referential is dropped');
   assert.equal(out[1].format, 'talk', 'an unknown format falls back to talk');
-  assert.equal(out[1].hook.length, 240, 'a hook is cut at 240 characters');
+  assert.equal(out[1].hook.length, 241, 'a hook is cut at 240 characters, with an ellipsis');
+  assert.ok(out[1].hook.endsWith('…'));
 });
 
 test('at most five suggestions are kept, and unreadable answers give none', () => {
@@ -97,17 +99,22 @@ test('at most five suggestions are kept, and unreadable answers give none', () =
 });
 
 const okReply = (items: unknown[]): AiResponse => ({ stop_reason: 'end_turn', content: [{ type: 'thinking' }, { type: 'text', text: reply(items) }], usage: { input_tokens: 900, output_tokens: 700 } });
-const stub = (response: AiResponse | Error): { client: AiClient; calls: Record<string, any>[] } => {
+const stub = (response: AiResponse | Error): { client: AiClient; calls: Record<string, any>[]; options: ({ signal?: AbortSignal } | undefined)[] } => {
   const calls: Record<string, any>[] = [];
+  const options: ({ signal?: AbortSignal } | undefined)[] = [];
   return {
     calls,
-    client: { messages: { create: async (params) => { calls.push(params); if (response instanceof Error) throw response; return response; } } },
+    options,
+    client: { messages: { create: async (params, opts) => { calls.push(params); options.push(opts); if (response instanceof Error) throw response; return response; } } },
   };
 };
 
+/** What the SDK really throws: the class name stays « Error »; the status, the API's error type and the request id are properties. */
+const apiError = (status: number, type: string, message: string) => Object.assign(new Error(message), { status, type, requestID: 'req_011CZabc123' });
+
 test('the request: Sonnet 5.5, structured JSON, low effort, and none of the parameters this model rejects', async () => {
-  const { client, calls } = stub(okReply([good('Flutter sans stress : mon premier projet mobile')]));
-  const r = await suggestTitles(base, client);
+  const { client, calls, options } = stub(okReply([good('Flutter sans stress : mon premier projet mobile')]));
+  const r = await suggestTitles({ ...base, answers: { ...base.answers, A2: ['mobile'] } }, client);
   assert.equal(r.ok, true);
   assert.equal(calls.length, 1);
   const p = calls[0];
@@ -118,6 +125,8 @@ test('the request: Sonnet 5.5, structured JSON, low effort, and none of the para
   for (const rejected of ['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice', 'tools', 'betas']) assert.ok(!(rejected in p), `no ${rejected}`);
   assert.ok(Number.isInteger(p.max_tokens) && p.max_tokens >= 4000, 'room for thinking tokens as well as the titles');
   assert.deepEqual(p.messages.map((m: { role: string }) => m.role), ['user'], 'one user message, no prefill');
+  assert.ok(options[0]?.signal instanceof AbortSignal, 'the whole call (body included) is bounded by a signal, not only the wait for the headers');
+  assert.equal(options[0]?.signal?.aborted, false);
   if (r.ok) {
     assert.equal(r.domain, 'Mobile');
     assert.equal(r.titles.length, 1);
@@ -134,13 +143,24 @@ test('every failure becomes a reason the coach can read, and nothing throws', as
   assert.deepEqual(empty, { ok: false, reason: 'empty' });
   const noText = await suggestTitles(base, stub({ stop_reason: 'end_turn', content: [] }).client);
   assert.deepEqual(noText, { ok: false, reason: 'empty' });
-  const down = await suggestTitles(base, stub(Object.assign(new Error(`429 {"message":"${base.answers.A4}"}`), { status: 429, name: 'RateLimitError' })).client);
+  const down = await suggestTitles(base, stub(apiError(429, 'rate_limit_error', `429 {"message":"${base.answers.A4}"}`)).client);
   assert.equal(down.ok, false);
   if (!down.ok) {
     assert.equal(down.reason, 'failed');
-    assert.equal(down.detail, 'RateLimitError 429');
+    assert.equal(down.detail, 'status=429 type=rate_limit_error request_id=req_011CZabc123');
     assert.ok(!JSON.stringify(down).includes('tenace'), 'what she wrote never reaches the logs');
   }
+});
+
+test('what the log keeps of a failure: status, error type and request id, or timeout / connection; never a message', () => {
+  assert.equal(describeError(apiError(401, 'authentication_error', 'invalid x-api-key')), 'status=401 type=authentication_error request_id=req_011CZabc123');
+  assert.equal(describeError(Object.assign(new Error('x'), { status: 529 })), 'status=529');
+  assert.equal(describeError(Object.assign(new Error('x'), { status: 500, type: 'Bad Type; drop table', requestID: 'a b' })), 'status=500', 'values that do not look like ids are not logged');
+  assert.equal(describeError(new Error('Request timed out.')), 'timeout');
+  assert.equal(describeError(new Error('Connection error.')), 'connection');
+  assert.equal(describeError(new Error('boom with her text'), true), 'timeout', 'our own deadline');
+  assert.equal(describeError(new Error('boom with her text')), 'error');
+  assert.equal(describeError(undefined), 'error');
 });
 
 test('without a key and without a client, nothing is attempted', async () => {
@@ -164,4 +184,55 @@ test('the candidate never sees an AI suggestion nobody has read, nor a set-aside
   assert.equal(shownToCandidate({ origin: 'ia', state: 'ecartee' }), false);
   assert.equal(shownToCandidate({ origin: 'croisement', state: 'generee' }), true);
   assert.equal(shownToCandidate({ origin: 'coach', state: 'ecartee' }), false);
+});
+
+test('control characters and direction overrides are dropped from a title and a hook (a NUL is refused by Postgres)', () => {
+  const out = parseSuggestions(reply([good('Flutter\u0000 sans\u202e stress : mon\u0007 premier projet', { hook: 'Elle\u0000 travaille\u200f déjà\u2066 avec Flutter' })]), refs, []);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].title, 'Flutter sans stress : mon premier projet');
+  assert.equal(out[0].hook, 'Elle travaille déjà avec Flutter');
+  for (const t of out) assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(t.title + t.hook));
+});
+
+test('the domain is written on the suggestions only when she chose exactly one', async () => {
+  const ok = okReply([good('Flutter sans stress : mon premier projet mobile')]);
+  const one = await suggestTitles({ ...base, answers: { ...base.answers, A2: ['mobile'] } }, stub(ok).client);
+  const two = await suggestTitles(base, stub(ok).client); // mobile and web: the model gives no domain per title
+  const none = await suggestTitles({ ...base, answers: { ...base.answers, A2: [] } }, stub(ok).client);
+  assert.equal(one.ok && one.domain, 'Mobile');
+  assert.equal(two.ok && two.domain, '');
+  assert.equal(none.ok && none.domain, '');
+});
+
+test('what leaves the platform, line by line: the whitelist is pinned', () => {
+  const answers = { ...base.answers, D1: 'Un titre de talk déjà écrit', D5: 'peur du public', D6: 'A', P1: 'Aïcha Mbarga', P2: 'douala', P3: '+237 677 12 34 56', P4: 'aicha@example.org', D2: 1, D3: ['trac'] };
+  const labels = (a: typeof answers, branch: 'A' | 'B') => facts({ ...base, branch, answers: a }).map((l) => l.split(' : ')[0]);
+  const a = facts({ ...base, branch: 'A', answers });
+  assert.equal(a.length, 10, a.join('\n'));
+  for (const wanted of ['développeuse mobile', '1 an à moins de 3 ans', 'Flutter, Firebase', 'Un bug tenace', 'les tests', 'les bases de Git']) assert.ok(a.some((l) => l.includes(wanted)), wanted);
+  for (const secret of ['Un titre de talk déjà écrit', 'peur du public', 'Aïcha', 'douala', '677', 'aicha@example.org', 'trac']) assert.ok(!a.join('\n').includes(secret), `not sent: ${secret}`);
+  assert.ok(labels(answers, 'A').every((l) => l.startsWith('- ')));
+  const b = facts({ ...base, branch: 'B', answers: { ...answers, B1: 'cyber', B2: 'cloud security', B3: 'debutant', B4: ['retour'], B5: 'Mon premier audit', A1: 'Je fais du Flutter pour une fintech', A4: 'Un bug tenace' } });
+  assert.equal(b.length, 8, b.join('\n'));
+  for (const wanted of ['Cybersécurité', 'cloud security', 'Débutant', 'Mon premier audit']) assert.ok(b.some((l) => l.includes(wanted)), wanted);
+  for (const notB of ['Je fais du Flutter pour une fintech', 'Un bug tenace', 'Un titre de talk déjà écrit', 'peur du public']) assert.ok(!b.join('\n').includes(notB), `branch B does not send branch A's answers: ${notB}`);
+});
+
+test('the plan page lists nothing when the setting is off, and never an unread AI suggestion', () => {
+  const tracks = [
+    { id: 1, origin: 'croisement', state: 'generee' }, { id: 2, origin: 'ia', state: 'generee' }, { id: 3, origin: 'ia', state: 'retenue_coach' },
+    { id: 4, origin: 'personnelle', state: 'ecartee' }, { id: 5, origin: 'ia', state: 'choisie' },
+  ];
+  assert.deepEqual(tracksForCandidate(tracks, true).map((t) => t.id), [1, 3, 5]);
+  assert.deepEqual(tracksForCandidate(tracks, false), []);
+});
+
+test('the notice that tells her an AI tool may be used is on both topic screens, in both languages, and names what is sent', () => {
+  for (const loc of ['fr', 'en'] as const) {
+    const notice = loc === 'fr' ? typoFr(AI_NOTICE.fr) : AI_NOTICE.en; // the French screens get the non-breaking spaces
+    assert.ok(SCREENS.a1.intro![loc].includes(notice), `a1 ${loc}`);
+    assert.ok(SCREENS.b1.intro![loc].includes(notice), `b1 ${loc}`);
+  }
+  for (const word of ['poste', 'études', 'ancienneté', 'format']) assert.ok(AI_NOTICE.fr.includes(word), word);
+  for (const word of ['job', 'studies', 'how long', 'format']) assert.ok(AI_NOTICE.en.includes(word), word);
 });

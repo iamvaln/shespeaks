@@ -114,7 +114,7 @@ export async function suggestTracksAction(f: FormData) {
   const id = num(f, 'cid');
   const r = await suggestTracksFor(id, coach.id);
   if (!r.ok) return back(cpath(id), AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed, true);
-  return back(cpath(id), `${r.added} suggestion${r.added > 1 ? 's' : ''} de l’IA ajoutée${r.added > 1 ? 's' : ''} : à relire avant de les retenir`);
+  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de l’IA (les précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
 }
 
 export async function trackAction(f: FormData) {

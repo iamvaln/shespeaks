@@ -4,7 +4,7 @@
 // Pure of any framework or database import so it runs in plain Node tests; the model client can be replaced in tests.
 import { SCREENS, type Answers, type Locale, type Option, type Refs } from './questions.ts';
 import { domainLabelsOf, type TrackFormat } from './topics.ts';
-import { norm, textLocale } from './text.ts';
+import { norm, textLocale, truncate } from './text.ts';
 
 /** Claude Sonnet 5.5: chosen by the owner. The bare id, as the API documents it (no date suffix). */
 export const AI_MODEL = 'claude-sonnet-5-5';
@@ -34,7 +34,7 @@ export type AiResult =
   | { ok: false; reason: AiFailure; detail?: string };
 
 /** The part of the SDK client this module uses: tests pass a stand-in. */
-export type AiClient = { messages: { create: (params: Record<string, unknown>) => Promise<AiResponse> } };
+export type AiClient = { messages: { create: (params: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<AiResponse> } };
 export type AiResponse = {
   stop_reason?: string | null;
   content: { type: string; text?: string }[];
@@ -153,7 +153,8 @@ export function outputSchema(refs: Refs) {
 
 // ---- what comes back --------------------------------------------------------------------------------------------------
 
-const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
+/** One line of plain text: control characters (a NUL would be refused by the database) and bidirectional overrides are dropped. */
+const oneLine = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
  * The model's text -> clean suggestions. The schema keeps the shape; what a schema cannot say is checked here: length, word count,
@@ -184,7 +185,7 @@ export function parseSuggestions(raw: string, refs: Refs, existingTitles: string
       title,
       angle: typeof r.angle === 'string' && angles.has(r.angle) ? r.angle : null,
       format: FORMATS.includes(r.format as TrackFormat) ? (r.format as TrackFormat) : 'talk',
-      hook: typeof r.hook === 'string' ? oneLine(r.hook).slice(0, 240) : '',
+      hook: typeof r.hook === 'string' ? truncate(oneLine(r.hook), 240) : '',
     });
     if (out.length >= AI_COUNT) break;
   }
@@ -205,6 +206,8 @@ async function defaultClient(): Promise<AiClient> {
 export async function suggestTitles(i: AiInput, client?: AiClient): Promise<AiResult> {
   if (!client && !aiConfigured()) return { ok: false, reason: 'disabled' };
   const { system, user } = buildPrompt(i);
+  // The SDK's own timeout covers the wait for the response headers only: this signal bounds the whole call, body included.
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
   try {
     const c = client ?? (await defaultClient());
     const res = await c.messages.create({
@@ -214,23 +217,42 @@ export async function suggestTitles(i: AiInput, client?: AiClient): Promise<AiRe
       messages: [{ role: 'user', content: user }],
       // thinking is left to the model (adaptive, the only mode on this model besides « between_tools »); effort `low`: a short creative task
       output_config: { effort: 'low', format: { type: 'json_schema', schema: outputSchema(i.refs) } },
-    });
+    }, { signal });
     if (res.stop_reason === 'refusal') return { ok: false, reason: 'refused' };
     if (res.stop_reason === 'max_tokens') return { ok: false, reason: 'truncated' };
     const text = res.content.find((b) => b.type === 'text')?.text ?? '';
     const titles = parseSuggestions(text, i.refs, i.existingTitles);
     if (!titles.length) return { ok: false, reason: 'empty' };
+    // the model gives no domain per title: only a candidate who chose exactly one can have it written on every suggestion
+    const domains = domainLabelsOf(i.answers, i.branch, i.refs, textLocale(i.answers['P5'], i.locale));
     return {
       ok: true,
       titles,
-      domain: domainLabelsOf(i.answers, i.branch, i.refs, textLocale(i.answers['P5'], i.locale))[0] ?? '',
+      domain: domains.length === 1 ? domains[0] : '',
       model: AI_MODEL,
       inputTokens: res.usage?.input_tokens ?? 0,
       outputTokens: res.usage?.output_tokens ?? 0,
     };
   } catch (e) {
-    // status and class only: never the request, which holds her answers
-    const status = (e as { status?: number })?.status;
-    return { ok: false, reason: 'failed', detail: `${(e as Error)?.name ?? 'Error'}${status ? ` ${status}` : ''}` };
+    return { ok: false, reason: 'failed', detail: describeError(e, signal.aborted) };
   }
+}
+
+/**
+ * What goes in the log for a failed call: the HTTP status, the API's error type and the request id (to quote to support), or whether it
+ * was a timeout or a connection problem. Never the message of an API error (it can echo request values) and never the request.
+ */
+export function describeError(e: unknown, timedOut = false): string {
+  if (timedOut) return 'timeout';
+  const err = (e ?? {}) as { status?: unknown; type?: unknown; requestID?: unknown; message?: unknown };
+  if (typeof err.status === 'number') {
+    const parts = [`status=${err.status}`];
+    if (typeof err.type === 'string' && /^[a-z_]{1,40}$/.test(err.type)) parts.push(`type=${err.type}`);
+    if (typeof err.requestID === 'string' && /^[\w-]{1,80}$/.test(err.requestID)) parts.push(`request_id=${err.requestID}`);
+    return parts.join(' ');
+  }
+  const message = String(err.message ?? ''); // without a status the SDK wrote the message itself (« Request timed out. », « Connection error. »)
+  if (/timed? ?out|aborted/i.test(message)) return 'timeout';
+  if (/connection|fetch failed|ECONN|ENOTFOUND|EAI_AGAIN/i.test(message)) return 'connection';
+  return 'error';
 }

@@ -154,16 +154,17 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <div>
                       <h2 id="h-pistes" className="a-h2">Pistes de sujet</h2>
                       <p className="a-muted" style={{ margin: '2px 0 0' }}>
-                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » ne remplace que les pistes non traitées.
-                        {aiConfigured() ? ' Les suggestions de l’IA sont à relire : elles peuvent se tromper.' : ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).'}
+                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » refait les propositions-modèles
+                        et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
+                        {!aiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper.'}
                         {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate (une suggestion de l’IA seulement une fois retenue ou choisie).' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {aiConfigured() && (
+                      {aiConfigured() && c.completed_at && (
                         <form action={suggestTracksAction}>
                           <input type="hidden" name="cid" value={id} />
-                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer les réponses de cette candidate sur son sujet (sans son nom ni ses coordonnées) au fournisseur d’IA pour obtenir des titres ?">
+                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer au fournisseur d’IA les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité et les titres déjà sur sa fiche (sans son nom ni ses coordonnées) pour obtenir des titres ? Les suggestions de l’IA non retenues sont remplacées.">
                             <Icon name="spark" size={16} />Suggérer avec l’IA
                           </PendingButton>
                         </form>

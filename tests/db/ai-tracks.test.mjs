@@ -41,11 +41,11 @@ after(async () => {
   await admin.end();
 });
 
-async function candidate({ branch = 'A', completed = true } = {}) {
+async function candidate({ branch = 'A', completed = true, domains = ['mobile'] } = {}) {
   const token = crypto.randomBytes(8).toString('hex');
   const [{ id }] = await raw`insert into candidates (token, name, email, branch, status, current_screen, completed_at)
     values (${token}, 'Test', ${token + '@example.org'}, ${branch}, 'diagnostic_recu', 'done', ${completed ? raw`now() at time zone 'utc'` : null}) returning id`;
-  await data.setAnswers(id, { P5: 'fr', A2: ['mobile'], A3: 'Flutter', A7: ['demo'], A4: 'Un bug tenace', B1: 'cyber', B4: ['retour'] });
+  await data.setAnswers(id, { P5: 'fr', A2: domains, A3: 'Flutter', A7: ['demo'], A4: 'Un bug tenace', B1: 'cyber', B4: ['retour'] });
   return id;
 }
 const tracks = (id) => raw`select id, title, origin, state, domain, hook, angle, format from tracks where candidate_id = ${id} order by position, id`;
@@ -151,7 +151,111 @@ test('limits: 5 requests per candidate and day, 40 per coach and day', { skip },
   assert.equal((await ai.suggestTracksFor(other, 10, m.client)).ok, true, 'another candidate, same coach');
   assert.equal(rl.AI_MAX_PER_COACH, 40);
   assert.equal(rl.AI_MAX_PER_CANDIDATE, 5);
+  assert.equal(rl.AI_WINDOW_SEC, 86400);
   for (let i = 0; i < rl.AI_MAX_PER_COACH; i++) assert.equal((await rl.checkAiRate(77, 5000 + i)).ok, true);
   assert.equal((await rl.checkAiRate(77, 6000)).ok, false, 'the forty-first request of one coach');
   assert.equal((await rl.checkAiRate(78, 6000)).ok, true, 'another coach');
+});
+
+// ---- review fixes -----------------------------------------------------------------------------------------------
+
+const aiHits = async (coach, cand) => ({
+  coach: (await raw`select count(*)::int as n from rate_limit_hits where bucket = 'ai:coach' and key = ${rl.rateKey(`coach:${coach}`)}`)[0].n,
+  candidate: (await raw`select count(*)::int as n from rate_limit_hits where bucket = 'ai:candidate' and key = ${rl.rateKey(`candidate:${cand}`)}`)[0].n,
+});
+
+test('the domain is written on the suggestions only when she chose exactly one', { skip }, async () => {
+  const two = await candidate({ domains: ['mobile', 'web'] });
+  assert.equal((await ai.suggestTracksFor(two, 1, model(2).client)).ok, true);
+  const t = await tracks(two);
+  assert.equal(t.length, 2);
+  assert.ok(t.every((x) => x.domain === ''), 'no domain: the model gives none per title');
+  const one = await candidate();
+  assert.equal((await ai.suggestTracksFor(one, 1, model(1).client)).ok, true);
+  assert.equal((await tracks(one))[0].domain, 'Mobile');
+});
+
+test('a call that did not complete gives its press back; a refusal, a cut or an empty answer stay counted', { skip }, async () => {
+  const id = await candidate();
+  const coach = 31;
+  const down = { messages: { create: async () => { throw Object.assign(new Error('boom'), { status: 529, type: 'overloaded_error', requestID: 'req_1' }); } } };
+  for (let i = 0; i < 8; i++) assert.deepEqual(await ai.suggestTracksFor(id, coach, down), { ok: false, reason: 'failed' }, `outage ${i + 1} is not limited`);
+  assert.deepEqual(await aiHits(coach, id), { coach: 0, candidate: 0 }, 'an outage costs nothing');
+
+  const refusing = { messages: { create: async () => ({ stop_reason: 'refusal', content: [] }) } };
+  const cut = { messages: { create: async () => ({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"sug' }] }) } };
+  const empty = { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'rien' }] }) } };
+  for (const [client, reason] of [[refusing, 'refused'], [cut, 'truncated'], [empty, 'empty']]) {
+    assert.deepEqual(await ai.suggestTracksFor(id, coach, client), { ok: false, reason });
+  }
+  assert.deepEqual(await aiHits(coach, id), { coach: 3, candidate: 3 }, 'produced answers stay counted');
+});
+
+test('refunding takes back one press and only that coach\'s and that candidate\'s', { skip }, async () => {
+  const id = await candidate();
+  const other = await candidate();
+  for (let i = 0; i < 3; i++) await rl.checkAiRate(41, id);
+  await rl.checkAiRate(42, other);
+  await rl.refundAiRate(41, id);
+  assert.deepEqual(await aiHits(41, id), { coach: 2, candidate: 2 });
+  assert.deepEqual(await aiHits(42, other), { coach: 1, candidate: 1 }, 'someone else is untouched');
+  await rl.refundAiRate(43, id); // a coach with no press: nothing to give back, no error
+  assert.equal((await aiHits(41, id)).candidate, 1, 'the candidate counter is shared by the coaches, the refund takes the newest row of each');
+});
+
+test('the daily window slides: 23 h old presses still count, 25 h old ones do not', { skip }, async () => {
+  const id = await candidate();
+  const coach = 51;
+  const aged = async (hours, n) => {
+    for (let i = 0; i < n; i++) {
+      await raw`insert into rate_limit_hits (bucket, key, at) values ('ai:candidate', ${rl.rateKey(`candidate:${id}`)}, now() at time zone 'utc' - ${hours} * interval '1 hour')`;
+    }
+  };
+  await aged(23, rl.AI_MAX_PER_CANDIDATE);
+  const blocked = await rl.checkAiRate(coach, id);
+  assert.equal(blocked.ok, false);
+  assert.ok(blocked.retryAfterSec > 3000 && blocked.retryAfterSec <= 3600, `about an hour to wait, got ${blocked.retryAfterSec}`);
+  await raw`delete from rate_limit_hits where bucket = 'ai:candidate' and key = ${rl.rateKey(`candidate:${id}`)}`;
+  await aged(25, rl.AI_MAX_PER_CANDIDATE);
+  assert.equal((await rl.checkAiRate(coach, id)).ok, true, 'older than a day: forgotten');
+});
+
+test('new suggestions go after what is already there; regenerated templates go after a coach\'s track', { skip }, async () => {
+  const id = await candidate();
+  await raw`insert into tracks (candidate_id, title, format, origin, position) values (${id}, 'Ma piste', 'talk', 'coach', 99)`;
+  assert.equal((await ai.suggestTracksFor(id, 61, model(2).client)).ok, true);
+  const positions = await raw`select origin, position from tracks where candidate_id = ${id} order by position`;
+  assert.deepEqual(positions.map((p) => [p.origin, Number(p.position)]), [['coach', 99], ['ia', 100], ['ia', 101]]);
+});
+
+test('asking for suggestions leaves template proposals nobody has read alone', { skip }, async () => {
+  const id = await candidate();
+  await raw`insert into tracks (candidate_id, title, format, origin, position) values
+    (${id}, 'Une piste modèle', 'talk', 'croisement', 0), (${id}, 'Une piste personnelle', 'talk', 'personnelle', 1)`;
+  assert.equal((await ai.suggestTracksFor(id, 62, model(2).client)).ok, true);
+  assert.equal((await ai.suggestTracksFor(id, 62, model(2).client)).ok, true);
+  const t = await tracks(id);
+  assert.deepEqual(t.filter((x) => x.origin !== 'ia').map((x) => [x.title, x.state]), [['Une piste modèle', 'generee'], ['Une piste personnelle', 'generee']]);
+  assert.equal(t.filter((x) => x.origin === 'ia').length, 2);
+});
+
+test('a storage error becomes « failed » for the coach and leaves the fiche as it was (the call was made, it stays counted)', { skip }, async () => {
+  const id = await candidate();
+  await raw`insert into tracks (candidate_id, title, format, origin, position) values (${id}, 'Déjà là', 'talk', 'croisement', 0)`;
+  await raw.unsafe(`create function ss_boom() returns trigger language plpgsql as $$ begin if new.origin = 'ia' then raise exception 'boom'; end if; return new; end $$`);
+  await raw.unsafe(`create trigger ss_boom before insert on tracks for each row execute function ss_boom()`);
+  const log = console.error;
+  const logged = [];
+  console.error = (...a) => logged.push(a);
+  try {
+    assert.deepEqual(await ai.suggestTracksFor(id, 71, model(2).client), { ok: false, reason: 'failed' });
+  } finally {
+    console.error = log;
+    await raw.unsafe('drop trigger ss_boom on tracks');
+    await raw.unsafe('drop function ss_boom()');
+  }
+  assert.deepEqual((await tracks(id)).map((x) => x.title), ['Déjà là'], 'the delete and the inserts were one transaction');
+  assert.deepEqual(await aiHits(71, id), { coach: 1, candidate: 1 });
+  assert.ok(logged.some((a) => String(a[0]).includes('could not store')), 'logged');
+  assert.ok(!JSON.stringify(logged).includes('Un titre suggéré'), 'no title in the log');
 });

@@ -106,9 +106,27 @@ export const checkCreateEmail = (email: string): Promise<RateResult> =>
 // Every request costs money and sends answers to a provider: a ceiling per coach and one per candidate, per day.
 export const AI_MAX_PER_COACH = 40;
 export const AI_MAX_PER_CANDIDATE = 5;
+export const AI_WINDOW_SEC = 86400;
+
+const aiLimits = (coachId: number, candidateId: number) => [
+  { bucket: 'ai:coach', key: rateKey(`coach:${coachId}`), max: AI_MAX_PER_COACH, windowSec: AI_WINDOW_SEC },
+  { bucket: 'ai:candidate', key: rateKey(`candidate:${candidateId}`), max: AI_MAX_PER_CANDIDATE, windowSec: AI_WINDOW_SEC },
+];
 
 export async function checkAiRate(coachId: number, candidateId: number): Promise<RateResult> {
-  const byCoach = await hit({ bucket: 'ai:coach', key: rateKey(`coach:${coachId}`), max: AI_MAX_PER_COACH, windowSec: 86400 });
-  if (!byCoach.ok) return byCoach;
-  return hit({ bucket: 'ai:candidate', key: rateKey(`candidate:${candidateId}`), max: AI_MAX_PER_CANDIDATE, windowSec: 86400 });
+  for (const l of aiLimits(coachId, candidateId)) {
+    const r = await hit(l);
+    if (!r.ok) return r;
+  }
+  return { ok: true, retryAfterSec: 0 };
+}
+
+/** Gives back the allowance of a request that never reached the model (an outage must not use up a candidate's five a day). */
+export async function refundAiRate(coachId: number, candidateId: number): Promise<void> {
+  for (const l of aiLimits(coachId, candidateId)) {
+    await run(
+      `DELETE FROM rate_limit_hits WHERE id = (SELECT id FROM rate_limit_hits WHERE bucket=? AND key=? ORDER BY at DESC, id DESC LIMIT 1)`,
+      l.bucket, l.key,
+    );
+  }
 }

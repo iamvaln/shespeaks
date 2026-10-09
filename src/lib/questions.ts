@@ -272,9 +272,9 @@ const cBlock = aBlock;
 const dBlock = aBlock;
 
 /** Said where she writes about her topic: a coach may send these answers, and only these, to an AI tool (see ai-topics.ts). */
-const AI_NOTICE = {
-  fr: 'Pour t’aider à trouver un sujet, l’équipe peut demander des idées de titres à un outil d’IA : tes réponses sur ton sujet lui sont alors transmises, sans ton nom ni tes coordonnées.',
-  en: 'To help you find a topic, the team may ask an AI tool for title ideas: your answers about your topic are then sent to it, without your name or contact details.',
+export const AI_NOTICE = {
+  fr: 'Pour t’aider à trouver un sujet, l’équipe peut demander des idées de titres à un outil d’IA : tes réponses sur ton sujet, ton poste ou tes études, ton ancienneté dans la tech et le format souhaité lui sont alors transmis, sans ton nom ni tes coordonnées.',
+  en: 'To help you find a topic, the team may ask an AI tool for title ideas: your answers about your topic, your job or studies, how long you have been in tech and the format you would like are then sent to it, without your name or contact details.',
 };
 
 const a1: Screen = {
