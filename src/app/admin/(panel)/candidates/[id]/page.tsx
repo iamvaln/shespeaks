@@ -151,7 +151,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <div>
                       <h2 id="h-pistes" className="a-h2">Pistes de sujet</h2>
                       <p className="a-muted" style={{ margin: '2px 0 0' }}>
-                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate.
+                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » ne remplace que les pistes que tu n’as pas encore traitées : tes pistes, la piste choisie, les retenues et les écartées restent.
                         {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate.' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
                       </p>
                     </div>
