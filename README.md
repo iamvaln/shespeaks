@@ -95,6 +95,21 @@ The footer links to the coach space (`/admin/login`), which is public, so the lo
 
 Requests for unknown addresses count exactly like coaches', and the answer is the same neutral message, so the form does not reveal who is a coach. In production the lookup, the one-time token and the email all run after the response, so the request does the same work for every address and timing does not tell them apart. The client IP comes from `x-real-ip` (set by Vercel, which also overwrites `x-forwarded-for`).
 
+## Interest form: creation limits
+
+Starting the interest form creates a candidate and emails the address typed, and the reminders and the confirmation follow the address on the profile, so the form is rate limited too (same Postgres counters, same opaque keys):
+
+| What | Limit |
+|---|---|
+| Starts of the form from one address (valid or not; an IPv6 client counts per /64) | 30 per hour |
+| Candidates created with, **or changed to**, one mailbox (`+tag`, case and Gmail dots count as the same mailbox) | 3 per hour |
+| Address changes by one candidate (she needs no new cookie, so they have their own ceilings) | 5 per day |
+| Address changes from one address | 20 per hour |
+
+The mailbox is counted once the screen is valid (a typo elsewhere does not use it up) and before anything is created or queued; saving the same mailbox again costs nothing. A refused start or change answers 429 with a message that points the candidate to the « Reprendre mon formulaire » email she already received.
+
+These limits slow down anyone who aims the platform at a third party; they do not prove the address belongs to the candidate. The reminder run therefore sends **one reminder email per mailbox and run** (candidates parked on one address are all claimed and reported to the coaches, but the inbox receives one email a day), and the lasting answer, confirming the address before the first reminder, is not built yet. The per-address limit is deliberately high enough for a room of candidates sharing one venue Wi-Fi: raise or lower `CREATE_MAX_PER_IP` in `src/lib/ratelimit.ts` if a larger group is expected.
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

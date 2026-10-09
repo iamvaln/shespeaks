@@ -8,7 +8,8 @@ import {
 import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
-import { emailDomainAccepts, isWhatsappNumber, strictContactChecks } from './contact.ts';
+import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
+import { checkChangeRate, checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
 export const BRANCH_LABEL: Record<Branch, string> = {
@@ -49,7 +50,7 @@ export type SubmitResult =
 /**
  * Persist one screen (autosave at every step). `token` null = no candidate yet (only the profile screen can create one).
  */
-export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale): Promise<SubmitResult> {
+export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown'): Promise<SubmitResult> {
   const screen = SCREENS[screenId];
   if (!screen) return { ok: false, errors: {}, fatal: 'unknown_screen' };
   const refs = await getRefs();
@@ -73,6 +74,20 @@ export async function submitScreen(token: string | null, screenId: string, value
     if (!errors.P4 && !(await emailDomainAccepts(String(merged['P4'] ?? '')))) errors.P4 = 'undeliverable_email';
   }
   if (Object.keys(errors).length) return { ok: false, errors };
+
+  // Reminders and the confirmation go to the address on the profile, so an address is « used » when a candidate is created with it
+  // AND when an existing candidate changes to it: at most a few per mailbox and hour, counted only now that the form is valid
+  // (a typo elsewhere on the screen must not use up the allowance) and before anything is created, changed or queued. Saving the
+  // same mailbox again (Back, then Next) costs nothing.
+  if (screenId === 'profile') {
+    const email = String(merged['P4'] ?? '').trim();
+    const changing = !!c && mailboxKey(email) !== mailboxKey(c.email ?? '');
+    if (email && (!c || changing)) {
+      // a change needs no new cookie, so it has its own ceilings, charged before the mailbox so a refusal there spares the target's allowance
+      if (c && !(await checkChangeRate(ip, c.id)).ok) return { ok: false, errors: {}, fatal: 'rate_limited' };
+      if (!(await checkCreateEmail(email)).ok) return { ok: false, errors: {}, fatal: 'email_rate_limited' };
+    }
+  }
 
   const result = await tx(async () => {
     let created = false;

@@ -9,6 +9,7 @@ import { regenerateTracks } from '@/lib/diagnostic';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
+import { isEmail } from '@/lib/questions';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -209,7 +210,7 @@ export async function inviteCoachAction(f: FormData) {
   const me = await requireCoach();
   const email = str(f, 'email').toLowerCase();
   const name = str(f, 'name');
-  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return back('/admin/coaches', 'Nom et email valides requis', true);
+  if (!name || !isEmail(email)) return back('/admin/coaches', 'Nom et email valides requis', true);
   if (await get('SELECT 1 FROM coaches WHERE email=?', email)) return back('/admin/coaches', 'Cet email est déjà enregistré', true);
   const newId = await insert('INSERT INTO coaches (name,email,whatsapp) VALUES (?,?,?)', name, email, str(f, 'whatsapp') || null);
   const coach = (await get<Coach>('SELECT * FROM coaches WHERE id=?', newId))!;

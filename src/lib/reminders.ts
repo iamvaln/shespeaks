@@ -1,10 +1,11 @@
 // Reminder engine: unfinished diagnostics → email to the candidate (if she left an address) AND alert to the coach(es).
 // Idempotent: a candidate is "claimed" (counter bumped) before any email goes out, so overlapping runs never double-send.
-import { all, getSetting, run, nowSql } from './db.ts';
-import { eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
+import { all, getSetting } from './db.ts';
+import { claimReminder, eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
 import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
+import { mailboxKey } from './contact.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
 const hoursBetween = (a: Date, b: Date) => (a.getTime() - b.getTime()) / 3_600_000;
@@ -34,6 +35,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
   report.checked = rows.length;
   const events = await listEvents();
   const byRecipient = new Map<string, { name: string; items: StalledItem[] }>();
+  const mailedBoxes = new Set<string>();
 
   for (const c of rows) {
     if (c.reminders_sent >= max) continue;
@@ -43,15 +45,15 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
     // claim first (idempotency)
     const tier = c.reminders_sent + 1;
-    const claimed = await run(
-      `UPDATE candidates SET reminders_sent=?, last_reminder_at=? WHERE id=? AND reminders_sent=?`,
-      tier, nowSql(), c.id, c.reminders_sent,
-    );
-    if (claimed === 0) continue;
+    if (!(await claimReminder(c.id, c.reminders_sent))) continue;
     report.due.push({ id: c.id, name: c.name ?? '', tier });
 
     const prog = screenProgress(c);
-    if (c.email) {
+    // One reminder email per mailbox and run: candidates parked on one address (a lost cookie and a second start, or an address
+    // someone else typed) must not multiply what that inbox receives. The coaches' digest below still lists every candidate.
+    const box = c.email ? mailboxKey(c.email) : '';
+    if (c.email && !mailedBoxes.has(box)) {
+      mailedBoxes.add(box);
       const m = candidateReminder({ name: c.name ?? '' }, `${appUrl()}/reprendre/${c.token}`, c.locale, prog);
       await sendMail({ ...m, to: c.email, kind: `candidate_reminder_${tier}`, candidateId: c.id });
       report.candidateEmails++;
