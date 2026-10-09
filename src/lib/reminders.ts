@@ -1,7 +1,7 @@
 // Reminder engine: unfinished diagnostics → email to the candidate (if she left an address) AND alert to the coach(es).
 // Idempotent: a candidate is "claimed" (counter bumped) before any email goes out, so overlapping runs never double-send.
-import { all, getSetting, run, nowSql } from './db.ts';
-import { eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
+import { all, getSetting } from './db.ts';
+import { claimReminder, eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
 import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
@@ -43,11 +43,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
     // claim first (idempotency)
     const tier = c.reminders_sent + 1;
-    const claimed = await run(
-      `UPDATE candidates SET reminders_sent=?, last_reminder_at=? WHERE id=? AND reminders_sent=?`,
-      tier, nowSql(), c.id, c.reminders_sent,
-    );
-    if (claimed === 0) continue;
+    if (!(await claimReminder(c.id, c.reminders_sent))) continue;
     report.due.push({ id: c.id, name: c.name ?? '', tier });
 
     const prog = screenProgress(c);
