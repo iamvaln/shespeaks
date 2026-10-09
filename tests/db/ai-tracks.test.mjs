@@ -203,6 +203,28 @@ test('refunding takes back one press and only that coach\'s and that candidate\'
   assert.equal((await aiHits(41, id)).candidate, 1, 'the candidate counter is shared by the coaches, the refund takes the newest row of each');
 });
 
+test('the refund takes the NEWEST press: an old one must not be what leaves the count', { skip }, async () => {
+  const id = await candidate();
+  const coach = 44;
+  const key = rl.rateKey(`candidate:${id}`);
+  await raw`insert into rate_limit_hits (bucket, key, at) values ('ai:candidate', ${key}, now() at time zone 'utc' - interval '23 hours')`;
+  await rl.checkAiRate(coach, id); // the press that then fails
+  await rl.refundAiRate(coach, id);
+  const left = await raw`select extract(epoch from (now() at time zone 'utc' - at))::int as age from rate_limit_hits where bucket = 'ai:candidate' and key = ${key}`;
+  assert.equal(left.length, 1);
+  assert.ok(left[0].age > 22 * 3600, `the 23 h old press is the one left (age ${left[0].age} s), not the failed one`);
+});
+
+test('a press refused for this candidate does not use up the coach\'s forty', { skip }, async () => {
+  const id = await candidate();
+  const coach = 45;
+  for (let i = 0; i < rl.AI_MAX_PER_CANDIDATE; i++) assert.equal((await rl.checkAiRate(coach, id)).ok, true);
+  for (let i = 0; i < 12; i++) assert.equal((await rl.checkAiRate(coach, id)).ok, false, `refused press ${i + 1}`);
+  assert.deepEqual(await aiHits(coach, id), { coach: rl.AI_MAX_PER_CANDIDATE, candidate: rl.AI_MAX_PER_CANDIDATE }, 'only the accepted presses count');
+  const other = await candidate();
+  assert.equal((await rl.checkAiRate(coach, other)).ok, true, 'the same coach can still work on another candidate');
+});
+
 test('the daily window slides: 23 h old presses still count, 25 h old ones do not', { skip }, async () => {
   const id = await candidate();
   const coach = 51;
@@ -241,7 +263,7 @@ test('asking for suggestions leaves template proposals nobody has read alone', {
 
 test('a storage error becomes « failed » for the coach and leaves the fiche as it was (the call was made, it stays counted)', { skip }, async () => {
   const id = await candidate();
-  await raw`insert into tracks (candidate_id, title, format, origin, position) values (${id}, 'Déjà là', 'talk', 'croisement', 0)`;
+  await raw`insert into tracks (candidate_id, title, format, origin, position) values (${id}, 'Déjà là', 'talk', 'croisement', 0), (${id}, 'Ancienne suggestion', 'talk', 'ia', 1)`;
   await raw.unsafe(`create function ss_boom() returns trigger language plpgsql as $$ begin if new.origin = 'ia' then raise exception 'boom'; end if; return new; end $$`);
   await raw.unsafe(`create trigger ss_boom before insert on tracks for each row execute function ss_boom()`);
   const log = console.error;
@@ -254,7 +276,7 @@ test('a storage error becomes « failed » for the coach and leaves the fiche as
     await raw.unsafe('drop trigger ss_boom on tracks');
     await raw.unsafe('drop function ss_boom()');
   }
-  assert.deepEqual((await tracks(id)).map((x) => x.title), ['Déjà là'], 'the delete and the inserts were one transaction');
+  assert.deepEqual((await tracks(id)).map((x) => x.title), ['Déjà là', 'Ancienne suggestion'], 'the delete of the old suggestion was rolled back with the failed inserts (one transaction)');
   assert.deepEqual(await aiHits(71, id), { coach: 1, candidate: 1 });
   assert.ok(logged.some((a) => String(a[0]).includes('could not store')), 'logged');
   assert.ok(!JSON.stringify(logged).includes('Un titre suggéré'), 'no title in the log');

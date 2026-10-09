@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AI_MODEL, aiConfigured, buildPrompt, describeError, facts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
+import { AI_MODEL, aiConfigured, buildPrompt, describeError, facts, maskContacts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
 import { AI_NOTICE, DEFAULT_REFS, SCREENS } from '../src/lib/questions.ts';
 import { shownToCandidate, tracksForCandidate } from '../src/lib/topics.ts';
 import { typoFr } from '../src/lib/text.ts';
@@ -235,4 +235,30 @@ test('the notice that tells her an AI tool may be used is on both topic screens,
   }
   for (const word of ['poste', 'études', 'ancienneté', 'format']) assert.ok(AI_NOTICE.fr.includes(word), word);
   for (const word of ['job', 'studies', 'how long', 'format']) assert.ok(AI_NOTICE.en.includes(word), word);
+});
+
+test('contact details typed inside a free-text answer are masked before they leave; years and small numbers are not', () => {
+  assert.equal(maskContacts('écris-moi à aicha.mbarga@example.org ou au +237 677 12 34 56'), 'écris-moi à [adresse masquée] ou au [numéro masqué]');
+  assert.equal(maskContacts('mon numéro : 677123456, ou (237) 6 77 12 34 56.'), 'mon numéro : [numéro masqué], ou ([numéro masqué].');
+  for (const kept of ['de 2019-2024 chez Orange', '5 ans, 3 projets, 12 clients', 'version 3.14.159', 'le 12/03/2024', 'budget de 1 500 000 FCFA'.replace('1 500 000', '1 500')])
+    assert.equal(maskContacts(kept), kept, kept);
+  const sent = facts({ ...base, answers: { ...base.answers, P6: 'développeuse chez Orange (aicha@orange.cm)', A1: 'Appelle-moi au 677 12 34 56, je fais du Flutter' } }).join('\n');
+  assert.ok(!sent.includes('aicha@orange.cm') && !sent.includes('677 12 34 56'), sent);
+  assert.ok(sent.includes('[adresse masquée]') && sent.includes('[numéro masqué]') && sent.includes('je fais du Flutter'));
+});
+
+test('a call that never answers is cut at the deadline: the body is bounded too, and the log says timeout', async () => {
+  const hangs: AiClient = {
+    messages: {
+      create: (_params, opts) => new Promise((_resolve, reject) => {
+        opts?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('Request was aborted.'), { name: 'APIUserAbortError' })));
+      }),
+    },
+  };
+  const started = Date.now();
+  const hold = setTimeout(() => {}, 5000); // AbortSignal.timeout does not keep the process alive; in production the open connection does
+  const r = await suggestTitles(base, hangs, 60);
+  clearTimeout(hold);
+  assert.deepEqual(r, { ok: false, reason: 'failed', detail: 'timeout' });
+  assert.ok(Date.now() - started < 3000, 'it did not wait for the 40 s default');
 });

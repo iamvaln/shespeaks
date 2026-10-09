@@ -63,12 +63,22 @@ const questionLabel = (code: string, loc: Locale): string => {
 /** « <  > » would let a free-text answer pretend to close the block it sits in. */
 const defang = (s: string): string => s.replace(/</g, '‹').replace(/>/g, '›').replace(/\u0000/g, '');
 
+/**
+ * Contact details typed inside a free-text answer are masked before they leave (an address; a run of at least nine digits, which is a phone
+ * number but not a range of years). A name typed in a sentence cannot be recognised: the notice asks her not to write one.
+ */
+export function maskContacts(s: string): string {
+  return s
+    .replace(/[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/g, '[adresse masquée]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, (m) => (m.replace(/\D/g, '').length >= 9 ? '[numéro masqué]' : m));
+}
+
 /** The answers that leave the platform, as « question : answer » lines. Nothing that identifies her or that she said about fears. */
 export function facts(i: AiInput): string[] {
   const a = i.answers;
   const lines: [string, string][] = [];
   const add = (code: string, value: unknown) => {
-    const text = (Array.isArray(value) ? value.join(', ') : String(value ?? '')).replace(/\s+/g, ' ').trim();
+    const text = maskContacts((Array.isArray(value) ? value.join(', ') : String(value ?? '')).replace(/\s+/g, ' ').trim());
     if (text) lines.push([questionLabel(code, 'fr'), text]);
   };
   add('P6', a['P6']);
@@ -203,11 +213,11 @@ async function defaultClient(): Promise<AiClient> {
  * Asks the model for titles. Never throws: the caller gets a reason it can show to the coach, and the templates are untouched
  * whatever happens. No server-side fallback to another model on purpose: a refusal here is a normal answer, shown as such.
  */
-export async function suggestTitles(i: AiInput, client?: AiClient): Promise<AiResult> {
+export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = TIMEOUT_MS): Promise<AiResult> {
   if (!client && !aiConfigured()) return { ok: false, reason: 'disabled' };
   const { system, user } = buildPrompt(i);
   // The SDK's own timeout covers the wait for the response headers only: this signal bounds the whole call, body included.
-  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
     const c = client ?? (await defaultClient());
     const res = await c.messages.create({

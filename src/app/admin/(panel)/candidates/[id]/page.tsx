@@ -164,7 +164,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       {aiConfigured() && c.completed_at && (
                         <form action={suggestTracksAction}>
                           <input type="hidden" name="cid" value={id} />
-                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer au fournisseur d’IA les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité et les titres déjà sur sa fiche (sans son nom ni ses coordonnées) pour obtenir des titres ? Les suggestions de l’IA non retenues sont remplacées.">
+                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer au fournisseur d’IA les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de l’IA non retenues sont remplacées.">
                             <Icon name="spark" size={16} />Suggérer avec l’IA
                           </PendingButton>
                         </form>

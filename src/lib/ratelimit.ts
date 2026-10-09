@@ -113,20 +113,20 @@ const aiLimits = (coachId: number, candidateId: number) => [
   { bucket: 'ai:candidate', key: rateKey(`candidate:${candidateId}`), max: AI_MAX_PER_CANDIDATE, windowSec: AI_WINDOW_SEC },
 ];
 
+/** Takes back the newest hit of a counter (the one just recorded, or the last press of an outage). */
+const refundOne = (l: { bucket: string; key: string }) =>
+  run(`DELETE FROM rate_limit_hits WHERE id = (SELECT id FROM rate_limit_hits WHERE bucket=? AND key=? ORDER BY at DESC, id DESC LIMIT 1)`, l.bucket, l.key);
+
 export async function checkAiRate(coachId: number, candidateId: number): Promise<RateResult> {
-  for (const l of aiLimits(coachId, candidateId)) {
-    const r = await hit(l);
-    if (!r.ok) return r;
-  }
-  return { ok: true, retryAfterSec: 0 };
+  const [byCoach, byCandidate] = aiLimits(coachId, candidateId);
+  const c = await hit(byCoach);
+  if (!c.ok) return c;
+  const k = await hit(byCandidate);
+  if (!k.ok) await refundOne(byCoach).catch(() => {}); // a press refused for this candidate must not use up the coach's forty
+  return k;
 }
 
 /** Gives back the allowance of a request that never reached the model (an outage must not use up a candidate's five a day). */
 export async function refundAiRate(coachId: number, candidateId: number): Promise<void> {
-  for (const l of aiLimits(coachId, candidateId)) {
-    await run(
-      `DELETE FROM rate_limit_hits WHERE id = (SELECT id FROM rate_limit_hits WHERE bucket=? AND key=? ORDER BY at DESC, id DESC LIMIT 1)`,
-      l.bucket, l.key,
-    );
-  }
+  for (const l of aiLimits(coachId, candidateId)) await refundOne(l);
 }
