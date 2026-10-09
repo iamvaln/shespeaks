@@ -131,15 +131,39 @@ else {
   for (const path of ['/admin/candidates/abc', '/admin/candidates/1.5', '/admin/candidates/99999999999', '/admin/candidates/0']) {
     ok((await admin(path)).status === 404, `coach space: ${path} is a 404, not a server error`);
   }
-  for (const sort of ['__proto__', 'constructor', 'hasOwnProperty', 'nope']) {
-    ok((await admin(`/admin/candidates?sort=${sort}`)).status === 200, `coach space: ?sort=${sort} is accepted`);
+  for (const query of ['order=__proto__', 'order=constructor-asc', 'order=name-sideways', 'start=__proto__', 'start=Z', 'status=nope', 'coach=abc', 'page=-3', 'page=99999', 'page=abc', 'q=a&q=b', 'order=name-asc&order=status-desc', 'order=received-asc&status=diagnostic_recu']) {
+    ok((await admin(`/admin/candidates?${query}`)).status === 200, `coach space: ?${query} is accepted`);
   }
+  const listHtml = (await admin('/admin/candidates')).text.replace(/<!-- -->/g, '');
+  ok(/aria-label="Filtrer par statut"/.test(listHtml) && /Toutes<span>\d+<\/span>/.test(listHtml) && /aria-sort="descending"/.test(listHtml), 'coach space: the list has status tabs with counts and a sorted column');
   const dash = await admin('/admin');
   ok(/<title>Tableau de bord · Espace coach · SheSpeaks<\/title>/.test(dash.text) && /<div class="admin-root"[^>]*lang="fr"/.test(dash.text), 'coach space: page title and French language marker');
+  // the frame: a menu with the six pages, the current one marked, a skip link, a search that goes to the list
+  const menu = (html) => html.slice(html.indexOf('aria-label="Navigation principale"'), html.indexOf('</nav>', html.indexOf('aria-label="Navigation principale"')));
+  const current = (html) => [...menu(html).matchAll(/<a\b[^>]*aria-current="page"[^>]*>/g)].map((m) => m[0].match(/href="([^"]*)"/)?.[1]);
+  ok(/<nav[^>]*aria-label="Navigation principale"/.test(dash.text) && ['/admin', '/admin/candidates', '/admin/events', '/admin/coaches', '/admin/settings', '/admin/emails'].every((h) => dash.text.includes(`href="${h}"`)), 'coach space: the menu links to the six pages');
+  ok(JSON.stringify(current(dash.text)) === '["/admin"]' && JSON.stringify(current((await admin('/admin/candidates')).text)) === '["/admin/candidates"]', 'coach space: the menu marks the current page');
+  ok(/href="#contenu"/.test(dash.text) && /<main[^>]*id="contenu"/.test(dash.text) && /<form[^>]*role="search"[^>]*action="\/admin\/candidates"|<form[^>]*action="\/admin\/candidates"[^>]*role="search"/.test(dash.text), 'coach space: skip link, main landmark and search form');
+
+  // an unknown filter value is ignored (the drop-down shows « Tous »), it never empties the list
+  const total = (html) => html.replace(/<!-- -->/g, '').match(/Toutes<span>(\d+)<\/span>/)?.[1];
+  const all = total((await admin('/admin/candidates')).text);
+  for (const query of ['start=Z', 'status=nope', 'coach=abc', 'event=zzz']) {
+    ok(total((await admin(`/admin/candidates?${query}`)).text) === all, `coach space: ?${query} is ignored (same list as without)`);
+  }
+  // the other pages, with a marker of their own
+  for (const [path, marker] of [['/admin/events', 'Ajouter un événement'], ['/admin/coaches', 'Inviter une coach'], ['/admin/settings', 'Configuration du serveur'], ['/admin/emails', 'Resend']]) {
+    const r = await admin(path);
+    ok(r.status === 200 && r.text.includes(marker), `coach space: ${path} renders (« ${marker} »)`);
+  }
 
   const id = await ficheId('Aïcha Mbarga');
+  for (const [tab, marker] of [['reponses', 'Faisons connaissance'], ['notes', 'Notes de suivi'], ['photos', 'Photos de speaker'], ['plan', 'tel que la candidate le voit']]) {
+    const r = await admin(`/admin/candidates/${id}?tab=${tab}`);
+    ok(r.status === 200 && r.text.includes(marker), `fiche: the ${tab} tab renders (« ${marker} »)`);
+  }
   const fiche = await admin(`/admin/candidates/${id}`);
-  ok(fiche.status === 200 && /<dt>Ancienneté tech<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
+  ok(fiche.status === 200 && /<dt>Ancienneté<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
   // a field named "id" hides form.id, and React then drops the clicked button's value: the buttons would silently do nothing
   const forms = fiche.text.split('<form').slice(1).map((f) => f.slice(0, f.indexOf('</form>')));
   const named = forms.filter((f) => /<button[^>]*name="op"/.test(f));
@@ -156,7 +180,7 @@ else {
   ok(r1.json?.ok && (r2.json?.ok || r2.json?.fatal === 'already_completed'), 'race: both simultaneous submissions are answered');
   const once = await racer('Race Single');
   await once.save('b2', { B4: ['retour'] });
-  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="track[ "]/g) ?? []).length;
+  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="a-track[ "]/g) ?? []).length;
   const [nTwice, nOnce] = [await count('Race Double'), await count('Race Single')];
   ok(nOnce > 0 && nTwice === nOnce, `race: tracks are not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
 }

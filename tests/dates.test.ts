@@ -27,6 +27,11 @@ test('todayIso follows the Douala calendar, one hour ahead of UTC', () => {
 test('fmtDate: a calendar date is the same everywhere, a timestamp is shown on Douala time', async () => {
   const { fmtDate } = await import('../src/lib/i18n.ts');
   assert.equal(fmtDate('2026-10-31', 'fr'), '31 octobre 2026');
+  assert.equal(fmtDate('2026-11-01', 'fr'), '1er novembre 2026'); // the first of the month is « 1er »
+  assert.equal(fmtDate('2026-11-01', 'fr', { day: 'numeric', month: 'short' }), '1er nov.');
+  assert.equal(fmtDate('2026-11-01', 'en'), '1 November 2026');
+  assert.equal(fmtDate('2026-11-11', 'fr'), '11 novembre 2026');
+  assert.match(fmtDate('2026-11-01 00:30:00', 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), /^1er novembre/);
   assert.equal(fmtDate('2026-10-31', 'fr', { day: 'numeric', month: 'short' }), '31 oct.');
   // stored as UTC: 22:30 UTC is 23:30 in Douala, and 00:30 the next day from 23:00 UTC
   assert.match(fmtDate('2026-10-08 22:30:00', 'fr', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), /^8 octobre.*23:30$/);

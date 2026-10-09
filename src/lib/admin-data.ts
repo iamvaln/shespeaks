@@ -1,5 +1,5 @@
 // Queries for admin screens.
-import { all } from './db.ts';
+import { all, get } from './db.ts';
 import { eventLabel, listEvents, type Candidate } from './data.ts';
 
 export interface Row extends Candidate {
@@ -25,4 +25,10 @@ export async function candidateRows(): Promise<Row[]> {
     try { at = r.a_title ? String(JSON.parse(r.a_title)) : ''; } catch { at = ''; }
     return { ...r, event_label: eventLabel(r, events), topic: (r.subject_title || at || '').trim() };
   });
+}
+
+/** Interests waiting for a coach (the figure beside « Candidates » in the menu). */
+export async function countToProcess(): Promise<number> {
+  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates WHERE status='diagnostic_recu' AND name IS NOT NULL AND name <> ''`);
+  return r?.n ?? 0;
 }

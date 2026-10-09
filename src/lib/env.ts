@@ -81,7 +81,7 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
 
   // --- email (Resend) -------------------------------------------------------------------
   if (!isSet(env.RESEND_API_KEY)) {
-    add('warn', ['RESEND_API_KEY'], 'Non renseignée : les confirmations, relances et notifications aux coachs sont seulement enregistrées dans l’onglet Emails, jamais envoyées. Les liens de connexion des coachs ne seront pas livrés.');
+    add('warn', ['RESEND_API_KEY'], 'Non renseignée : les confirmations, relances et notifications aux coachs sont seulement enregistrées dans la page Emails, jamais envoyées. Les liens de connexion des coachs ne seront pas livrés.');
   } else {
     if (!/^re_/.test(env.RESEND_API_KEY!.trim())) add('error', ['RESEND_API_KEY'], 'Les clés API Resend commencent par « re_ » (tableau de bord Resend → API Keys).');
     const from = env.MAIL_FROM?.trim();
