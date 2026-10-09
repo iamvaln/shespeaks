@@ -13,6 +13,8 @@ import { buildRoadmap } from '@/lib/roadmap';
 import { RoadmapView } from '@/components/RoadmapView';
 import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
+import { PendingButton } from '@/components/PendingButton';
+import { aiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
@@ -20,15 +22,16 @@ import { screenProgress } from '@/lib/reminders';
 import { BRANCH_SHORT, elapsed, one } from '@/lib/admin-format';
 import { initials, wordCount } from '@/lib/text';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, trackAction,
+  addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
 } from '../../../actions';
 
 export const metadata = { title: 'Fiche candidate' };
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // « Suggérer avec l’IA » waits for the model (the server action runs under this limit)
 
 const TRACK_STATE: Record<string, string> = { generee: 'Générée', retenue_coach: 'Retenue par la coach', ecartee: 'Écartée', choisie: 'Choisie' };
 const TRACK_TONE: Record<string, string> = { generee: 'neutral', retenue_coach: 'amber', ecartee: 'neutral', choisie: 'green' };
-const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach' };
+const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach', ia: 'Suggestion IA' };
 /** The path of a candidate who goes all the way, in order. « En cours » and « Non retenue » sit outside it. */
 const STAGES = ['diagnostic_recu', 'sujet_valide', 'candidature_soumise', 'retenue', 'slides_validees', 'repetition_faite', 'jour_j'];
 const DATE_TIME = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' } as const;
@@ -151,11 +154,22 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <div>
                       <h2 id="h-pistes" className="a-h2">Pistes de sujet</h2>
                       <p className="a-muted" style={{ margin: '2px 0 0' }}>
-                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » ne remplace que les pistes que tu n’as pas encore traitées : tes pistes, la piste choisie, les retenues et les écartées restent.
-                        {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate.' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
+                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » ne remplace que les pistes non traitées.
+                        {aiConfigured() ? ' Les suggestions de l’IA sont à relire : elles peuvent se tromper.' : ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).'}
+                        {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate (une suggestion de l’IA seulement une fois retenue ou choisie).' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
                       </p>
                     </div>
-                    <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {aiConfigured() && (
+                        <form action={suggestTracksAction}>
+                          <input type="hidden" name="cid" value={id} />
+                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer les réponses de cette candidate sur son sujet (sans son nom ni ses coordonnées) au fournisseur d’IA pour obtenir des titres ?">
+                            <Icon name="spark" size={16} />Suggérer avec l’IA
+                          </PendingButton>
+                        </form>
+                      )}
+                      <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
+                    </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
                     <ul className="a-tracks">

@@ -101,3 +101,14 @@ export async function checkChangeRate(ip: string, candidateId: number): Promise<
 
 export const checkCreateEmail = (email: string): Promise<RateResult> =>
   hit({ bucket: 'create:email', key: rateKey(mailboxKey(email)), max: CREATE_MAX_PER_EMAIL, windowSec: CREATE_WINDOW_SEC });
+
+// ---- AI title suggestions (coach space) ------------------------------------------------------------------------------
+// Every request costs money and sends answers to a provider: a ceiling per coach and one per candidate, per day.
+export const AI_MAX_PER_COACH = 40;
+export const AI_MAX_PER_CANDIDATE = 5;
+
+export async function checkAiRate(coachId: number, candidateId: number): Promise<RateResult> {
+  const byCoach = await hit({ bucket: 'ai:coach', key: rateKey(`coach:${coachId}`), max: AI_MAX_PER_COACH, windowSec: 86400 });
+  if (!byCoach.ok) return byCoach;
+  return hit({ bucket: 'ai:candidate', key: rateKey(`candidate:${candidateId}`), max: AI_MAX_PER_CANDIDATE, windowSec: 86400 });
+}

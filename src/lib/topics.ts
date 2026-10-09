@@ -58,6 +58,23 @@ function crossTitle(angle: string, domain: string, techno: string, loc: Locale, 
   return TEMPLATES[angle].title(domain, year)[loc];
 }
 
+/**
+ * Whether a track may be shown to the candidate (when the setting is on): not the ones set aside, and not an AI suggestion that no coach
+ * has read yet (it only appears once a coach shortlists or chooses it).
+ */
+export const shownToCandidate = (t: { state: string; origin: string }): boolean =>
+  t.state !== 'ecartee' && !(t.origin === 'ia' && t.state === 'generee');
+
+/** The domains of a candidate of branch A or B as they read in titles (a precise B2 sub-topic replaces the domain name). */
+export function domainLabelsOf(a: Answers, branch: 'A' | 'B', refs: Refs, loc: Locale): string[] {
+  // parenthetical detail (e.g. "(Android, Flutter, iOS)") reads badly inside a title
+  const labelOfDomain = (id: string) => (refs.domains.find((d) => d.value === id)?.label[loc] ?? id).replace(/\s*\(.*?\)/g, '').trim();
+  if (branch === 'A') return (Array.isArray(a['A2']) ? (a['A2'] as string[]) : []).map(labelOfDomain);
+  const ids = typeof a['B1'] === 'string' ? [a['B1'] as string] : [];
+  const precise = typeof a['B2'] === 'string' ? a['B2'].trim() : '';
+  return ids.map((id) => precise || labelOfDomain(id)); // B2 replaces the domain name
+}
+
 export function generateTracks(
   a: Answers,
   branch: 'A' | 'B',
@@ -67,20 +84,8 @@ export function generateTracks(
   limit = 5,
 ): GeneratedTrack[] {
   const loc = textLocale(a['P5'], uiLocale);
-  // parenthetical detail (e.g. "(Android, Flutter, iOS)") reads badly inside a title
-  const labelOfDomain = (id: string) => (refs.domains.find((d) => d.value === id)?.label[loc] ?? id).replace(/\s*\(.*?\)/g, '').trim();
-
   // Domains in order, and the label used in titles.
-  let domainIds: string[];
-  let domainLabels: string[];
-  if (branch === 'A') {
-    domainIds = Array.isArray(a['A2']) ? (a['A2'] as string[]) : [];
-    domainLabels = domainIds.map(labelOfDomain);
-  } else {
-    domainIds = typeof a['B1'] === 'string' ? [a['B1'] as string] : [];
-    const precise = typeof a['B2'] === 'string' ? a['B2'].trim() : '';
-    domainLabels = domainIds.map((id) => precise || labelOfDomain(id)); // B2 replaces the domain name
-  }
+  const domainLabels = domainLabelsOf(a, branch, refs, loc);
   const angleIds = ((branch === 'A' ? a['A7'] : a['B4']) as string[] | undefined) ?? [];
   const techno = firstTechno(a['A3']);
 

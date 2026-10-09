@@ -110,6 +110,18 @@ The mailbox is counted once the screen is valid (a typo elsewhere does not use i
 
 These limits slow down anyone who aims the platform at a third party; they do not prove the address belongs to the candidate. The reminder run therefore sends **one reminder email per mailbox and run** (candidates parked on one address are all claimed and reported to the coaches, but the inbox receives one email a day), and the lasting answer, confirming the address before the first reminder, is not built yet. The per-address limit is deliberately high enough for a room of candidates sharing one venue Wi-Fi: raise or lower `CREATE_MAX_PER_IP` in `src/lib/ratelimit.ts` if a larger group is expected.
 
+## AI title suggestions (coach space)
+
+On the fiche of a candidate who has no precise topic yet (start points A and B, form finished), the coach can press **« Suggérer avec l'IA »**: Claude Sonnet 5.5 proposes five talk titles built from the candidate's answers about her topic. They are added to « Pistes de sujet » with the label « Suggestion IA » and a one-line reason for the coach; she reads them, keeps, sets aside or chooses them like any other track. The templates (`topics.ts`) and the « Régénérer » button are unchanged and remain the fallback.
+
+- **Only on request.** The candidate never talks to the model, and nothing is sent when the form is submitted: data leaves the platform when a coach presses the button (after a confirmation). The two topic screens of the form say that the team may do it.
+- **What is sent** (`facts()` in `src/lib/ai-topics.ts`): role, seniority, preferred format, the domain(s) and styles she chose, and her free-text answers about her work and topic. **Not sent**: name, phone number, email, city, event, and what she answered about comfort and fears. Her free text is delimited and the model is told it is data, not instructions.
+- **Visibility.** Suggestions are visible to coaches only. On the candidate's plan page (when « Afficher les pistes » is on) an AI suggestion appears only once a coach has shortlisted or chosen it.
+- **Key.** `ANTHROPIC_API_KEY` (console.anthropic.com, starts with `sk-ant-`; set a spend limit there). Without it the button does not appear and the environment check shows a warning, nothing else changes. Set it for **Production only**: previews share the production database and would spend on the same key. Optional `ANTHROPIC_BASE_URL` is read by the SDK (useful to test against a local stand-in).
+- **Cost and limits.** One request per press (about 1,000 tokens in, a few thousand out with the model's short reasoning at `low` effort; measure on a trial before relying on an estimate). Limits per day, kept in the same Postgres counters: 5 per candidate, 40 per coach. Usage is logged without any answer text: `[ai] suggestions { candidate, model, added, inputTokens, outputTokens }`.
+- **Failures never break the fiche.** No key, a refusal, a timeout (40 s; the fiche page allows 60 s), a truncated or unreadable answer: the coach gets a message and the tracks are untouched. There is no server-side fallback to another model on purpose.
+- **Code.** `ai-topics.ts` (prompt, JSON schema, validation, the call: no framework or database import, the client can be replaced in tests), `ai-tracks.ts` (who may ask, limits, storage), `suggestTracksAction` in `admin/actions.ts`, the button in `candidates/[id]/page.tsx`. Tests: `tests/ai-topics.test.ts`, `tests/db/ai-tracks.test.mjs` (a stand-in replaces the model: CI has no key).
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

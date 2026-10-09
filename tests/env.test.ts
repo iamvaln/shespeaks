@@ -6,6 +6,7 @@ const good = {
   APP_URL: 'https://shespeaks.example.com', DATABASE_URL: 'postgresql://u:p@aws-0.pooler.supabase.com:6543/postgres',
   SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), SUPABASE_URL: 'https://abc.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service.key',
   ADMIN_EMAIL: 'coach@example.com', RESEND_API_KEY: 're_123456789', MAIL_FROM: 'SheSpeaks <no-reply@example.com>',
+  ANTHROPIC_API_KEY: 'sk-ant-api03-abcdef123456',
 };
 const names = (env: Record<string, string | undefined>, production = true) => checkEnv(env, { production }).map((i) => `${i.level}:${i.vars.join('+')}`);
 
@@ -47,6 +48,13 @@ test('resend: missing key warns; bad key, missing/invalid/test sender are flagge
   assert.ok(names({ ...good, MAIL_REPLY_TO: 'nope' }).includes('warn:MAIL_REPLY_TO'));
 });
 
+test('AI suggestions: the key is optional (a warning, never an error) and must look like an Anthropic key', () => {
+  assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: undefined }), ['warn:ANTHROPIC_API_KEY']);
+  assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'change-me' }), ['warn:ANTHROPIC_API_KEY'], 'a placeholder counts as unset');
+  assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'sk-live-nope' }), ['warn:ANTHROPIC_API_KEY']);
+  assert.equal(hasErrors(checkEnv({ ...good, ANTHROPIC_API_KEY: undefined, VERCEL: '1' }, { production: true })), false);
+});
+
 test('development only requires DATABASE_URL', () => {
   assert.deepEqual(names({}, false), ['error:DATABASE_URL']);
   assert.equal(hasErrors(checkEnv({ DATABASE_URL: 'postgres://u:p@localhost:5432/db' }, { production: false })), false);
@@ -75,15 +83,18 @@ test('APP_URL falls back to the URL Vercel provides', () => {
   assert.equal(resolveAppUrl({}).source, 'default');
 });
 
-test('the variables from the real Vercel project: only the two secrets are missing', () => {
+test('the variables from the real Vercel project: the two secrets are missing, the optional AI key is only a warning', () => {
   const vercelProject = {
     VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_PRODUCTION_URL: 'shespeaks.vercel.app',
     POSTGRES_URL: 'postgres://postgres.abc:pw@aws-0.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x',
     SUPABASE_URL: 'https://abc.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service', ADMIN_EMAIL: 'v@example.com', ADMIN_NAME: 'V',
     RESEND_API_KEY: 're_abc123', MAIL_FROM: 'SheSpeaks <no-reply@example.com>',
   };
-  assert.deepEqual(names(vercelProject).sort(), ['error:CRON_SECRET', 'error:SESSION_SECRET', 'warn:APP_URL']);
-  assert.deepEqual(names({ ...vercelProject, SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), APP_URL: 'https://shespeaks.org' }), []);
+  assert.deepEqual(names(vercelProject).sort(), ['error:CRON_SECRET', 'error:SESSION_SECRET', 'warn:ANTHROPIC_API_KEY', 'warn:APP_URL']);
+  const complete = { ...vercelProject, SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), APP_URL: 'https://shespeaks.org' };
+  assert.deepEqual(names(complete), ['warn:ANTHROPIC_API_KEY'], 'without the key the AI suggestions are simply off');
+  assert.deepEqual(names({ ...complete, ANTHROPIC_API_KEY: 'sk-ant-api03-abcdef' }), []);
+  assert.deepEqual(names({ ...complete, ANTHROPIC_API_KEY: 'abcdef' }), ['warn:ANTHROPIC_API_KEY'], 'a key that does not look like Anthropic\'s');
 });
 
 test('messages shown in the coach space are in French', () => {

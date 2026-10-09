@@ -181,6 +181,11 @@ else {
   const named = forms.filter((f) => /<button[^>]*name="op"/.test(f));
   ok(named.length > 0 && named.every((f) => !/<input[^>]*name="id"/.test(f) && /<input[^>]*name="cid"/.test(f)), `fiche: the ${named.length} track forms carry the candidate as "cid", not "id"`);
 
+  // AI title suggestions: the button when the server has a key, otherwise the note that they are off (CI has no key); never both
+  const aiOn = fiche.text.includes('Suggérer avec l’IA');
+  const aiOff = fiche.text.includes('Suggestions de l’IA non activées');
+  ok(aiOn !== aiOff, `fiche: AI suggestions show their button (key set) or the note that they are off, not both nor neither (button: ${aiOn}, note: ${aiOff})`);
+
   // the last screen sent twice at once: the tracks and the mails must not be doubled
   const racer = async (name) => {
     const c = new Client();

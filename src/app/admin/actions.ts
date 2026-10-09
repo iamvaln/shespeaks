@@ -6,6 +6,7 @@ import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoac
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
 import { getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
+import { suggestTracksFor } from '@/lib/ai-tracks';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
@@ -97,6 +98,25 @@ export async function saveSubjectAction(f: FormData) {
 }
 
 // The candidate id travels as `cid`: a field named `id` shadows form.id, and React then drops the clicked button's `op`.
+const AI_MESSAGE: Record<string, string> = {
+  disabled: 'Les suggestions par IA ne sont pas activées sur ce serveur (clé API manquante).',
+  not_eligible: 'Les suggestions par IA sont possibles pour une candidate sans sujet précis (points de départ A et B) dont le formulaire est terminé.',
+  limited: 'Limite atteinte pour aujourd’hui (par coach, ou pour cette candidate). Réessaie demain.',
+  refused: 'Le modèle n’a pas pu répondre à cette demande. Les pistes existantes sont inchangées.',
+  truncated: 'La réponse du modèle est restée incomplète. Réessaie dans un instant ; les pistes existantes sont inchangées.',
+  empty: 'Le modèle n’a rien proposé d’utilisable. Réessaie dans un instant ; les pistes existantes sont inchangées.',
+  failed: 'Le service d’IA n’a pas répondu. Réessaie dans un instant ; les pistes existantes sont inchangées.',
+};
+
+/** « Suggérer avec l'IA » on a fiche: titles written by the model, added to the tracks for the coach to read. */
+export async function suggestTracksAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const r = await suggestTracksFor(id, coach.id);
+  if (!r.ok) return back(cpath(id), AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed, true);
+  return back(cpath(id), `${r.added} suggestion${r.added > 1 ? 's' : ''} de l’IA ajoutée${r.added > 1 ? 's' : ''} : à relire avant de les retenir`);
+}
+
 export async function trackAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');

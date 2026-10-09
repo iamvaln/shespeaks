@@ -271,13 +271,22 @@ const bBlock = aBlock;
 const cBlock = aBlock;
 const dBlock = aBlock;
 
+/** Said where she writes about her topic: a coach may send these answers, and only these, to an AI tool (see ai-topics.ts). */
+const AI_NOTICE = {
+  fr: 'Pour t’aider à trouver un sujet, l’équipe peut demander des idées de titres à un outil d’IA : tes réponses sur ton sujet lui sont alors transmises, sans ton nom ni tes coordonnées.',
+  en: 'To help you find a topic, the team may ask an AI tool for title ideas: your answers about your topic are then sent to it, without your name or contact details.',
+};
+
 const a1: Screen = {
   id: 'a1',
   kind: 'form',
   branch: 'A',
   block: aBlock,
   title: L('Ce qui t’occupe au quotidien', 'What keeps you busy every day'),
-  intro: L('Réponds comme tu veux : plus tu en dis, plus nos idées de sujets seront personnelles.', 'Answer as you like: the more you share, the more personal our topic ideas will be.'),
+  intro: L(
+    `Réponds comme tu veux : plus tu en dis, plus nos idées de sujets seront personnelles. ${AI_NOTICE.fr}`,
+    `Answer as you like: the more you share, the more personal our topic ideas will be. ${AI_NOTICE.en}`,
+  ),
   questions: [
     { code: 'A1', type: 'longtext', required: false, maxLength: 1500, label: L('Sur quoi travailles-tu au quotidien (job, études, projets perso) ?', 'What do you work on day to day (job, studies, personal projects)?') },
     {
@@ -328,6 +337,7 @@ const b1: Screen = {
   branch: 'B',
   block: bBlock,
   title: L('Ton domaine de prédilection', 'Your favourite field'),
+  intro: L(AI_NOTICE.fr, AI_NOTICE.en),
   questions: [
     { code: 'B1', type: 'single', required: true, label: L('Ton domaine', 'Your field'), options: 'domains' },
     {

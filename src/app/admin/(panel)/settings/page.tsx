@@ -78,7 +78,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
         <section className="a-card a-stack">
           <h2 className="a-h2">Pistes de sujets</h2>
-          <label className="a-check"><input type="checkbox" name="show_tracks_to_candidates" defaultChecked={v.show === 'true'} /><span>Afficher les pistes (non écartées) directement à la candidate sur son plan de route. Désactivé pendant la phase de test : la coach relit d’abord les pistes.</span></label>
+          <label className="a-check"><input type="checkbox" name="show_tracks_to_candidates" defaultChecked={v.show === 'true'} /><span>Afficher les pistes (non écartées) directement à la candidate sur son plan de route ; une suggestion de l’IA n’apparaît qu’une fois retenue ou choisie par une coach. Désactivé pendant la phase de test : la coach relit d’abord les pistes.</span></label>
         </section>
 
         <section className="a-card a-stack">

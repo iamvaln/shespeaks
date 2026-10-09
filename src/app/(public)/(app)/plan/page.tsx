@@ -8,6 +8,7 @@ import { PlanPhotos } from '@/components/PlanPhotos';
 import { getSetting } from '@/lib/db';
 import { t } from '@/lib/i18n';
 import { appUrl } from '@/lib/mail';
+import { shownToCandidate } from '@/lib/topics';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
@@ -27,7 +28,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     subjectTitle: sub?.title, event: await eventFor(c), eventName: await eventLabelFor(c, locale),
   });
   const show = (await getSetting('show_tracks_to_candidates')) === 'true';
-  const tracks = show ? (await getTracks(c.id)).filter((x) => x.state !== 'ecartee') : [];
+  const tracks = show ? (await getTracks(c.id)).filter(shownToCandidate) : [];
   const photo = photos.find((p) => p.id === c.selected_photo_id) ?? photos[0];
 
   return (

@@ -93,6 +93,13 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
       add('warn', ['MAIL_REPLY_TO'], 'Adresse non valide : les réponses n’atteindraient aucune coach.');
     }
   }
+
+  // --- AI title suggestions for the coaches (optional) ------------------------------------------------------------------
+  if (!isSet(env.ANTHROPIC_API_KEY)) {
+    add('warn', ['ANTHROPIC_API_KEY'], 'Non renseignée : les suggestions de titres par IA sont désactivées (le bouton « Suggérer avec l’IA » n’apparaît pas sur les fiches).');
+  } else if (!/^sk-ant-/.test(env.ANTHROPIC_API_KEY!.trim())) {
+    add('warn', ['ANTHROPIC_API_KEY'], 'Ne ressemble pas à une clé Anthropic (elles commencent par « sk-ant- »).');
+  }
   return out;
 }
 
