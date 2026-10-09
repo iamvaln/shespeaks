@@ -8,7 +8,7 @@ import {
 import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
-import { emailDomainAccepts, isWhatsappNumber, strictContactChecks } from './contact.ts';
+import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
 import { checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
 
@@ -75,11 +75,15 @@ export async function submitScreen(token: string | null, screenId: string, value
   }
   if (Object.keys(errors).length) return { ok: false, errors };
 
-  // Creating a candidate emails the address she typed: at most a few candidates per mailbox and hour, counted only now that the
-  // form is valid (a typo elsewhere on the screen must not use up the allowance) and before anything is created or queued.
-  if (!c) {
+  // Reminders and the confirmation go to the address on the profile, so an address is « used » when a candidate is created with it
+  // AND when an existing candidate changes to it: at most a few per mailbox and hour, counted only now that the form is valid
+  // (a typo elsewhere on the screen must not use up the allowance) and before anything is created, changed or queued. Saving the
+  // same mailbox again (Back, then Next) costs nothing.
+  if (screenId === 'profile') {
     const email = String(merged['P4'] ?? '').trim();
-    if (email && !(await checkCreateEmail(email)).ok) return { ok: false, errors: {}, fatal: 'email_rate_limited' };
+    if (email && (!c || mailboxKey(email) !== mailboxKey(c.email ?? '')) && !(await checkCreateEmail(email)).ok) {
+      return { ok: false, errors: {}, fatal: 'email_rate_limited' };
+    }
   }
 
   const result = await tx(async () => {

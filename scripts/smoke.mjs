@@ -16,7 +16,7 @@ class Client {
   async post(path, body) {
     const r = await fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/json', cookie: this.cookie(), 'x-real-ip': this.ip }, body: JSON.stringify(body), redirect: 'manual' });
     this.store(r);
-    return { status: r.status, json: await r.json().catch(() => null) };
+    return { status: r.status, json: await r.json().catch(() => null), retryAfter: r.headers.get('retry-after') };
   }
   async get(path) {
     const r = await fetch(BASE + path, { headers: { cookie: this.cookie() }, redirect: 'manual' });
@@ -118,18 +118,24 @@ await run('D', 'Danielle Eto', [
   }
 }
 
-// the coach space with a real session (SESSION_SECRET is known to CI): hand-typed URLs, labels, track forms, simultaneous submissions
-if (!process.env.SESSION_SECRET) console.log('SKIP  coach session checks (SESSION_SECRET not set)');
-else {
-  const sessionFor = (coachId) => {
-    const body = `${coachId}.${Math.floor(Date.now() / 1000) + 3600}`;
-    return `${body}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(body).digest('base64url')}`;
-  };
-  let cookie = '';
+// a signed coach session (SESSION_SECRET is known to CI), for the checks that need to look at the coach space
+const sessionFor = (coachId) => {
+  const body = `${coachId}.${Math.floor(Date.now() / 1000) + 3600}`;
+  return `${body}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(body).digest('base64url')}`;
+};
+async function coachCookie() {
+  if (!process.env.SESSION_SECRET) return '';
   for (const id of [1, 2, 3]) {
     const r = await fetch(BASE + '/admin', { headers: { cookie: `ss_admin=${sessionFor(id)}` }, redirect: 'manual' });
-    if (r.status === 200) { cookie = `ss_admin=${sessionFor(id)}`; break; }
+    if (r.status === 200) return `ss_admin=${sessionFor(id)}`;
   }
+  return '';
+}
+
+// the coach space with a real session: hand-typed URLs, labels, track forms, simultaneous submissions
+if (!process.env.SESSION_SECRET) console.log('SKIP  coach session checks (SESSION_SECRET not set)');
+else {
+  const cookie = await coachCookie();
   ok(!!cookie, 'coach space: a signed session opens the dashboard');
   const admin = async (path) => { const r = await fetch(BASE + path, { headers: { cookie }, redirect: 'manual' }); return { status: r.status, text: await r.text() }; };
   const ficheId = async (name) => Math.max(0, ...[...(await admin(`/admin/candidates?q=${encodeURIComponent(name)}`)).text.matchAll(/\/admin\/candidates\/(\d+)/g)].map((m) => Number(m[1])));
@@ -233,7 +239,8 @@ else {
   const limited = await formPost('/admin/verify', [...verify, ['token', 'x']], ip2);
   ok(limited.location.includes('limited=1'), 'login link: the 21st attempt from the same IP is refused');
 }
-// Starting the form emails the address typed: at most 3 starts per mailbox and hour (« +tag » is the same mailbox), and 30 attempts per address.
+// Starting the form emails the address typed, and reminders and the confirmation follow the address on the profile: at most 3 starts
+// or changes per mailbox and hour (« +tag » is the same mailbox), and 30 attempts per address.
 {
   const base = `limite${RUN}`;
   const starts = [];
@@ -243,17 +250,46 @@ else {
   }
   ok(starts.every(Boolean), 'creation limit: three starts for one mailbox are accepted');
   const fourth = await new Client().save('profile', profile('Limite Email', { P4: `${base}+c@example.com` }));
-  ok(fourth.status === 429 && fourth.json?.fatal === 'email_rate_limited', 'creation limit: the fourth start for the same mailbox is refused (429, no candidate created)');
+  ok(fourth.status === 429 && fourth.json?.fatal === 'email_rate_limited', 'creation limit: the fourth start for the same mailbox is refused (429)');
   const other = await new Client().save('profile', profile('Limite Autre'));
   ok(other.json?.ok === true, 'creation limit: another mailbox is not affected');
 
+  const cookie = await coachCookie();
+  if (cookie) {
+    const list = await (await fetch(BASE + `/admin/candidates?q=${base}`, { headers: { cookie } })).text();
+    const ids = new Set([...list.matchAll(/\/admin\/candidates\/(\d+)/g)].map((m) => m[1]));
+    ok(ids.size === 3, `creation limit: the refused start created no candidate (${ids.size} candidates for that mailbox, expected 3)`);
+  } else console.log('SKIP  creation limit: refused start creates nothing (SESSION_SECRET not set)');
+
+  // a typo elsewhere on the screen must not use up the mailbox allowance
+  const typos = [];
+  for (let i = 0; i < 4; i++) typos.push((await new Client().save('profile', profile('Limite Faute', { P4: `faute${RUN}@example.com`, P3: 'abc' }))).status);
+  ok(typos.every((x) => x === 422), `creation limit: invalid screens answer 422 and are not counted (${typos.join(',')})`);
+  ok((await new Client().save('profile', profile('Limite Faute', { P4: `faute${RUN}@example.com` }))).json?.ok === true, 'creation limit: the corrected screen is then accepted');
+
+  // changing the address of an existing candidate counts like starting with it: the reminders would go to the new address
+  const changer = new Client();
+  ok((await changer.save('profile', profile('Limite Change', { P4: `decoy${RUN}@example.com` }))).json?.ok === true, 'creation limit: a candidate starts with her own address');
+  const toVictim = await changer.save('profile', profile('Limite Change', { P4: `${base}+d@example.com` }));
+  ok(toVictim.status === 429 && toVictim.json?.fatal === 'email_rate_limited', 'creation limit: changing to a mailbox already used three times is refused');
+  ok((await changer.save('profile', profile('Limite Change', { P4: `fresh${RUN}@example.com` }))).json?.ok === true, 'creation limit: changing to a free mailbox is accepted');
+  const resaves = [];
+  for (let i = 0; i < 4; i++) resaves.push((await changer.save('profile', profile('Limite Change', { P4: `Fresh${RUN}+x@example.com` }))).json?.ok === true);
+  ok(resaves.every(Boolean), 'creation limit: saving the same mailbox again (Back, then Next) costs nothing');
+
   const flood = new Client();
   let refusedAt = 0;
-  for (let i = 1; i <= 31 && !refusedAt; i++) if ((await flood.save('profile', {})).status === 429) refusedAt = i;
+  let last;
+  for (let i = 1; i <= 31 && !refusedAt; i++) { last = await flood.save('profile', {}); if (last.status === 429) refusedAt = i; }
   ok(refusedAt === 31, `creation limit: the 31st attempt from one address in an hour is refused (refused at attempt ${refusedAt || 'never'})`);
+  ok(Number(last?.retryAfter) > 0, `creation limit: the refusal says when to come back (Retry-After: ${last?.retryAfter})`);
   flood.jar.ss_token = 'made-up-token';
   const bogus = await flood.save('profile', {});
   ok(bogus.status === 429 && bogus.json?.fatal === 'rate_limited', 'creation limit: a made-up cookie does not skip the limit');
+  const member = new Client(); // started from her own address, then comes back from the flooded one: a real cookie is never blocked
+  ok((await member.save('profile', profile('Limite Membre'))).json?.ok === true, 'creation limit: a candidate starts from her own address');
+  member.ip = flood.ip;
+  ok((await member.save('profile', profile('Limite Membre'))).json?.ok === true, 'creation limit: she can still save from an address that is over the limit (her cookie matches a candidate)');
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');

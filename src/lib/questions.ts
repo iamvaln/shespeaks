@@ -484,7 +484,7 @@ export function validateScreen(screen: Screen, a: Answers, refs: Refs): FieldErr
         if (typeof v !== 'string' || !PHONE_RE.test(v.trim())) errors[q.code] = 'invalid_phone';
         break;
       case 'email':
-        if (typeof v !== 'string' || !EMAIL_RE.test(v.trim())) errors[q.code] = 'invalid_email';
+        if (typeof v !== 'string' || v.trim().length > 254 || !EMAIL_RE.test(v.trim())) errors[q.code] = 'invalid_email'; // length first: the pattern backtracks on very long input
         break;
       case 'single': {
         const ok = resolveOptions(q, refs).some((o) => o.value === v);

@@ -121,3 +121,12 @@ test('initials: first and last word, accents kept', () => {
   assert.equal(initials('Éloïse Ngo Bayiha'), 'ÉB');
   assert.equal(initials(''), '?');
 });
+
+test('profile: a very long email is refused at once (the pattern would backtrack on it)', () => {
+  const base = { P1: 'A', P2: 'douala', P3: '+237 612 34 56 78', P6: 'dev', P7: '1-3' };
+  const started = Date.now();
+  assert.equal(validateScreen(SCREENS.profile, { ...base, P4: 'a@' + '.'.repeat(100_000) + '@' }, EVENT_REFS).P4, 'invalid_email');
+  assert.equal(validateScreen(SCREENS.profile, { ...base, P4: 'a'.repeat(250) + '@example.com' }, EVENT_REFS).P4, 'invalid_email', 'over 254 characters');
+  assert.ok(Date.now() - started < 500, 'answered without backtracking');
+  assert.equal(validateScreen(SCREENS.profile, { ...base, P4: 'a'.repeat(64) + '@example.com' }, EVENT_REFS).P4, undefined, 'a long but valid address passes');
+});

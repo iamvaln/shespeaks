@@ -142,8 +142,8 @@ const fr = {
     networkError: 'Impossible d’enregistrer pour le moment. Vérifie ta connexion et réessaie.',
     fatal: {
       lost: 'Nous ne retrouvons plus ton formulaire. Si tu as reçu un email de SheSpeaks, ouvre le lien « Reprendre mon formulaire » ; sinon, recommence au premier écran.',
-      busy: 'Beaucoup de personnes utilisent cette connexion en ce moment. Réessaie dans quelques minutes.',
-      emailBusy: 'Cette adresse email a déjà servi plusieurs fois à commencer le formulaire. Réessaie dans une heure.',
+      busy: 'Beaucoup de personnes utilisent cette connexion en ce moment. Réessaie un peu plus tard (cela peut aller jusqu’à une heure).',
+      emailBusy: 'Cette adresse email a déjà servi plusieurs fois à commencer le formulaire. Cherche dans ta boîte de réception (et tes spams) l’email « Reprendre mon formulaire » et ouvre son lien ; sinon, réessaie dans une heure.',
       other: 'Un problème est survenu de notre côté. Réessaie dans un instant.',
     },
     fixErrors: 'Quelques réponses sont à corriger.',
@@ -355,8 +355,8 @@ const en: Dict = {
     networkError: 'Could not save right now. Check your connection and try again.',
     fatal: {
       lost: 'We can’t find your form any more. If you received an email from SheSpeaks, open its “Resume my form” link; otherwise, start again from the first screen.',
-      busy: 'Many people are using this connection right now. Try again in a few minutes.',
-      emailBusy: 'This email address has already been used several times to start the form. Try again in an hour.',
+      busy: 'Many people are using this connection right now. Try again a little later (it can take up to an hour).',
+      emailBusy: 'This email address has already been used several times to start the form. Look in your inbox (and spam) for the “Resume my form” email and open its link; otherwise, try again in an hour.',
       other: 'Something went wrong on our side. Try again in a moment.',
     },
     fixErrors: 'A few answers need fixing.',

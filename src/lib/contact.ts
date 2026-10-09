@@ -69,8 +69,8 @@ export async function emailDomainAccepts(email: string, resolver: Resolver = dns
  */
 export function mailboxKey(email: string): string {
   const [rawLocal, rawDomain = ''] = email.trim().toLowerCase().split('@');
-  let domain = rawDomain;
-  let local = rawLocal.split('+')[0];
+  let domain = (domainToASCII(rawDomain) || rawDomain).replace(/\.$/, ''); // the same reading of the domain as the DNS check (full-width, invisible characters)
+  let local = rawLocal.replace(/^"(.*)"$/, '$1').split('+')[0]; // "vic.tim"@gmail.com is the mailbox vic.tim@gmail.com
   if (domain === 'googlemail.com') domain = 'gmail.com';
   if (domain === 'gmail.com') local = local.replace(/\./g, '');
   return `${local}@${domain}`;

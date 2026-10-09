@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import postgres from 'postgres';
 import { resolveDatabaseUrl } from '../../src/lib/env.ts';
+import { mailboxKey } from '../../src/lib/contact.ts';
 
 const adminUrl = resolveDatabaseUrl(process.env);
 const skip = adminUrl ? false : 'DATABASE_URL not set';
@@ -125,4 +126,49 @@ test('candidate creation: 30 attempts per address and hour, then refused; anothe
   for (let i = 0; i < rl.CREATE_MAX_PER_IP; i++) assert.equal((await rl.checkCreateIp('203.0.113.9')).ok, true, `attempt ${i + 1}`);
   assert.equal((await rl.checkCreateIp('203.0.113.9')).ok, false);
   assert.equal((await rl.checkCreateIp('203.0.113.10')).ok, true);
+});
+
+test('the policies are the ones documented', { skip }, () => {
+  assert.equal(rl.CREATE_WINDOW_SEC, 3600);
+  assert.equal(rl.CREATE_MAX_PER_IP, 30);
+  assert.equal(rl.CREATE_MAX_PER_EMAIL, 3);
+});
+
+test('candidate creation: hits age out of the one-hour window, and the delay follows the oldest hit', { skip }, async () => {
+  const email = 'ageing@example.org';
+  const key = rl.rateKey(mailboxKey(email));
+  for (let i = 0; i < 3; i++) await raw`insert into rate_limit_hits (bucket, key, at) values ('create:email', ${key}, (now() at time zone 'utc') - interval '59 minutes')`;
+  const refused = await rl.checkCreateEmail(email);
+  assert.equal(refused.ok, false, 'three hits 59 minutes old still count');
+  assert.ok(refused.retryAfterSec >= 30 && refused.retryAfterSec <= 90, `about a minute left, got ${refused.retryAfterSec}s`);
+  const other = 'ageing-old@example.org';
+  const otherKey = rl.rateKey(mailboxKey(other));
+  for (let i = 0; i < 3; i++) await raw`insert into rate_limit_hits (bucket, key, at) values ('create:email', ${otherKey}, (now() at time zone 'utc') - interval '61 minutes')`;
+  assert.equal((await rl.checkCreateEmail(other)).ok, true, 'hits older than an hour no longer count');
+});
+
+test('creation limits store opaque keys: no address, no mailbox', { skip }, async () => {
+  await rl.checkCreateEmail('opaque.person@example.org');
+  await rl.checkCreateIp('203.0.113.77');
+  await rl.checkCreateIp('2001:db8:aaaa:bbbb::1');
+  const keys = (await raw`select key from rate_limit_hits where bucket like 'create:%'`).map((r) => r.key);
+  assert.ok(keys.length > 0);
+  for (const k of keys) assert.match(k, /^[0-9a-f]{32}$/, 'a 32-character digest');
+});
+
+test('IPv6 addresses count per /64; IPv4 and IPv4-mapped addresses per address', { skip }, () => {
+  assert.equal(rl.ipBucket('203.0.113.9'), '203.0.113.9');
+  assert.equal(rl.ipBucket('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(rl.ipBucket('2001:db8:1:2::1'), rl.ipBucket('2001:db8:1:2:ffff:ffff:ffff:ffff'), 'same /64');
+  assert.equal(rl.ipBucket('2001:DB8:1:2::1'), rl.ipBucket('[2001:db8:1:2::9]'), 'case and brackets');
+  assert.equal(rl.ipBucket('fe80::1%eth0'), rl.ipBucket('fe80::2'), 'zone ids are dropped');
+  assert.notEqual(rl.ipBucket('2001:db8:1:2::1'), rl.ipBucket('2001:db8:1:3::1'), 'another /64');
+  assert.notEqual(rl.ipBucket('2001:db8:1:2::1'), rl.ipBucket('2001:db8:1::1'), 'not confused by the :: expansion');
+  assert.equal(rl.ipBucket('unknown'), 'unknown');
+});
+
+test('IPv6: a client rotating inside its /64 shares one counter', { skip }, async () => {
+  for (let i = 0; i < rl.CREATE_MAX_PER_IP; i++) assert.equal((await rl.checkCreateIp(`2001:db8:55:66::${(i + 1).toString(16)}`)).ok, true);
+  assert.equal((await rl.checkCreateIp('2001:db8:55:66:dead:beef::1')).ok, false, 'a new address in the same /64 is refused');
+  assert.equal((await rl.checkCreateIp('2001:db8:55:67::1')).ok, true, 'another /64 is not');
 });

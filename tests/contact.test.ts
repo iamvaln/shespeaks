@@ -68,3 +68,10 @@ test('mailbox key: « +tags », case and Gmail dots do not make a new mailbox; o
   assert.notEqual(mailboxKey('a.b@example.org'), mailboxKey('ab@example.org'));
   assert.equal(mailboxKey('nobody'), 'nobody@', 'not an address: still a stable key, never an error');
 });
+
+test('mailbox key: the domain is read as the DNS check reads it, and a quoted local part is the same mailbox', () => {
+  const victim = mailboxKey('victim@gmail.com');
+  for (const variant of ['victim@ｇmail.com', 'victim@gmail.com\u200b', 'victim@gma\u00adil.com', 'victim@gmail.com.', '"victim"@gmail.com', '"vic.tim"@googlemail.com', 'V.I.C.T.I.M+x@Gmail.COM'])
+    assert.equal(mailboxKey(variant), victim, JSON.stringify(variant));
+  assert.notEqual(mailboxKey('victim@gmail.org'), victim);
+});

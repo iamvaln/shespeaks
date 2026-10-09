@@ -30,6 +30,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
     return typeof stored === 'string' && stored.trim() !== assembleAbstract(init.answers, locale).trim();
   });
   const head = useRef<HTMLHeadingElement>(null);
+  const bannerBox = useRef<HTMLDivElement>(null);
   const first = useRef(true);
 
   const branch = (answers['D6'] as Branch | undefined) ?? null;
@@ -72,7 +73,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
         // A failed save is not always the candidate's fault: say what really happened.
         setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : j.fatal === 'email_rate_limited' ? d.fatal.emailBusy : d.fatal.other);
         const firstErr = Object.keys(j.errors ?? {})[0];
-        if (firstErr) requestAnimationFrame(() => document.getElementById(`q-${firstErr}`)?.focus());
+        // field errors focus the first field; any other failure brings its message into view (the button is at the bottom of a long screen)
+        requestAnimationFrame(() => (firstErr ? document.getElementById(`q-${firstErr}`) : bannerBox.current)?.focus());
         setBusy(false);
         return;
       }
@@ -83,6 +85,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
       enter(j.next, a);
     } catch {
       setBanner(d.networkError);
+      requestAnimationFrame(() => bannerBox.current?.focus());
     }
     setBusy(false);
   }
@@ -110,7 +113,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
             {screen.intro && <p className="form-intro">{screen.intro[locale]}</p>}
           </header>
 
-          {banner && <div className="banner" role="alert">{banner}</div>}
+          {banner && <div className="banner" role="alert" ref={bannerBox} tabIndex={-1}>{banner}</div>}
 
           {questions.map((q) => (
             screen.kind === 'draft' ? (
