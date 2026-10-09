@@ -5,6 +5,7 @@ import { inviteCoachAction, toggleCoachAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Coachs' };
 export default async function Coaches({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   const sp = await searchParams;
   const me = await requireCoach();
@@ -12,8 +13,8 @@ export default async function Coaches({ searchParams }: { searchParams: Promise<
   return (
     <>
       <h1>Coachs</h1>
-      {sp.msg && <div className="flash">{sp.msg}</div>}
-      {sp.err && <div className="flash err">{sp.err}</div>}
+      {sp.msg && <div className="flash" role="status">{sp.msg}</div>}
+      {sp.err && <div className="flash err" role="alert">{sp.err}</div>}
       <div className="table-wrap" style={{ marginBottom: 32 }}>
         <table className="t">
           <thead><tr><th>Nom</th><th>Email</th><th>WhatsApp</th><th className="num">Candidates suivies</th><th>Accès</th><th></th></tr></thead>

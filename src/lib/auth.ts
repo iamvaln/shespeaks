@@ -99,7 +99,7 @@ export async function requestLogin(email: string, ip: string): Promise<{ devLink
 export async function inviteCoach(coach: Coach, invitedBy: string) {
   const link = await createLoginLink(coach.id);
   const m = coachInvite(coach.name, invitedBy, link);
-  await sendMail({ ...m, to: coach.email, kind: 'coach_invite' });
+  return sendMail({ ...m, to: coach.email, kind: 'coach_invite' });
 }
 
 export async function consumeLoginToken(token: string): Promise<Coach | null> {

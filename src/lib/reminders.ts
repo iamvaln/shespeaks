@@ -74,11 +74,10 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
   return report;
 }
 
-/** Manual reminder from the coach's fiche (does not touch the automatic counter). */
-export async function sendReminderNow(candidateId: number): Promise<boolean> {
+/** Manual reminder from the coach's fiche (does not touch the automatic counter). 'unavailable' = no address or form already done. */
+export async function sendReminderNow(candidateId: number): Promise<'sent' | 'logged' | 'failed' | 'unavailable'> {
   const c = await getCandidate(candidateId);
-  if (!c || !c.email || c.completed_at) return false;
+  if (!c || !c.email || c.completed_at) return 'unavailable';
   const m = candidateReminder({ name: c.name ?? '' }, `${appUrl()}/reprendre/${c.token}`, c.locale, screenProgress(c));
-  await sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });
-  return true;
+  return sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });
 }

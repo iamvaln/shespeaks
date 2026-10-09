@@ -1,5 +1,6 @@
 import { verifyAction } from '../actions';
 export const dynamic = 'force-dynamic';
+export const metadata = { title: 'Connexion' };
 // A confirmation click (POST) prevents mail scanners that pre-fetch links from consuming the one-time token.
 export default async function VerifyPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const { token } = await searchParams;

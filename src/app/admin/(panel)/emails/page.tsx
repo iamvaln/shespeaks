@@ -5,11 +5,18 @@ import { mailConfigured } from '@/lib/mail';
 import { requireCoach } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
+export const metadata = { title: 'Emails' };
 
 const KINDS: Record<string, string> = {
   candidate_started: 'Candidate · parcours commencé', candidate_confirmation: 'Candidate · confirmation de réception',
   candidate_reminder_1: 'Candidate · relance 1', candidate_reminder_2: 'Candidate · relance 2', candidate_reminder_manual: 'Candidate · rappel manuel',
   coach_new_diagnostic: 'Coach · nouvel intérêt', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
+};
+
+// Reminders are numbered up to the maximum set in Paramètres (1 to 10), so their labels are built, not listed.
+const kindLabel = (kind: string) => {
+  const n = /^candidate_reminder_(\d+)$/.exec(kind)?.[1];
+  return KINDS[kind] ?? (n ? `Candidate · relance ${n}` : kind);
 };
 
 export default async function Emails({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
@@ -24,10 +31,10 @@ export default async function Emails({ searchParams }: { searchParams: Promise<{
       <p className="muted" style={{ marginBottom: 16 }}>{mailConfigured() ? 'Resend configuré : « envoyé » = accepté par Resend (l’identifiant du message est conservé pour le retrouver dans le tableau de bord Resend).' : 'Resend non configuré : les emails sont enregistrés ici (« journalisé ») mais pas envoyés. Renseigne RESEND_API_KEY et MAIL_FROM dans l’environnement pour les envoyer.'}</p>
       {open && (
         <section className="card" style={{ marginBottom: 24 }}>
-          <div className="small">{KINDS[open.kind] ?? open.kind} · à {open.to_addr}</div>
+          <div className="small">{kindLabel(open.kind)} · à {open.to_addr}</div>
           <h2>{open.subject}</h2>
           <pre style={{ whiteSpace: 'pre-wrap', font: 'inherit', margin: 0 }}>{open.body_text}</pre>
-          {open.error && <p className="flash err" style={{ marginTop: 12 }}>Erreur : {open.error}</p>}
+          {open.error && <p className="flash err" role="alert" style={{ marginTop: 12 }}>Erreur : {open.error}</p>}
           <p style={{ marginTop: 12 }}><Link href="/admin/emails">Fermer</Link></p>
         </section>
       )}
@@ -37,7 +44,7 @@ export default async function Emails({ searchParams }: { searchParams: Promise<{
           {rows.map((r) => (
             <tr key={r.id}>
               <td className="small">{fmtDate(r.at, 'fr', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-              <td>{KINDS[r.kind] ?? r.kind}</td><td>{r.to_addr}</td>
+              <td>{kindLabel(r.kind)}</td><td>{r.to_addr}</td>
               <td><Link href={`/admin/emails?id=${r.id}`}>{r.subject}</Link></td>
               <td><span className={`status ${r.status === 'sent' ? 's-retenue' : r.status === 'failed' ? 's-non_retenue' : ''}`}>{r.status === 'sent' ? 'envoyé' : r.status === 'failed' ? 'échec' : 'journalisé'}</span></td>
             </tr>))}</tbody>

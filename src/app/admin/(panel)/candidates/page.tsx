@@ -19,9 +19,11 @@ const SORTS: Record<string, (r: Awaited<ReturnType<typeof candidateRows>>[number
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Candidates' };
 export default async function Candidates({ searchParams }: { searchParams: Promise<SP> }) {
   await requireCoach();
-  const sp = await searchParams;
+  const raw = await searchParams;
+  const sp = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])) as SP; // ?q=a&q=b arrives as a list: keep the first
   const all = await candidateRows();
   const events_ = [...new Set(all.map((r) => r.event_label))].sort();
   const coaches = await listCoaches();
@@ -31,7 +33,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
       (!sp.event || r.event_label === sp.event) && (!sp.status || r.status === sp.status) && (!sp.coach || String(r.coach_id ?? '') === sp.coach) &&
       (!q || norm(`${r.name} ${r.topic} ${r.whatsapp} ${r.email ?? ''} ${r.role ?? ''}`).includes(q)),
   );
-  const sort = SORTS[sp.sort ?? ''] ? sp.sort! : 'updated';
+  const sort = sp.sort && Object.hasOwn(SORTS, sp.sort) ? sp.sort : 'updated'; // own keys only: ?sort=__proto__ must not reach SORTS
   const dir = sp.dir === 'asc' || (!sp.dir && sort !== 'updated') ? 1 : -1;
   rows = rows.sort((a, b) => (SORTS[sort](a) < SORTS[sort](b) ? -1 : SORTS[sort](a) > SORTS[sort](b) ? 1 : 0) * dir);
 
@@ -47,10 +49,10 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   return (
     <>
       <h1>Candidates</h1>
-      {sp.msg && <div className="flash">{sp.msg}</div>}
+      {sp.msg && <div className="flash" role="status">{sp.msg}</div>}
       <form className="filters" method="get">
         <label>Recherche<input className="input" name="q" defaultValue={sp.q} placeholder="Nom, sujet, téléphone…" /></label>
-        <label>Événement<select className="select" name="event" defaultValue={sp.event ?? ''}><option value="">Toutes</option>{events_.map((c) => <option key={c}>{c}</option>)}</select></label>
+        <label>Événement<select className="select" name="event" defaultValue={sp.event ?? ''}><option value="">Tous</option>{events_.map((c) => <option key={c}>{c}</option>)}</select></label>
         <label>Statut<select className="select" name="status" defaultValue={sp.status ?? ''}><option value="">Tous</option>{STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         <label>Coach<select className="select" name="coach" defaultValue={sp.coach ?? ''}><option value="">Toutes</option>{coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <button className="btn btn-sm">Filtrer</button>

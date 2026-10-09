@@ -1,5 +1,6 @@
 // End-to-end API smoke test of the candidate journey (all four branches).
 // Usage: BASE=http://localhost:3000 node scripts/smoke.mjs
+import crypto from 'node:crypto';
 const BASE = process.env.BASE || 'http://localhost:3000';
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) failures++; };
@@ -109,6 +110,55 @@ await run('D', 'Danielle Eto', [
     ok(r.status === 307 && (r.headers.get('location') ?? '').endsWith('/admin/login'), `admin ${path}: a visitor is sent to the login`);
     ok(body.length < 30000 && !names.some((n) => body.includes(n)) && !/@example\.com/.test(body), `admin ${path}: no page data in the response body (${body.length} bytes)`);
   }
+}
+
+// the coach space with a real session (SESSION_SECRET is known to CI): hand-typed URLs, labels, track forms, simultaneous submissions
+if (!process.env.SESSION_SECRET) console.log('SKIP  coach session checks (SESSION_SECRET not set)');
+else {
+  const sessionFor = (coachId) => {
+    const body = `${coachId}.${Math.floor(Date.now() / 1000) + 3600}`;
+    return `${body}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(body).digest('base64url')}`;
+  };
+  let cookie = '';
+  for (const id of [1, 2, 3]) {
+    const r = await fetch(BASE + '/admin', { headers: { cookie: `ss_admin=${sessionFor(id)}` }, redirect: 'manual' });
+    if (r.status === 200) { cookie = `ss_admin=${sessionFor(id)}`; break; }
+  }
+  ok(!!cookie, 'coach space: a signed session opens the dashboard');
+  const admin = async (path) => { const r = await fetch(BASE + path, { headers: { cookie }, redirect: 'manual' }); return { status: r.status, text: await r.text() }; };
+  const ficheId = async (name) => Math.max(0, ...[...(await admin(`/admin/candidates?q=${encodeURIComponent(name)}`)).text.matchAll(/\/admin\/candidates\/(\d+)/g)].map((m) => Number(m[1])));
+
+  for (const path of ['/admin/candidates/abc', '/admin/candidates/1.5', '/admin/candidates/99999999999', '/admin/candidates/0']) {
+    ok((await admin(path)).status === 404, `coach space: ${path} is a 404, not a server error`);
+  }
+  for (const sort of ['__proto__', 'constructor', 'hasOwnProperty', 'nope']) {
+    ok((await admin(`/admin/candidates?sort=${sort}`)).status === 200, `coach space: ?sort=${sort} is accepted`);
+  }
+  const dash = await admin('/admin');
+  ok(/<title>Tableau de bord · Espace coach · SheSpeaks<\/title>/.test(dash.text) && /<div class="admin-root"[^>]*lang="fr"/.test(dash.text), 'coach space: page title and French language marker');
+
+  const id = await ficheId('Aïcha Mbarga');
+  const fiche = await admin(`/admin/candidates/${id}`);
+  ok(fiche.status === 200 && /<dt>Ancienneté tech<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
+  // a field named "id" hides form.id, and React then drops the clicked button's value: the buttons would silently do nothing
+  const forms = fiche.text.split('<form').slice(1).map((f) => f.slice(0, f.indexOf('</form>')));
+  const named = forms.filter((f) => /<button[^>]*name="op"/.test(f));
+  ok(named.length > 0 && named.every((f) => !/<input[^>]*name="id"/.test(f) && /<input[^>]*name="cid"/.test(f)), `fiche: the ${named.length} track forms carry the candidate as "cid", not "id"`);
+
+  // the last screen sent twice at once: the tracks and the mails must not be doubled
+  const racer = async (name) => {
+    const c = new Client();
+    await c.save('profile', profile(name)); await c.save('diag1', diag1); await c.save('diag2', diag2('B')); await c.save('b1', { B1: 'web', B3: 'tous' });
+    return c;
+  };
+  const twice = await racer('Race Double');
+  const [r1, r2] = await Promise.all([twice.save('b2', { B4: ['retour'] }), twice.save('b2', { B4: ['retour'] })]);
+  ok(r1.json?.ok && (r2.json?.ok || r2.json?.fatal === 'already_completed'), 'race: both simultaneous submissions are answered');
+  const once = await racer('Race Single');
+  await once.save('b2', { B4: ['retour'] });
+  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="track[ "]/g) ?? []).length;
+  const [nTwice, nOnce] = [await count('Race Double'), await count('Race Single')];
+  ok(nOnce > 0 && nTwice === nOnce, `race: tracks are not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
 }
 
 // resume link

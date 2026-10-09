@@ -85,3 +85,9 @@ test('the variables from the real Vercel project: only the two secrets are missi
   assert.deepEqual(names(vercelProject).sort(), ['error:CRON_SECRET', 'error:SESSION_SECRET', 'warn:APP_URL']);
   assert.deepEqual(names({ ...vercelProject, SESSION_SECRET: 'a'.repeat(32), CRON_SECRET: 'b'.repeat(32), APP_URL: 'https://shespeaks.org' }), []);
 });
+
+test('messages shown in the coach space are in French', () => {
+  const every = checkEnv({ VERCEL: '1', APP_URL: 'http://localhost:3000', DATABASE_URL: 'https://x', RESEND_API_KEY: 'nope', MAIL_FROM: 'bad', MAIL_REPLY_TO: 'bad' }, { production: true });
+  assert.ok(every.length >= 8);
+  for (const i of every) assert.doesNotMatch(i.message, /\b(Missing|Not set|Must|Should|Required|the|your|would)\b/, i.message);
+});

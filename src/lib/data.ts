@@ -141,6 +141,11 @@ export async function touchCandidate(id: number, resetReminders = false) {
   );
 }
 
+/** A coach's edit (note, follow-up date): refreshes the list order but is not candidate activity, so reminders and « inactive depuis » stay true. */
+export async function markUpdated(id: number) {
+  await run(`UPDATE candidates SET updated_at=${NOW} WHERE id=?`, id);
+}
+
 export async function setStatus(id: number, newStatus: string, author: string) {
   const c = await getCandidate(id);
   if (!c || c.status === newStatus) return;

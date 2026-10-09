@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getSubject, getTracks, setStatus, touchCandidate, type Coach } from '@/lib/data';
+import { getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
@@ -12,6 +12,8 @@ import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
+/** A date field must be « AAAA-MM-JJ » (what <input type="date"> sends); anything else is refused instead of being stored. */
+const badDate = (v: string | null) => !!v && !(/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00Z`)));
 const back = (path: string, msg?: string, err = false): never => redirect(msg ? `${path}${path.includes('?') ? '&' : '?'}${err ? 'err' : 'msg'}=${encodeURIComponent(msg)}` : path);
 
 // ---- auth ----------------------------------------------------------------------
@@ -62,17 +64,20 @@ export async function addNoteAction(f: FormData) {
   const id = num(f, 'id');
   const text = str(f, 'text');
   const next = str(f, 'next_point_date') || null;
+  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (!text && !next) return back(cpath(id), 'Écris une note ou fixe une date', true);
   await run('INSERT INTO notes (candidate_id,coach_id,text,next_point_date) VALUES (?,?,?,?)', id, coach.id, text || '(prochain point fixé)', next);
   if (next) await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
-  await touchCandidate(id);
+  await markUpdated(id);
   return back(cpath(id), 'Note ajoutée');
 }
 
 export async function setNextPointAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
-  await run('UPDATE candidates SET next_point_date=? WHERE id=?', str(f, 'next_point_date') || null, id);
+  const next = str(f, 'next_point_date') || null;
+  if (badDate(next)) return back(cpath(id), 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
+  await run('UPDATE candidates SET next_point_date=? WHERE id=?', next, id);
   return back(cpath(id), 'Prochain point enregistré');
 }
 
@@ -87,9 +92,10 @@ export async function saveSubjectAction(f: FormData) {
   return back(cpath(id), 'Sujet enregistré');
 }
 
+// The candidate id travels as `cid`: a field named `id` shadows form.id, and React then drops the clicked button's `op`.
 export async function trackAction(f: FormData) {
   await requireCoach();
-  const id = num(f, 'id');
+  const id = num(f, 'cid');
   const op = str(f, 'op');
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);
@@ -104,35 +110,58 @@ export async function trackAction(f: FormData) {
     return back(cpath(id), 'Pistes régénérées');
   }
   if (!track) return back(cpath(id), 'Piste introuvable', true);
-  if (op === 'save') await run('UPDATE tracks SET title=?, format=? WHERE id=?', str(f, 'title') || track.title, str(f, 'format') || track.format, tid);
-  else if (op === 'discard') await run(`UPDATE tracks SET state='ecartee' WHERE id=?`, tid);
-  else if (op === 'restore') await run(`UPDATE tracks SET state='generee' WHERE id=?`, tid);
-  else if (op === 'shortlist') await run(`UPDATE tracks SET state='retenue_coach' WHERE id=?`, tid);
-  else if (op === 'choose') {
+  // whichever button she pressed, what she typed in the title and the format of this track is kept (and the subject follows a chosen track)
+  const title = str(f, 'title') || track.title;
+  const format = str(f, 'format') || track.format;
+  if (op !== 'delete' && (title !== track.title || format !== track.format)) {
+    await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
+    if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
+  }
+  let done: string;
+  if (op === 'save') {
+    done = 'Piste enregistrée';
+  } else if (op === 'discard') {
+    await run(`UPDATE tracks SET state='ecartee' WHERE id=?`, tid);
+    done = 'Piste écartée';
+  } else if (op === 'restore') {
+    await run(`UPDATE tracks SET state='generee' WHERE id=?`, tid);
+    done = 'Piste rétablie';
+  } else if (op === 'shortlist') {
+    await run(`UPDATE tracks SET state='retenue_coach' WHERE id=?`, tid);
+    done = 'Piste retenue';
+  } else if (op === 'choose') {
     await run(`UPDATE tracks SET state='generee' WHERE candidate_id=? AND state='choisie'`, id);
     await run(`UPDATE tracks SET state='choisie' WHERE id=?`, tid);
     // the chosen track becomes the candidate's subject
     await run(
       `INSERT INTO subjects (candidate_id,title,format) VALUES (?,?,?)
        ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, format=COALESCE(excluded.format, subjects.format)`,
-      id, track.title, track.format,
+      id, title, format,
     );
-  } else if (op === 'delete') await run('DELETE FROM tracks WHERE id=?', tid);
-  return back(cpath(id));
+    done = 'Piste choisie : elle devient le sujet de la candidate';
+  } else if (op === 'delete') {
+    await run('DELETE FROM tracks WHERE id=?', tid);
+    done = 'Piste supprimée';
+  } else return back(cpath(id), 'Action inconnue', true);
+  return back(cpath(id), done);
 }
 
 export async function selectPhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
-  await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', num(f, 'photo_id') || null, id);
-  return back(cpath(id), 'Photo retenue enregistrée');
+  const photoId = num(f, 'photo_id') || null;
+  await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', photoId, id);
+  return back(cpath(id), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 
 export async function remindNowAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
-  const ok = await sendReminderNow(id);
-  return back(cpath(id), ok ? 'Rappel envoyé par email' : 'Impossible : pas d’email ou formulaire déjà terminé', !ok);
+  const sent = await sendReminderNow(id);
+  if (sent === 'sent') return back(cpath(id), 'Rappel envoyé par email');
+  if (sent === 'logged') return back(cpath(id), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans l’onglet Emails. Écris-lui sur WhatsApp.', true);
+  if (sent === 'failed') return back(cpath(id), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans l’onglet Emails). Écris-lui sur WhatsApp.', true);
+  return back(cpath(id), 'Impossible : pas d’email ou formulaire déjà terminé', true);
 }
 
 export async function deleteCandidateAction(f: FormData) {
@@ -154,6 +183,7 @@ export async function saveEventAction(f: FormData) {
   const title = str(f, 'title');
   const place = str(f, 'name');
   const posterRaw = str(f, 'poster_url');
+  if (badDate(nz('cfp_close_date')) || badDate(nz('event_date'))) return back('/admin/events', 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (posterRaw && !safePoster(posterRaw)) return back('/admin/events', 'L’affiche doit être un chemin du site (/events/mon-affiche.jpg) ou une adresse https://', true);
   if (id) {
     await run(
@@ -179,8 +209,10 @@ export async function inviteCoachAction(f: FormData) {
   if (await get('SELECT 1 FROM coaches WHERE email=?', email)) return back('/admin/coaches', 'Cet email est déjà enregistré', true);
   const newId = await insert('INSERT INTO coaches (name,email,whatsapp) VALUES (?,?,?)', name, email, str(f, 'whatsapp') || null);
   const coach = (await get<Coach>('SELECT * FROM coaches WHERE id=?', newId))!;
-  await inviteCoach(coach, me.name);
-  return back('/admin/coaches', `Invitation envoyée à ${email}`);
+  const sent = await inviteCoach(coach, me.name);
+  if (sent === 'sent') return back('/admin/coaches', `Invitation envoyée à ${email}`);
+  const why = sent === 'failed' ? 'l’envoi a échoué. Elle peut demander son lien depuis la page de connexion' : 'l’envoi d’emails n’est pas configuré';
+  return back('/admin/coaches', `${name} est ajoutée, mais l’email d’invitation n’est pas parti (détail dans l’onglet Emails) : ${why}.`, true);
 }
 export async function toggleCoachAction(f: FormData) {
   const me = await requireCoach();
