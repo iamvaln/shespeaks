@@ -146,6 +146,19 @@ export async function markUpdated(id: number) {
   await run(`UPDATE candidates SET updated_at=${NOW} WHERE id=?`, id);
 }
 
+/**
+ * Takes the next automatic-reminder slot of an unfinished candidate. False when another run took it, or when she finished or was
+ * set aside since the list was read: the loop that sends the emails reads its list first and works through it slowly, so without
+ * these two conditions a candidate who completes her form in the meantime would still be told to finish it.
+ */
+export async function claimReminder(id: number, sent: number): Promise<boolean> {
+  const n = await run(
+    `UPDATE candidates SET reminders_sent=?, last_reminder_at=${NOW} WHERE id=? AND reminders_sent=? AND status='en_cours' AND completed_at IS NULL`,
+    sent + 1, id, sent,
+  );
+  return n > 0;
+}
+
 export async function setStatus(id: number, newStatus: string, author: string) {
   const c = await getCandidate(id);
   if (!c || c.status === newStatus) return;
@@ -176,6 +189,3 @@ export async function eventLabelFor(c: Pick<Candidate, 'city' | 'city_other'>, l
   return eventLabel(c, await listEvents(), locale);
 }
 
-export function clientIp(h: Headers): string {
-  return h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || 'unknown';
-}

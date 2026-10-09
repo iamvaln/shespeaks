@@ -30,6 +30,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
     return typeof stored === 'string' && stored.trim() !== assembleAbstract(init.answers, locale).trim();
   });
   const head = useRef<HTMLHeadingElement>(null);
+  const bannerBox = useRef<HTMLDivElement>(null);
+  const [bannerFocus, setBannerFocus] = useState(0); // bumped with setBanner when the message must be brought into view
   const first = useRef(true);
 
   const branch = (answers['D6'] as Branch | undefined) ?? null;
@@ -38,6 +40,9 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   const idx = Math.max(0, flow.indexOf(screenId));
   const total = totalSteps(branch);
   const questions = useMemo(() => visibleQuestions(screen, answers), [screen, answers]);
+
+  // after React has committed the banner (a timer can run before it exists): scroll to it and give it focus
+  useEffect(() => { if (bannerFocus) bannerBox.current?.focus(); }, [bannerFocus]);
 
   useEffect(() => {
     if (first.current) { first.current = false; return; }
@@ -70,9 +75,11 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
         setErrors(j.errors ?? {});
         const fieldErrors = j.errors && Object.keys(j.errors).length > 0;
         // A failed save is not always the candidate's fault: say what really happened.
-        setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : d.fatal.other);
+        setBanner(fieldErrors ? d.fixErrors : j.fatal === 'no_session' || j.fatal === 'wrong_branch' ? d.fatal.lost : j.fatal === 'rate_limited' ? d.fatal.busy : j.fatal === 'email_rate_limited' ? d.fatal.emailBusy : d.fatal.other);
         const firstErr = Object.keys(j.errors ?? {})[0];
+        // field errors focus the first field; any other failure brings its message into view (the button is at the bottom of a long screen)
         if (firstErr) requestAnimationFrame(() => document.getElementById(`q-${firstErr}`)?.focus());
+        else setBannerFocus((n) => n + 1);
         setBusy(false);
         return;
       }
@@ -83,6 +90,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
       enter(j.next, a);
     } catch {
       setBanner(d.networkError);
+      setBannerFocus((n) => n + 1);
     }
     setBusy(false);
   }
@@ -110,7 +118,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
             {screen.intro && <p className="form-intro">{screen.intro[locale]}</p>}
           </header>
 
-          {banner && <div className="banner" role="alert">{banner}</div>}
+          {banner && <div className="banner" role="alert" ref={bannerBox} tabIndex={-1}>{banner}</div>}
 
           {questions.map((q) => (
             screen.kind === 'draft' ? (
