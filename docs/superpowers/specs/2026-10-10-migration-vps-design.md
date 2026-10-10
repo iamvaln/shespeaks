@@ -23,7 +23,7 @@ disparaissent sans réécrire l'app.
 |---|---|
 | Machine | Le VPS Contabo partagé (`77.237.234.91`, alias SSH `deploy-vps`), qui héberge déjà gabee, celva, lehno et proxiapay. Capacité vérifiée le 2026-10-10 : 6 cœurs, 8,9 Go de RAM libres, 164 Go de disque libres, charge 0,2 |
 | Domaine prod | `sheleads.techiesconnect.org` (DNS Cloudflare). Aucun enregistrement n'existe aujourd'hui pour ce nom |
-| Domaine preprod | `preprod.sheleads.techiesconnect.org` |
+| Domaine preprod | `sheleads.techiesconnect.net` |
 | Environnements | Prod (tag `v*`) et preprod (push sur `develop`), chacun avec sa base, ses photos et ses secrets |
 | Bascule | « Bascule éclair » : 1 à 3 minutes à une heure creuse, page d'attente qui se recharge seule, sans perte de données |
 | Ce qui reste | Resend (mails) et Anthropic (suggestions de titres) ne changent pas |
@@ -53,7 +53,7 @@ Services d'un projet :
 Tous les conteneurs : journaux json-file en rotation, 10 Mo × 3 fichiers.
 
 Le Traefik partagé (`proxy-traefik-1`, v3.7.1) délivre les certificats Let's
-Encrypt. Les enregistrements Cloudflare `sheleads` et `preprod.sheleads` sont
+Encrypt. Les enregistrements Cloudflare `sheleads` (zones `.org` et `.net`) sont
 de type A vers `77.237.234.91`, en **DNS only** (nuage gris) : le proxy de
 Cloudflare bloquerait le défi ACME, et le certificat universel de Cloudflare ne
 couvre pas un sous-domaine de second niveau.
@@ -234,7 +234,7 @@ d'erreur ; ce qu'elle a saisi reste dans le formulaire et elle réessaie.
 
 ## Ce dont j'ai besoin de toi
 
-- Créer les enregistrements DNS `sheleads` et `preprod.sheleads` (A →
+- Créer les enregistrements DNS `sheleads` dans `techiesconnect.org` et `techiesconnect.net` (A →
   `77.237.234.91`, DNS only) dans Cloudflare, ou me donner un jeton API
   Cloudflare limité à `techiesconnect.org`.
 - Créer le compartiment R2 des sauvegardes et un jeton limité à celui-ci.

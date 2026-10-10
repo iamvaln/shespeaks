@@ -2,7 +2,7 @@
 # Cutover from Vercel + Supabase to the VPS. Run from a workstation: ops/cutover.sh [--rehearsal]
 # --rehearsal: same steps into the preprod, without the Vercel step.
 set -euo pipefail
-if [ "${1:-}" = "--rehearsal" ]; then STACK=shespeaks-preprod; DIR=shespeaks-preprod; DOMAIN=preprod.sheleads.techiesconnect.org; REH=1
+if [ "${1:-}" = "--rehearsal" ]; then STACK=shespeaks-preprod; DIR=shespeaks-preprod; DOMAIN=sheleads.techiesconnect.net; REH=1
 else STACK=shespeaks; DIR=shespeaks; DOMAIN=sheleads.techiesconnect.org; REH=0; fi
 # shellcheck disable=SC2029  # DIR, STACK and the step are meant to expand here
 R() { ssh deploy-vps "cd ~/$DIR && CUTOVER_ALLOW_OVERWRITE=${CUTOVER_ALLOW_OVERWRITE:-} ops/cutover-remote.sh $STACK $1"; }

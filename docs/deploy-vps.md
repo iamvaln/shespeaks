@@ -9,7 +9,7 @@ contraire :
 | Environnement | Dossier sur le VPS | Fichier d'environnement | `STACK` | Adresse |
 |---|---|---|---|---|
 | Production | `~/shespeaks` | `.env.production` | `shespeaks` | https://sheleads.techiesconnect.org |
-| Préproduction | `~/shespeaks-preprod` | `.env.preprod` | `shespeaks-preprod` | https://preprod.sheleads.techiesconnect.org |
+| Préproduction | `~/shespeaks-preprod` | `.env.preprod` | `shespeaks-preprod` | https://sheleads.techiesconnect.net |
 
 Dans les exemples, `ENV` désigne le fichier d'environnement de l'environnement
 visé. Pour la production, ajoutez `--profile prod` (il active `cron` et
@@ -74,17 +74,17 @@ un accès Cloudflare, Vercel, Supabase ou GitHub.
 
 ### 2.1 DNS **[compte]**
 
-Dans Cloudflare (`techiesconnect.org`), créer deux enregistrements `A`, en
-**DNS only** (nuage gris) :
+Dans Cloudflare, créer deux enregistrements `A`, en **DNS only** (nuage gris) :
 
-- `sheleads` → `77.237.234.91`
-- `preprod.sheleads` → `77.237.234.91`
+- zone `techiesconnect.net` : `sheleads` → `77.237.234.91` (preprod) ;
+- zone `techiesconnect.org` : `sheleads` → `77.237.234.91` (prod, au plus tard
+  avant la bascule : son préflight vérifie que le domaine répond).
 
 Vérifier :
 
 ```bash
 dig +short sheleads.techiesconnect.org @1.1.1.1
-dig +short preprod.sheleads.techiesconnect.org @1.1.1.1
+dig +short sheleads.techiesconnect.net @1.1.1.1
 ```
 
 Les deux doivent répondre `77.237.234.91`.
@@ -168,8 +168,8 @@ R2_SECRET_ACCESS_KEY=…
 ```
 STACK=shespeaks-preprod
 DEPLOY_ENV=preprod
-APP_DOMAIN=preprod.sheleads.techiesconnect.org
-APP_URL=https://preprod.sheleads.techiesconnect.org
+APP_DOMAIN=sheleads.techiesconnect.net
+APP_URL=https://sheleads.techiesconnect.net
 POSTGRES_PASSWORD=<openssl rand -hex 24>
 SESSION_SECRET=<neuf : openssl rand -hex 32>
 CRON_SECRET=<neuf : openssl rand -hex 32>
@@ -218,7 +218,7 @@ Rien ne démarre avant que les images existent. Fusionner la PR
 gh run list --workflow Deploy --limit 1
 gh run watch <id> --exit-status
 gh run view <id> --json conclusion
-curl -s https://preprod.sheleads.techiesconnect.org/api/health
+curl -s https://sheleads.techiesconnect.net/api/health
 ```
 
 Attendu : conclusion `success` et `{"ok":true}`.
@@ -450,7 +450,7 @@ c'est ce qui rend la marche arrière possible.
 ops/cutover.sh --rehearsal
 ```
 
-Mêmes étapes, vers `shespeaks-preprod` / `preprod.sheleads.techiesconnect.org`,
+Mêmes étapes, vers `shespeaks-preprod` / `sheleads.techiesconnect.net`,
 sans l'étape Vercel. Pour remettre la préproduction à zéro ensuite (vide les
 tables et le volume des photos, puis rejoue le seed) :
 

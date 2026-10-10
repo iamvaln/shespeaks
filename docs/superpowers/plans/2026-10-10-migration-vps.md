@@ -31,7 +31,7 @@ GHCR, Cloudflare R2 (aws-cli), API REST de Supabase Storage.
   la variable `STACK`, obligatoire, et chaque déploiement vérifie le nom
   annoncé par Compose avant toute action (incident lehno du 14 septembre).
 - Domaines : `sheleads.techiesconnect.org` (prod),
-  `preprod.sheleads.techiesconnect.org` (preprod). Enregistrements A vers
+  `sheleads.techiesconnect.net` (preprod). Enregistrements A vers
   `77.237.234.91`, DNS only.
 - Traefik : réseau externe `web`, entrypoint `websecure`, certresolver `le`.
 - Images : `ghcr.io/iamvaln/shespeaks:<tag>` et
@@ -1239,7 +1239,7 @@ esac
 # Cutover from Vercel + Supabase to the VPS. Run from a workstation: ops/cutover.sh [--rehearsal]
 # --rehearsal: same steps into the preprod, without the Vercel step.
 set -euo pipefail
-if [ "${1:-}" = "--rehearsal" ]; then STACK=shespeaks-preprod; DIR=shespeaks-preprod; DOMAIN=preprod.sheleads.techiesconnect.org; REH=1
+if [ "${1:-}" = "--rehearsal" ]; then STACK=shespeaks-preprod; DIR=shespeaks-preprod; DOMAIN=sheleads.techiesconnect.net; REH=1
 else STACK=shespeaks; DIR=shespeaks; DOMAIN=sheleads.techiesconnect.org; REH=0; fi
 R() { ssh deploy-vps "cd ~/$DIR && ops/cutover-remote.sh $STACK $1"; }
 t0=$(date +%s); step() { echo; echo "== [$(( $(date +%s) - t0 ))s] $*"; }
@@ -1454,9 +1454,9 @@ Chaque étape qui dépend d'un compte de l'utilisateur est marquée **[toi]**.
 
 ### Task 11 : préparer le VPS, les DNS et GitHub
 
-- [ ] **Step 1 [toi]** : dans Cloudflare (`techiesconnect.org`), créer `A
-  sheleads → 77.237.234.91` et `A preprod.sheleads → 77.237.234.91`, **DNS
-  only**. Vérifier : `dig +short sheleads.techiesconnect.org @1.1.1.1` →
+- [ ] **Step 1 [toi]** : dans Cloudflare, créer `A sheleads → 77.237.234.91`
+  dans la zone `techiesconnect.net` (preprod) et dans la zone
+  `techiesconnect.org` (prod), **DNS only**. Vérifier : `dig +short sheleads.techiesconnect.org @1.1.1.1` →
   `77.237.234.91`.
 - [ ] **Step 2 [toi]** : créer le compartiment R2 `shespeaks-backups` et un
   jeton limité à ce compartiment (lecture et écriture d'objets) ; noter
@@ -1479,7 +1479,7 @@ ssh deploy-vps 'for d in shespeaks shespeaks-preprod; do [ -d ~/$d ] || git clon
     `APP_URL=https://sheleads.techiesconnect.org`, `POSTGRES_PASSWORD=$(openssl rand -hex 24)`
     (généré sur le VPS), les valeurs de Vercel, les valeurs R2 ;
   - preprod : `STACK=shespeaks-preprod`, `DEPLOY_ENV=preprod`,
-    `APP_DOMAIN=preprod.sheleads.techiesconnect.org`, `APP_URL` assortie,
+    `APP_DOMAIN=sheleads.techiesconnect.net`, `APP_URL` assortie,
     `POSTGRES_PASSWORD`, `SESSION_SECRET` et `CRON_SECRET` **neufs**
     (`openssl rand -hex 32`), `RESEND_API_KEY` vide (les mails de preprod
     restent dans la page Emails), `ANTHROPIC_API_KEY` vide.
@@ -1505,7 +1505,7 @@ gh secret set VPS_USER --body deploy
 - [ ] **Step 6** : fusionner la PR `feat/migration-vps` dans `develop`, puis
   suivre le run : `gh run list --workflow Deploy --limit 1` puis
   `gh run watch <id> --exit-status` et `gh run view <id> --json conclusion`.
-  Expected : `success`, et `https://preprod.sheleads.techiesconnect.org/api/health`
+  Expected : `success`, et `https://sheleads.techiesconnect.net/api/health`
   → `{"ok":true}`.
 
 ### Task 12 : valider la preprod et répéter la bascule
@@ -1535,7 +1535,7 @@ ssh deploy-vps 'cd ~/shespeaks-preprod && IMAGE_TAG=develop docker compose --env
 
 ```bash
 ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod stop app'
-curl -s -o /dev/null -w '%{http_code}\n' https://preprod.sheleads.techiesconnect.org/interet
+curl -s -o /dev/null -w '%{http_code}\n' https://sheleads.techiesconnect.net/interet
 ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod start app'
 ```
   Expected : `503` pendant l'arrêt, puis `200` une fois `app` sain.
@@ -1558,8 +1558,8 @@ ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod
   haute pour le seul chemin `/__ip`, montre les en-têtes que l'app reçoit :
 
 ```bash
-ssh deploy-vps 'docker run -d --rm --name ip-echo --network web -l traefik.enable=true -l "traefik.http.routers.ipecho.rule=Host(\`preprod.sheleads.techiesconnect.org\`) && PathPrefix(\`/__ip\`)" -l traefik.http.routers.ipecho.entrypoints=websecure -l traefik.http.routers.ipecho.tls.certresolver=le -l traefik.http.routers.ipecho.priority=200 -l traefik.http.services.ipecho.loadbalancer.server.port=80 traefik/whoami'
-curl -s -H "X-Real-Ip: 203.0.113.9" -H "X-Forwarded-For: 203.0.113.9" https://preprod.sheleads.techiesconnect.org/__ip | grep -i -E "x-real-ip|x-forwarded-for"
+ssh deploy-vps 'docker run -d --rm --name ip-echo --network web -l traefik.enable=true -l "traefik.http.routers.ipecho.rule=Host(\`sheleads.techiesconnect.net\`) && PathPrefix(\`/__ip\`)" -l traefik.http.routers.ipecho.entrypoints=websecure -l traefik.http.routers.ipecho.tls.certresolver=le -l traefik.http.routers.ipecho.priority=200 -l traefik.http.services.ipecho.loadbalancer.server.port=80 traefik/whoami'
+curl -s -H "X-Real-Ip: 203.0.113.9" -H "X-Forwarded-For: 203.0.113.9" https://sheleads.techiesconnect.net/__ip | grep -i -E "x-real-ip|x-forwarded-for"
 ssh deploy-vps 'docker stop ip-echo'
 ```
   Expected : `X-Real-Ip` vaut **ta** vraie adresse, pas `203.0.113.9`. Si
