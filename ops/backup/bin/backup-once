@@ -20,6 +20,10 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="shespeaks-${TS}.sql.gz"
 TMP="/tmp/${NAME}"
 KEY="${PREFIX}/${NAME}"
+UNAME="shespeaks-uploads-${TS}.tar.gz"
+
+# Temp files are removed on any exit, including a failed tar or upload.
+trap 'rm -f "${TMP}" "/tmp/${UNAME}"' EXIT
 
 echo "[backup] dumping ${PGDATABASE}@${PGHOST} → ${TMP}"
 # --clean --if-exists: the resulting SQL drops + recreates objects, so
@@ -46,15 +50,22 @@ aws s3 cp "${TMP}" "s3://${BACKUP_R2_BUCKET}/${KEY}" \
 rm -f "${TMP}"
 echo "[backup] uploaded ${KEY}"
 
+# The photo step must not stop the prune below: record its failure, prune
+# anyway, then exit non-zero at the very end so the job still reports FAILED.
 UPLOADS_DIR=${UPLOADS_DIR:-/uploads}
-UNAME="shespeaks-uploads-${TS}.tar.gz"
-echo "[backup] archiving ${UPLOADS_DIR} → ${UNAME}"
-tar -C "${UPLOADS_DIR}" -czf "/tmp/${UNAME}" .
-aws s3 cp "/tmp/${UNAME}" "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${UNAME}" \
-  --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
-  --no-progress
-rm -f "/tmp/${UNAME}"
-echo "[backup] uploaded ${PREFIX}/${UNAME}"
+photos_rc=0
+# Explicit && chain: set -e is ignored inside a group followed by `||`.
+echo "[backup] archiving ${UPLOADS_DIR} → ${UNAME}" \
+  && tar -C "${UPLOADS_DIR}" -czf "/tmp/${UNAME}" . \
+  && aws s3 cp "/tmp/${UNAME}" "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${UNAME}" \
+    --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+    --no-progress \
+  && rm -f "/tmp/${UNAME}" \
+  && echo "[backup] uploaded ${PREFIX}/${UNAME}" \
+  || photos_rc=$?
+if [ "$photos_rc" -ne 0 ]; then
+  echo "[backup] photo archive FAILED (rc=${photos_rc})" >&2
+fi
 
 # Prune. R2's S3 `ls` returns lines of the form:
 #   2026-06-04 03:00:01  4823017 backups/shespeaks-20260604T030001Z.sql.gz
@@ -89,4 +100,8 @@ while IFS= read -r line; do
   fi
 done < <(aws s3 ls "s3://${BACKUP_R2_BUCKET}/${PREFIX}/" --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com")
 echo "[backup] pruned ${pruned} old backup(s)"
+if [ "$photos_rc" -ne 0 ]; then
+  echo "[backup] done with errors" >&2
+  exit "$photos_rc"
+fi
 echo "[backup] done"
