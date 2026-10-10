@@ -38,6 +38,13 @@ test('supabase storage: both or neither; neither is an error only on Vercel', ()
   assert.ok(names({ ...neither, VERCEL: '1' }).includes('error:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
 });
 
+test('photos on disk: no warning when DATA_DIR is set (the VPS volume), a warning otherwise, an error on Vercel', () => {
+  const disk = { ...good, SUPABASE_URL: undefined, SUPABASE_SERVICE_ROLE_KEY: undefined };
+  assert.ok(!names({ ...disk, DATA_DIR: '/data' }).some((n) => n.includes('SUPABASE')));
+  assert.ok(names(disk).includes('warn:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
+  assert.ok(names({ ...disk, VERCEL: '1', DATA_DIR: '/data' }).includes('error:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
+});
+
 test('resend: missing key warns; bad key, missing/invalid/test sender are flagged', () => {
   assert.ok(names({ ...good, RESEND_API_KEY: undefined }).includes('warn:RESEND_API_KEY'));
   assert.ok(names({ ...good, RESEND_API_KEY: 'sk_live_nope' }).includes('error:RESEND_API_KEY'));
