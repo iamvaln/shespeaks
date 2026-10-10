@@ -20,6 +20,47 @@ export const statusLabel = (id: string) => STATUSES.find((s) => s.id === id)?.la
 type Sql = postgres.Sql;
 const g = globalThis as unknown as { __shespeaksSql?: Sql };
 
+// A query that gets no answer must not hold a page until the platform kills it (60 s on the fiche, then a bare 504): after this delay it fails
+// with a clear error and the connection pool is replaced (a stalled connection would otherwise stay in the pool). Both are read at each call.
+const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || 15_000;
+const slowQueryMs = () => Number(process.env.DB_SLOW_QUERY_MS) || 2_000;
+// A whole transaction, BEGIN and COMMIT included (the library sends those itself, outside exec()): twice the limit of one query.
+const transactionTimeoutMs = () => queryTimeoutMs() * 2;
+// How long the requests already running on a dropped pool have to finish before its connections are closed.
+const RESET_GRACE_S = 5;
+
+export class DbTimeoutError extends Error {
+  readonly ms: number; // a plain field: Node runs this file with types stripped, which has no « constructor(public … ) » shorthand
+  constructor(ms: number, sqlText: string) {
+    super(`The database did not answer within ${ms} ms: ${sqlText.replace(/\s+/g, ' ').slice(0, 80)}`);
+    this.name = 'DbTimeoutError';
+    this.ms = ms;
+  }
+}
+
+/**
+ * Drops the shared pool so the next query opens fresh connections. The old pool is not cut at once: the other requests of the instance that are
+ * running healthy statements get a few seconds to finish (the stalled connection is closed after them). Closing is a half-close, which a peer that
+ * has gone silent never answers: nothing may wait for it, which is why callers are released by their own timers (see exec() and tx()).
+ */
+function resetPool(stalled: Sql): void {
+  // the pool the stalled statement ran on, not whatever is current: the grace leaves statements pending on a dropped pool, and their timers
+  // must not drop the pool that replaced it
+  if (g.__shespeaksSql === stalled) g.__shespeaksSql = undefined;
+  stalled.end({ timeout: RESET_GRACE_S }).catch(() => {}); // end() is idempotent: a second call returns the first
+}
+
+/**
+ * Asks the server to stop a statement nobody waits for any more (a lock it holds, a heavy scan, the CPU it uses). The library's own q.cancel() drops
+ * the promise of its cancel connection, which becomes an unhandled rejection if that connection fails: the same function is called here and its promise is caught.
+ */
+function cancelQuietly(q: unknown): void {
+  try {
+    const cancelling = (q as { canceller?: (query: unknown) => Promise<unknown> | undefined }).canceller?.(q);
+    cancelling?.catch?.(() => {});
+  } catch { /* best effort */ }
+}
+
 /** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
 export function sql(): Sql {
   if (!g.__shespeaksSql) {
@@ -41,8 +82,7 @@ export function sql(): Sql {
 }
 
 // Statements inside tx() automatically run on the transaction's connection.
-const als = new AsyncLocalStorage<Sql>();
-const conn = (): Sql => als.getStore() ?? sql();
+const als = new AsyncLocalStorage<{ conn: Sql; pool: Sql }>();
 const toPg = (text: string) => {
   let i = 0;
   return text.replace(/\?/g, () => `$${++i}`);
@@ -64,9 +104,34 @@ function explain(e: unknown): unknown {
   return e;
 }
 
+/** Runs one statement with the delay above, and logs it when it is slow: the statement text only (never the values), so the Vercel logs say which query stalls. */
+async function exec(text: string, p: Param[]) {
+  const started = Date.now();
+  const inTx = als.getStore();
+  const pool = inTx?.pool ?? sql(); // where this statement runs: the pool to replace if it stalls
+  const q = (inTx?.conn ?? pool).unsafe(toPg(text), p);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = queryTimeoutMs();
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      cancelQuietly(q);
+      resetPool(pool);
+      console.error(`[db] no answer after ${limit} ms: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+      reject(new DbTimeoutError(limit, text));
+    }, limit);
+  });
+  try {
+    return await Promise.race([q, expired]);
+  } finally {
+    clearTimeout(timer);
+    const took = Date.now() - started;
+    if (took >= slowQueryMs() && took < limit) console.warn(`[db] slow query, ${took} ms: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+  }
+}
+
 export async function all<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T[]> {
   try {
-    return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+    return (await exec(text, p)) as unknown as T[];
   } catch (e) {
     throw explain(e);
   }
@@ -77,7 +142,7 @@ export async function get<T = Record<string, unknown>>(text: string, ...p: Param
 /** Returns the number of affected rows. */
 export async function run(text: string, ...p: Param[]): Promise<number> {
   try {
-    return (await conn().unsafe(toPg(text), p)).count;
+    return (await exec(text, p)).count;
   } catch (e) {
     throw explain(e);
   }
@@ -90,7 +155,32 @@ export async function insert(text: string, ...p: Param[]): Promise<number> {
 
 export async function tx<T>(fn: () => Promise<T>): Promise<T> {
   if (als.getStore()) return fn(); // already inside a transaction
-  return (await sql().begin((t) => als.run(t as unknown as Sql, fn))) as T;
+  // The caller is released by this promise, not by begin(): after a timeout the library queues a ROLLBACK on the stalled connection and settles
+  // only when that socket closes, which a silent peer never does.
+  let release!: (e: DbTimeoutError) => void;
+  const stalled = new Promise<never>((_, reject) => { release = reject; });
+  stalled.catch(() => {}); // nobody may see it as unhandled when the transaction wins
+  const pool = sql();
+  const running = pool.begin((t) => als.run({ conn: t as unknown as Sql, pool }, async () => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof DbTimeoutError) release(e); // the cause, not the error of the rollback that follows
+      throw e;
+    }
+  }));
+  const limit = transactionTimeoutMs();
+  const deadline = setTimeout(() => {
+    resetPool(pool);
+    console.error(`[db] a transaction did not finish within ${limit} ms`);
+    release(new DbTimeoutError(limit, 'transaction (BEGIN, COMMIT or a statement)'));
+  }, limit);
+  try {
+    return (await Promise.race([running, stalled])) as T;
+  } finally {
+    clearTimeout(deadline);
+    running.catch(() => {}); // a rollback that ends in an error, or never ends, is not the caller's business
+  }
 }
 
 export const nowSql = () => new Date().toISOString().replace('T', ' ').slice(0, 19); // UTC
