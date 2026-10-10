@@ -53,7 +53,7 @@ jobs:
       - name: Unit tests (pure logic + environment rules)
         run: npm test
 
-      - name: Migration tests (fresh DB, idempotency, tamper detection, concurrency, seed safety)
+      - name: Database tests (migrations, reminders, tracks, AI suggestions)
         run: npm run test:db
 
       - name: Apply migrations + seed to the CI database

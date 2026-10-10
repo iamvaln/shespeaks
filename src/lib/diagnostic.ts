@@ -242,19 +242,24 @@ async function notifyCompletion(id: number) {
   await Promise.allSettled(jobs); // sendMail never throws; Resend sends are serialised by the queue in mail.ts
 }
 
-/** Regenerate the 5 tracks (coach action). Keeps coach-added and chosen tracks. */
+/**
+ * Regenerate the template proposals (coach action). Only the proposals nobody has acted on are replaced: the coach's own tracks,
+ * the chosen one, the shortlisted ones and the ones she set aside all stay (a set-aside title is not proposed again).
+ * Suggestions made by the AI are not touched here.
+ */
 export async function regenerateTracks(id: number) {
   const c = await getCandidate(id);
   if (!c || (c.branch !== 'A' && c.branch !== 'B')) return;
   const a = await getAnswers(id);
-  const kept = (await getTracks(id)).filter((t) => t.origin === 'coach' || t.state === 'choisie');
-  await run(`DELETE FROM tracks WHERE candidate_id=? AND NOT (origin='coach' OR state='choisie')`, id);
+  await run(`DELETE FROM tracks WHERE candidate_id=? AND state='generee' AND origin IN ('personnelle','croisement')`, id);
+  const kept = await getTracks(id);
   const have = new Set(kept.map((t) => t.title.toLowerCase()));
-  const gen = generateTracks(a, c.branch, c.locale, await getRefs(), 2026, 5).filter((t) => !have.has(t.title.toLowerCase()));
-  const base = kept.length;
-  const room = Math.max(0, 5 - kept.filter((t) => t.origin !== 'coach').length);
+  const inPlay = kept.filter((t) => (t.origin === 'personnelle' || t.origin === 'croisement') && t.state !== 'ecartee').length;
+  // ask for more than five: the ones the coach already handled are filtered out, and the rest must still make five in play
+  const gen = generateTracks(a, c.branch, c.locale, await getRefs(), 2026, 5 + kept.length).filter((t) => !have.has(t.title.toLowerCase()));
+  const base = kept.reduce((max, t) => Math.max(max, t.position + 1), 0);
   let i = 0;
-  for (const t of gen.slice(0, room)) {
+  for (const t of gen.slice(0, Math.max(0, 5 - inPlay))) {
     await run('INSERT INTO tracks (candidate_id,title,angle,format,domain,hook,origin,position) VALUES (?,?,?,?,?,?,?,?)', id, t.title, t.angle, t.format, t.domain, t.hook ?? null, t.origin, base + i++);
   }
 }

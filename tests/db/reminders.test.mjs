@@ -2,18 +2,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { register } from 'node:module';
 import crypto from 'node:crypto';
 import postgres from 'postgres';
+import './next-stub.mjs';
 import { resolveDatabaseUrl } from '../../src/lib/env.ts';
-
-// mail.ts imports `after` from next/server, which Node cannot resolve outside Next: give it a minimal stand-in (runs the job at once).
-register('data:text/javascript,' + encodeURIComponent(`
-  export async function resolve(specifier, context, next) {
-    if (specifier === 'next/server') return { url: 'data:text/javascript,export const after = (job) => { void Promise.resolve().then(job); };', shortCircuit: true };
-    return next(specifier, context);
-  }
-`));
 
 const adminUrl = resolveDatabaseUrl(process.env);
 const skip = adminUrl ? false : 'DATABASE_URL not set';
