@@ -142,7 +142,9 @@ Every database query is timed (`src/lib/db.ts`). In the Vercel logs:
 - `[db] no answer after 15000 ms: SELECT …` a query that got no answer in 15 s (`DB_QUERY_TIMEOUT_MS`). It fails with a `DbTimeoutError` and the connection pool is replaced (a stalled connection would otherwise stay in it), so the next request starts clean; the requests already running on the old pool get 5 s to finish. A whole transaction (BEGIN and COMMIT included) has twice that limit: `[db] a transaction did not finish within 30000 ms`. Without this limit a stalled query held the page until the platform killed it (60 s on the candidate fiche, then a bare 504).
 - A page that fails shows « Cette page n'a pas pu s'afficher » inside the coach space, with a « Réessayer » button and a reference (the *digest*) to look up in the logs. A thin bar runs across the top of the window from the click on a link until the next page has arrived.
 
-Both variables are optional and rarely worth changing.
+- **A plain read is repeated once.** A `SELECT` outside a transaction gets 4 s on its first attempt (`DB_FIRST_ATTEMPT_MS`); if it gets no answer, or its connection is cut because the pool was replaced, it is run once more on a new pool with the full limit, and the log says `[db] repeating once on the current pool: SELECT …`. Why: a connection of the pool that died while the instance was idle never answers, and a page runs nine reads at once, so one or two of them used to hang for 15 s. Writes, transactions, locks (`FOR UPDATE`, advisory locks) and sequences are **never** repeated.
+
+The variables are optional and rarely worth changing.
 
 ## Emails (Resend)
 
