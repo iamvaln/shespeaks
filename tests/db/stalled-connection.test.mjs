@@ -260,6 +260,86 @@ test('a read cut because its pool was replaced is repeated on the new pool', { s
   assert.ok(warns.lines.some((l) => l.includes('repeating once')), warns.lines.join(' | '));
 });
 
+test('a transaction is not repeated and its statements have the whole limit, not the short first attempt', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_FIRST_ATTEMPT_MS = '150';
+  process.env.DB_QUERY_TIMEOUT_MS = '1500';
+  await db.get('SELECT 1 AS one');
+  const logs = capture('error'); const warns = capture('warn');
+  const started = Date.now();
+  try {
+    await assert.rejects(db.tx(async () => { await db.all('SELECT 1'); relay.freeze(); await db.all('SELECT ?::int AS n', 1); }), isTimeout);
+  } finally { logs.restore(); warns.restore(); }
+  const took = Date.now() - started;
+  assert.ok(took >= 1400, `the statement had the whole limit (${took} ms)`);
+  assert.ok(!warns.lines.some((l) => l.includes('repeating once')), `a statement of a transaction was repeated: ${warns.lines.join(' | ')}`);
+  assert.ok(!logs.lines.some((l) => l.includes('after 150 ms')), logs.lines.join(' | '));
+});
+
+test('a write may take longer than the first attempt: it has the whole limit and runs once', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_FIRST_ATTEMPT_MS = '150';
+  process.env.DB_QUERY_TIMEOUT_MS = '3000';
+  const logs = capture('error'); const warns = capture('warn');
+  try {
+    assert.equal(await db.run('INSERT INTO probe (id) SELECT 88 FROM (SELECT pg_sleep(0.8)) s'), 1);
+  } finally { logs.restore(); warns.restore(); }
+  assert.deepEqual(logs.lines, []);
+  const direct = postgres(directUrl, { max: 1, onnotice: () => {} });
+  const [{ n }] = await direct.unsafe('select count(*)::int as n from probe where id = 88');
+  await direct.end({ timeout: 0 });
+  assert.equal(n, 1, 'inserted once');
+});
+
+test('the repeat of a read has the whole limit, not the short first attempt', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_FIRST_ATTEMPT_MS = '300';
+  process.env.DB_QUERY_TIMEOUT_MS = '3000';
+  const logs = capture('error'); const warns = capture('warn');
+  try {
+    assert.equal((await db.get('SELECT pg_sleep(1), 1 AS one')).one, 1); // cut at 300 ms, then 1 s on the new pool
+  } finally { logs.restore(); warns.restore(); }
+  assert.equal(warns.lines.filter((l) => l.includes('repeating once')).length, 1, warns.lines.join(' | '));
+});
+
+test('a read that never gets an answer is repeated once and no more: it fails after the first attempt plus the limit', { skip, timeout: 15000 }, async () => {
+  pointAt(directUrl);
+  process.env.DB_FIRST_ATTEMPT_MS = '300';
+  process.env.DB_QUERY_TIMEOUT_MS = '1200';
+  lockConn = postgres(directUrl, { max: 1, onnotice: () => {} });
+  await lockConn.unsafe('BEGIN');
+  await lockConn.unsafe('LOCK TABLE probe IN ACCESS EXCLUSIVE MODE'); // every read of « probe » waits, on any connection
+  const logs = capture('error'); const warns = capture('warn');
+  const started = Date.now();
+  try {
+    await assert.rejects(db.all('SELECT * FROM probe'), isTimeout);
+  } finally { logs.restore(); warns.restore(); await lockConn.unsafe('ROLLBACK').catch(() => {}); await lockConn.end({ timeout: 0 }).catch(() => {}); lockConn = undefined; }
+  const took = Date.now() - started;
+  assert.ok(took >= 1400 && took < 3500, `300 ms, then 1200 ms (${took} ms)`);
+  assert.equal(warns.lines.filter((l) => l.includes('repeating once')).length, 1, warns.lines.join(' | '));
+  assert.equal(logs.lines.filter((l) => l.includes('no answer after')).length, 2, logs.lines.join(' | '));
+});
+
+test('a slow read that makes the pool be replaced does not cut a transaction whose statement is still running', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_FIRST_ATTEMPT_MS = '200';
+  process.env.DB_QUERY_TIMEOUT_MS = '6000'; // a transaction may take 12 s
+  const logs = capture('error'); const warns = capture('warn');
+  try {
+    const pool = db.sql();
+    const saving = db.tx(async () => { await db.run('INSERT INTO probe (id) VALUES (?)', 99); await db.all('SELECT pg_sleep(4)'); return db.get('SELECT 7 AS seven'); }); // the old grace (3 s) would have cut this
+    await sleep(100);
+    const reading = db.get('SELECT pg_sleep(0.6), 1 AS ok'); // slower than the first attempt: cut at 200 ms, the pool is replaced, then run again
+    assert.equal((await reading).ok, 1);
+    assert.notEqual(db.sql(), pool, 'the slow read did replace the pool');
+    assert.deepEqual(await saving, { seven: 7 }, 'the transaction on the old pool finished');
+  } finally { logs.restore(); warns.restore(); }
+  const direct = postgres(directUrl, { max: 1, onnotice: () => {} });
+  const [{ n }] = await direct.unsafe('select count(*)::int as n from probe where id = 99');
+  await direct.end({ timeout: 0 });
+  assert.equal(n, 1, 'the transaction committed');
+});
+
 // keep this one last: the relay stops accepting connections
 test('an annulment that cannot connect is not an unhandled rejection', { skip }, async () => {
   pointAt(relayUrl());

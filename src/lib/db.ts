@@ -26,8 +26,9 @@ const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || 15_000;
 const slowQueryMs = () => Number(process.env.DB_SLOW_QUERY_MS) || 2_000;
 // A whole transaction, BEGIN and COMMIT included (the library sends those itself, outside exec()): twice the limit of one query.
 const transactionTimeoutMs = () => queryTimeoutMs() * 2;
-// How long the requests already running on a dropped pool have to finish before its connections are closed.
-const RESET_GRACE_S = 3;
+// How long the requests already running on a dropped pool have to finish before its connections are closed: a transaction that has only just begun may
+// still need its whole limit. A short grace (3 s) cut a form save whose statement ran for 9 s when a slow read, 4 s into its first attempt, replaced the pool.
+const resetGraceS = () => transactionTimeoutMs() / 1000;
 // A plain read gets this long on its first attempt, then one more attempt on a new pool with the full limit: a connection of the pool that died while
 // idle never answers, and 15 s is a long time to find out. Writes and transactions are never repeated. Read at each call.
 const firstAttemptMs = () => Number(process.env.DB_FIRST_ATTEMPT_MS) || 4_000;
@@ -51,14 +52,15 @@ export class DbTimeoutError extends Error {
 
 /**
  * Drops the shared pool so the next query opens fresh connections. The old pool is not cut at once: the other requests of the instance that are
- * running healthy statements get a few seconds to finish (the stalled connection is closed after them). Closing is a half-close, which a peer that
- * has gone silent never answers: nothing may wait for it, which is why callers are released by their own timers (see exec() and tx()).
+ * running healthy statements get the limit of a transaction to finish (the stalled connection is closed after them; a statement still queued on the
+ * old pool is not served by it and is released by its own timer). Closing is a half-close, which a peer that has gone silent never answers:
+ * nothing may wait for it, which is why callers are released by their own timers (see exec() and tx()).
  */
 function resetPool(stalled: Sql): void {
   // the pool the stalled statement ran on, not whatever is current: the grace leaves statements pending on a dropped pool, and their timers
   // must not drop the pool that replaced it
   if (g.__shespeaksSql === stalled) g.__shespeaksSql = undefined;
-  stalled.end({ timeout: RESET_GRACE_S }).catch(() => {}); // end() is idempotent: a second call returns the first
+  stalled.end({ timeout: resetGraceS() }).catch(() => {}); // end() is idempotent: a second call returns the first
 }
 
 /**
