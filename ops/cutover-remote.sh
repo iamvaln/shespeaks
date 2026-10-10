@@ -68,6 +68,11 @@ case "$STEP" in
   copy-db)
     tables=$(dst_psql -tAc "$TABLES_SQL" | sed 's/.*/public."&"/' | paste -sd, -)
     [ -n "$tables" ] || { echo "no table on the target: has the migrate service run?" >&2; exit 1; }
+    # The copy truncates the target: on production, refuse once the VPS holds candidates (go-live already happened).
+    if [ "$STACK" = shespeaks ] && [ "${CUTOVER_ALLOW_OVERWRITE:-}" != 1 ]; then
+      have=$(dst_psql -tAc "select count(*) from candidates") || { echo "cannot count the target candidates" >&2; exit 1; }
+      [ "$have" = 0 ] || { echo "REFUSED: production already holds $have candidate(s); copy-db would erase them. Set CUTOVER_ALLOW_OVERWRITE=1 only if that is intended." >&2; exit 1; }
+    fi
     # Dump to a file first: a dump that dies halfway must not be restored (psql would commit what it got).
     dump=$(umask 077; mktemp "${TMPDIR:-/tmp}/cutover-dump.XXXXXX")
     trap 'rm -f "$dump"' EXIT

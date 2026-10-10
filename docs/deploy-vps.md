@@ -40,7 +40,7 @@ fichiers de 10 Mo par service.
 | Événement GitHub | Environnement GitHub | Ce qui est déployé | Dossier |
 |---|---|---|---|
 | Push sur `develop` | `preprod` | images taguées `develop` | `~/shespeaks-preprod` |
-| Tag `v*` (ex. `v1.0.0`) | `production` (**approbation manuelle exigée**) | images taguées `v1.0.0` et `latest` | `~/shespeaks` |
+| Tag `v*` (ex. `v1.0.0`) | `production` (**approbation manuelle exigée**) | images `shespeaks` et `shespeaks-backup`, taguées `v1.0.0` et `latest` | `~/shespeaks` |
 
 `.github/workflows/deploy.yml` :
 
@@ -275,23 +275,33 @@ empreintes calculées avec ce secret). Ne le régénérer que volontairement.
 
 ### Modifier une variable
 
-Éditer le fichier, puis recréer les conteneurs **avec le tag en cours** (sans
-lui, Compose retombe sur `latest` en production et sur un tag qui n'existe pas
-en préproduction) :
+Éditer le fichier, puis recréer les conteneurs **avec le tag en cours**. Sans
+`IMAGE_TAG`, Compose prend `latest` : en production c'est le dernier tag `v*`
+(pas forcément la version qui tourne), et en préproduction ce tag n'existe pas
+(les images y sont taguées `develop`). Le tag se donne **sur la commande
+seulement**, jamais par `export` : une variable exportée l'emporte sur le
+fichier d'environnement et fuirait vers la commande suivante de la même session
+(par exemple sur l'autre environnement).
+
+Pour ne pas retaper la lecture du tag, définir cette fonction au début de la
+session (production) ; les commandes des sections 4 et 5 qui lancent des
+images l'utilisent :
 
 ```bash
 cd ~/shespeaks
-export IMAGE_TAG=$(docker inspect -f '{{.Config.Image}}' shespeaks-app-1 | sed 's/.*://')
-docker compose --env-file .env.production --profile prod up -d
+dcprod() { IMAGE_TAG=$(docker inspect -f '{{.Config.Image}}' shespeaks-app-1 | sed 's/.*://') docker compose --env-file .env.production --profile prod "$@"; }
+dcprod up -d
 ```
 
 Pour la préproduction : dossier `~/shespeaks-preprod`, conteneur
-`shespeaks-preprod-app-1`, fichier `.env.preprod`, sans `--profile prod`.
+`shespeaks-preprod-app-1`, fichier `.env.preprod`, sans `--profile prod`
+(fonction `dcpreprod` à définir de la même façon).
 
 ## 4. Diagnostics
 
 Production, depuis `~/shespeaks` (préproduction : `.env.preprod`, sans
-`--profile prod`) :
+`--profile prod`)  ; la fonction `dcprod` est définie en section 3 et
+n'est nécessaire que pour les commandes qui lancent une image) :
 
 ```bash
 # état des services
@@ -320,7 +330,7 @@ Même appel que celui du service `cron`, sans attendre l'heure prévue (les
 relances sont idempotentes : chaque candidate est réservée avant l'envoi) :
 
 ```bash
-docker compose --env-file .env.production --profile prod run --rm --entrypoint sh cron \
+dcprod run --rm --entrypoint sh cron \
   -c 'curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/reminders'
 ```
 
@@ -332,9 +342,8 @@ Relancer le run Deploy de la version voulue dans GitHub (onglet Actions), ou, à
 la main :
 
 ```bash
-export IMAGE_TAG=v1.0.0
-docker compose --env-file .env.production --profile prod pull
-docker compose --env-file .env.production --profile prod up -d
+IMAGE_TAG=v1.0.0 docker compose --env-file .env.production --profile prod pull
+IMAGE_TAG=v1.0.0 docker compose --env-file .env.production --profile prod up -d
 ```
 
 Les migrations ne reculent jamais : une version plus ancienne doit pouvoir
@@ -356,17 +365,19 @@ Un échec est écrit dans `logs backup` (`FAILED`) : à surveiller, par exemple
 après un changement de jeton R2.
 
 Le conteneur accepte les modes `backup`, `restore`, `restore-uploads`, `list`
-et `shell`. Depuis `~/shespeaks` :
+et `shell`. Depuis `~/shespeaks`, avec la fonction `dcprod` de la section 3
+(elle donne à Compose le tag de l'image qui tourne, sans quoi l'image
+`backup` à tirer est introuvable dans une session neuve) :
 
 ```bash
 # lister le contenu du compartiment (sert aussi à vérifier les identifiants R2)
-docker compose --env-file .env.production --profile prod run --rm backup list
+dcprod run --rm backup list
 
 # sauvegarde immédiate
-docker compose --env-file .env.production --profile prod run --rm backup backup
+dcprod run --rm backup backup
 
 # un shell dans l'image de sauvegarde
-docker compose --env-file .env.production --profile prod run --rm backup shell
+dcprod run --rm backup shell
 ```
 
 ### Restaurer la base
@@ -376,9 +387,9 @@ et recréées**, tout ce qui a été écrit depuis la sauvegarde est perdu. La
 commande demande de retaper le nom de la base (`shespeaks`).
 
 ```bash
-docker compose --env-file .env.production stop app
-docker compose --env-file .env.production --profile prod run --rm backup restore latest
-docker compose --env-file .env.production start app
+dcprod stop app
+dcprod run --rm backup restore latest
+dcprod start app
 ```
 
 `latest` désigne la sauvegarde de base la plus récente ; on peut aussi passer
@@ -389,7 +400,7 @@ un nom lu avec `list` (`restore shespeaks-20260604T020001Z.sql.gz`).
 Les fichiers de l'archive sont ajoutés ou écrasés, jamais supprimés.
 
 ```bash
-docker compose --env-file .env.production --profile prod run --rm backup restore-uploads latest
+dcprod run --rm backup restore-uploads latest
 ```
 
 Contrôler de temps en temps que `backup list` montre une sauvegarde de moins
@@ -443,7 +454,19 @@ ssh deploy-vps 'cd ~/shespeaks-preprod && ops/cutover-remote.sh shespeaks-prepro
 
 `wipe` est refusé sur la production.
 
-### Le jour J
+### Le jour J : production, une seule fois
+
+**Attention : `ops/cutover.sh` sans option (et `ops/cutover-remote.sh
+shespeaks copy-db`) EFFACE la base de production** (`TRUNCATE … RESTART
+IDENTITY CASCADE`) avant d'y recopier Supabase. À lancer une seule fois, avant
+la mise en service, jamais après que le VPS a reçu des écritures : relancé plus
+tard, il remplacerait les données vivantes par des données Supabase périmées.
+Garde-fou : `copy-db` sur `shespeaks` refuse (code 1) si la table `candidates`
+de la cible n'est pas vide. Pour passer outre, en connaissance de cause :
+`CUTOVER_ALLOW_OVERWRITE=1 ops/cutover.sh`. La préproduction n'est pas
+concernée (les répétitions copient plusieurs fois).
+
+Faire d'abord la répétition (`ops/cutover.sh --rehearsal`, ci-dessus), puis :
 
 ```bash
 ops/cutover.sh

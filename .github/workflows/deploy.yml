@@ -38,7 +38,9 @@ jobs:
         with:
           context: ops/backup
           push: true
-          tags: ${{ env.REGISTRY }}/shespeaks-backup:${{ steps.t.outputs.tag }}
+          tags: |
+            ${{ env.REGISTRY }}/shespeaks-backup:${{ steps.t.outputs.tag }}
+            ${{ github.ref_type == 'tag' && format('{0}/shespeaks-backup:latest', env.REGISTRY) || '' }}
 
   deploy:
     needs: images
