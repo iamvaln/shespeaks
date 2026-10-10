@@ -518,8 +518,8 @@ Déroulé :
 
 Une fois `app` arrêté (étape 4), `ops/cutover.sh` ne se relance pas : son
 préflight exige `/api/health`. Si le script s'est arrêté après l'ouverture de la
-fenêtre, corriger la cause puis reprendre les étapes une à une, dans cet ordre,
-en s'arrêtant à la première qui échoue (Vercel doit déjà servir la redirection) :
+fenêtre, corriger la cause puis reprendre **à partir de l'étape qui a échoué**,
+sans rejouer celles qui ont réussi (Vercel doit déjà servir la redirection) :
 
 ```bash
 ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks copy-db'
@@ -528,9 +528,29 @@ ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks verify'
 ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks start-app'
 ```
 
+Si `copy-db` a déjà réussi, le rejouer est **refusé** : la production contient
+alors des candidatures et le garde-fou protège ces données. Si la copie doit
+vraiment être refaite alors que `app` est toujours arrêtée (rien n'a donc été
+écrit sur le VPS depuis), on peut la forcer :
+
+```bash
+ssh deploy-vps 'cd ~/shespeaks && CUTOVER_ALLOW_OVERWRITE=1 ops/cutover-remote.sh shespeaks copy-db'
+```
+
+Ne jamais utiliser `CUTOVER_ALLOW_OVERWRITE=1` une fois que le VPS a reçu des
+écritures : la copie écraserait des données qui n'existent nulle part ailleurs.
+
 Renoncer : re-promouvoir le déploiement Vercel précédent (voir ci-dessous), puis
-soit `start-app` (le VPS reste en veille, sans trafic), soit laisser le VPS sur
-la page d'attente.
+laisser le VPS sur la page d'attente (`app` arrêtée) en arrêtant aussi le `cron`
+de production. Si `app` doit tourner pour des vérifications (`start-app`),
+arrêter le `cron` dans tous les cas, dans une session sur le VPS :
+
+```bash
+cd ~/shespeaks && dcprod stop cron
+```
+
+`stop-app` n'arrête que `app` : deux `cron` actifs (Vercel et VPS) enverraient
+les relances en double.
 
 ### Marche arrière
 

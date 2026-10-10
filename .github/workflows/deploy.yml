@@ -53,13 +53,14 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # the VPS ed25519 host key: the token must not be sent to whatever host answers
-          fingerprint: SHA256:HmcLSJb+TTu9hEAHLeHQs00YPIRgi6aSUKrBG5EeabA
+          # the VPS ECDSA host key (not ed25519: the action sets no HostKeyAlgorithms, so Go x/crypto negotiates ECDSA first): the token must not be sent to whatever host answers
+          fingerprint: SHA256:DbZyfJfnbrBvLGjx4YRow4l8SSip7Pt+2VaHizZY3vk
           envs: GHCR_USER,GHCR_TOKEN,TAG,STACK,DIR,ENVFILE,PROFILE,REF
           script: |
             set -euo pipefail
             # the registry login lives in a throwaway config: ~/.docker/config.json is shared by every project of the deploy user
-            export DOCKER_CONFIG="$(mktemp -d)"
+            DOCKER_CONFIG=$(mktemp -d)
+            export DOCKER_CONFIG
             trap 'rm -rf "$DOCKER_CONFIG"' EXIT
             cd "$HOME/$DIR"
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
@@ -75,7 +76,7 @@ jobs:
               n=$((n+1)); [ "$n" -ge 3 ] && { echo "pull failed $n times"; exit 1; }; sleep 10
             done
             # migrate runs BEFORE `up -d`: depends_on only orders the start, and `up -d` replaces `app` first, so a failing migrate would take the site down
-            docker compose --env-file "$ENVFILE" $PROFILE run --rm migrate || { docker compose --env-file "$ENVFILE" logs --tail 80 migrate; echo "migrate failed: the running version keeps serving"; exit 1; }
+            docker compose --env-file "$ENVFILE" $PROFILE run --rm migrate || { echo "migrate failed: the running version keeps serving"; exit 1; }
             docker compose --env-file "$ENVFILE" $PROFILE up -d --remove-orphans || { docker compose --env-file "$ENVFILE" logs --tail 80 migrate app; exit 1; }
             # `up -d` returns before the app is healthy: wait for it, and fail the run if it never is
             for i in $(seq 1 30); do
