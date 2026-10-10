@@ -1,0 +1,92 @@
+#!/bin/bash
+# One-shot backup: pg_dump → gzip → R2 upload, photo archive → R2, prune.
+# Errors are loud and immediately propagate (no try/swallow). Callers handle
+# the rc — the loop logs and continues; an ad-hoc `docker compose run --rm
+# backup backup` exits non-zero so CI / operator can react.
+set -euo pipefail
+
+: "${PGHOST:?PGHOST is required}"
+: "${PGUSER:?PGUSER is required}"
+: "${PGPASSWORD:?PGPASSWORD is required}"
+: "${PGDATABASE:?PGDATABASE is required}"
+: "${BACKUP_R2_ACCOUNT_ID:?BACKUP_R2_ACCOUNT_ID is required}"
+: "${BACKUP_R2_BUCKET:?BACKUP_R2_BUCKET is required}"
+: "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required (set R2_ACCESS_KEY_ID via compose)}"
+: "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required (set R2_SECRET_ACCESS_KEY via compose)}"
+
+PREFIX=${BACKUP_R2_PREFIX:-backups}
+RETENTION=${BACKUP_RETENTION_DAYS:-14}
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+NAME="shespeaks-${TS}.sql.gz"
+TMP="/tmp/${NAME}"
+KEY="${PREFIX}/${NAME}"
+
+echo "[backup] dumping ${PGDATABASE}@${PGHOST} → ${TMP}"
+# --clean --if-exists: the resulting SQL drops + recreates objects, so
+# restoring into an existing DB is idempotent. --no-owner / --no-acl: we
+# don't carry role grants across environments.
+pg_dump \
+  --host="${PGHOST}" \
+  --username="${PGUSER}" \
+  --dbname="${PGDATABASE}" \
+  --no-owner \
+  --no-acl \
+  --clean \
+  --if-exists \
+  --format=plain \
+  | gzip -9 > "${TMP}"
+
+size=$(stat -c %s "${TMP}" 2>/dev/null || stat -f %z "${TMP}")
+echo "[backup] dump complete (${size} bytes) → uploading to s3://${BACKUP_R2_BUCKET}/${KEY}"
+
+aws s3 cp "${TMP}" "s3://${BACKUP_R2_BUCKET}/${KEY}" \
+  --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+  --no-progress
+
+rm -f "${TMP}"
+echo "[backup] uploaded ${KEY}"
+
+UPLOADS_DIR=${UPLOADS_DIR:-/uploads}
+UNAME="shespeaks-uploads-${TS}.tar.gz"
+echo "[backup] archiving ${UPLOADS_DIR} → ${UNAME}"
+tar -C "${UPLOADS_DIR}" -czf "/tmp/${UNAME}" .
+aws s3 cp "/tmp/${UNAME}" "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${UNAME}" \
+  --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+  --no-progress
+rm -f "/tmp/${UNAME}"
+echo "[backup] uploaded ${PREFIX}/${UNAME}"
+
+# Prune. R2's S3 `ls` returns lines of the form:
+#   2026-06-04 03:00:01  4823017 backups/shespeaks-20260604T030001Z.sql.gz
+# Filenames embed the dump timestamp (YYYYMMDD), so we compare against the
+# cutoff date as an integer — no fragile date-string parsing across the wire.
+echo "[backup] pruning > ${RETENTION} days old"
+cutoff_epoch=$(awk -v t="$(date -u +%s)" -v d="${RETENTION}" 'BEGIN { print t - d*86400 }')
+cutoff_yyyymmdd=$(date -u -d "@${cutoff_epoch}" +%Y%m%d)
+
+pruned=0
+while IFS= read -r line; do
+  # Skip the prefix's own "PRE …/" lines and blanks.
+  case "$line" in '' | *' PRE '*) continue ;; esac
+  fname=$(printf '%s\n' "$line" | awk '{print $NF}')
+  # Defensive: only touch keys matching our naming scheme.
+  case "$fname" in shespeaks-*.sql.gz|shespeaks-uploads-*.tar.gz) ;; *) continue ;; esac
+  fdate=$(printf '%s\n' "$fname" | sed -n 's/^shespeaks-\(uploads-\)\{0,1\}\([0-9]\{8\}\)T.*$/\2/p')
+  [ -z "$fdate" ] && continue
+  weekly_cutoff=$(date -u -d "@$(( $(date -u +%s) - 56*86400 ))" +%Y%m%d)
+  if [ "$fdate" -lt "$cutoff_yyyymmdd" ]; then
+    # older than the daily window: Sunday backups are kept for 8 weeks
+    if [ "$(date -u -d "$fdate" +%u)" = "7" ] && [ "$fdate" -ge "$weekly_cutoff" ]; then continue; fi
+    echo "[backup] prune s3://${BACKUP_R2_BUCKET}/${PREFIX}/${fname}"
+    # PAS de --no-progress ici : `aws s3 cp` l'accepte, `aws s3 rm` NON.
+    # Le passer fait sortir « Unknown options: --no-progress » et un code 252,
+    # qui remonte en échec de TOUTE la sauvegarde — alors que le versement a
+    # réussi. Le vrai coût n'est pas la purge manquée mais le signal perdu :
+    # le jour où le vidage échoue vraiment, le journal dit la même chose.
+    aws s3 rm "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${fname}" \
+      --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    pruned=$((pruned + 1))
+  fi
+done < <(aws s3 ls "s3://${BACKUP_R2_BUCKET}/${PREFIX}/" --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com")
+echo "[backup] pruned ${pruned} old backup(s)"
+echo "[backup] done"

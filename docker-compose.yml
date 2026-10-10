@@ -108,6 +108,29 @@ services:
     mem_limit: 32m
     logging: *logging
 
+  backup:
+    image: ${REGISTRY:-ghcr.io/iamvaln}/shespeaks-backup:${IMAGE_TAG:-latest}
+    profiles: [prod]
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: shespeaks
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: shespeaks
+      UPLOADS_DIR: /uploads
+      BACKUP_SCHEDULE_HOUR_UTC: ${BACKUP_SCHEDULE_HOUR_UTC:-2}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_R2_ACCOUNT_ID: ${BACKUP_R2_ACCOUNT_ID:-}
+      BACKUP_R2_BUCKET: ${BACKUP_R2_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes: [uploads:/uploads]
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 128m
+    logging: *logging
+
 volumes:
   pgdata:
   uploads:
