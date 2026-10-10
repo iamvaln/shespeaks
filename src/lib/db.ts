@@ -20,6 +20,27 @@ export const statusLabel = (id: string) => STATUSES.find((s) => s.id === id)?.la
 type Sql = postgres.Sql;
 const g = globalThis as unknown as { __shespeaksSql?: Sql };
 
+// A query that gets no answer must not hold a page until the platform kills it (60 s on the fiche, then a bare 504): after this delay it fails
+// with a clear error and the connection pool is replaced (a stalled connection would otherwise stay in the pool). Both are read at each call.
+const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || 15_000;
+const slowQueryMs = () => Number(process.env.DB_SLOW_QUERY_MS) || 2_000;
+
+export class DbTimeoutError extends Error {
+  readonly ms: number; // a plain field: Node runs this file with types stripped, which has no « constructor(public … ) » shorthand
+  constructor(ms: number, sqlText: string) {
+    super(`The database did not answer within ${ms} ms: ${sqlText.replace(/\s+/g, ' ').slice(0, 80)}`);
+    this.name = 'DbTimeoutError';
+    this.ms = ms;
+  }
+}
+
+/** Drops the shared pool (its connections are closed at once) so the next query opens fresh ones. */
+function resetPool(): void {
+  const old = g.__shespeaksSql;
+  g.__shespeaksSql = undefined;
+  old?.end({ timeout: 0 }).catch(() => {});
+}
+
 /** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
 export function sql(): Sql {
   if (!g.__shespeaksSql) {
@@ -64,9 +85,32 @@ function explain(e: unknown): unknown {
   return e;
 }
 
+/** Runs one statement with the delay above, and logs it when it is slow: the statement text only (never the values), so the Vercel logs say which query stalls. */
+async function exec(text: string, p: Param[]) {
+  const started = Date.now();
+  const q = conn().unsafe(toPg(text), p);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = queryTimeoutMs();
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      try { q.cancel(); } catch { /* best effort */ }
+      resetPool(); // also unblocks a transaction waiting on the stalled connection
+      console.error(`[db] no answer after ${limit} ms: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+      reject(new DbTimeoutError(limit, text));
+    }, limit);
+  });
+  try {
+    return await Promise.race([q, expired]);
+  } finally {
+    clearTimeout(timer);
+    const took = Date.now() - started;
+    if (took >= slowQueryMs() && took < limit) console.warn(`[db] slow query, ${took} ms: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+  }
+}
+
 export async function all<T = Record<string, unknown>>(text: string, ...p: Param[]): Promise<T[]> {
   try {
-    return (await conn().unsafe(toPg(text), p)) as unknown as T[];
+    return (await exec(text, p)) as unknown as T[];
   } catch (e) {
     throw explain(e);
   }
@@ -77,7 +121,7 @@ export async function get<T = Record<string, unknown>>(text: string, ...p: Param
 /** Returns the number of affected rows. */
 export async function run(text: string, ...p: Param[]): Promise<number> {
   try {
-    return (await conn().unsafe(toPg(text), p)).count;
+    return (await exec(text, p)).count;
   } catch (e) {
     throw explain(e);
   }
@@ -90,7 +134,19 @@ export async function insert(text: string, ...p: Param[]): Promise<number> {
 
 export async function tx<T>(fn: () => Promise<T>): Promise<T> {
   if (als.getStore()) return fn(); // already inside a transaction
-  return (await sql().begin((t) => als.run(t as unknown as Sql, fn))) as T;
+  let stalled: DbTimeoutError | undefined;
+  try {
+    return (await sql().begin((t) => als.run(t as unknown as Sql, async () => {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof DbTimeoutError) stalled = e;
+        throw e;
+      }
+    }))) as T;
+  } catch (e) {
+    throw stalled ?? e; // the rollback on the stalled connection fails with an error of its own: the cause is the timeout
+  }
 }
 
 export const nowSql = () => new Date().toISOString().replace('T', ' ').slice(0, 19); // UTC

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from './admin-icons';
+import { NavProgress } from './NavProgress';
 
 // The frame of the coach space: menu on the left (a drawer on a phone), a thin top bar with the search, then the page.
 const GROUPS: { title: string; items: { href: string; label: string; icon: IconName; exact?: boolean; badge?: boolean }[] }[] = [
@@ -77,6 +78,7 @@ export function AdminShell({ toProcess, coachName, initials, signOut, children }
 
   return (
     <div className="app" data-open={open ? '' : undefined}>
+      <NavProgress />
       <a className="skip-link" href="#contenu">Aller au contenu</a>
 
       <nav ref={side} id="menu-principal" className="app-side" aria-label="Navigation principale" onKeyDown={trap}>
