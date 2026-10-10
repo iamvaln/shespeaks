@@ -115,6 +115,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -t shespeaks:ci .
       - run: docker build -t shespeaks-backup:ci ops/backup
+      - name: Compose file is valid (prod profile, dummy variables)
+        run: >-
+          STACK=ci DEPLOY_ENV=production POSTGRES_PASSWORD=ci APP_URL=https://ci.example.com
+          SESSION_SECRET=ci CRON_SECRET=ci APP_DOMAIN=ci.example.com
+          docker compose --profile prod config -q
       - name: Migrations from the image (environment check included)
         run: >-
           docker run --rm --network host
