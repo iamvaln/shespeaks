@@ -1,10 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { redirectTarget } from './redirect.ts';
+import { decide, redirectTarget, WAITING_PAGE } from './redirect.ts';
 
-const NEW = 'https://sheleads.techiesconnect.org';
+const NEW = 'https://shespeaks.techiesconnect.org';
 const TOKEN = 'Ab3_dE-f'.repeat(4);
 
+test('the production address itself gets the waiting page while its DNS moves to the VPS', () => {
+  assert.deepEqual(decide('shespeaks.techiesconnect.org', '/interet', '', TOKEN), { kind: 'waiting' });
+  assert.deepEqual(decide('SheSpeaks.TechiesConnect.org:443', '/', '', undefined), { kind: 'waiting' });
+});
+test('the other Vercel addresses forward to the production address', () => {
+  assert.deepEqual(decide('shespeaks-taupe.vercel.app', '/plan', '?x=1', undefined), { kind: 'redirect', url: `${NEW}/plan?x=1`, status: 308 });
+  assert.deepEqual(decide(null, '/', '', undefined), { kind: 'redirect', url: `${NEW}/`, status: 308 });
+});
+test('the waiting page reloads itself and says so in French', () => {
+  assert.match(WAITING_PAGE, /On revient dans un instant/);
+  assert.match(WAITING_PAGE, /http-equiv="refresh" content="15"/);
+});
 test('a candidate with a session goes to her resume link on the new domain', () => {
   assert.deepEqual(redirectTarget('/interet', '', TOKEN), { url: `${NEW}/reprendre/${TOKEN}`, status: 307 });
 });
