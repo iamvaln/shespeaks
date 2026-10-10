@@ -30,7 +30,7 @@ GHCR, Cloudflare R2 (aws-cli), API REST de Supabase Storage.
 - Projets Compose : `shespeaks` (prod) et `shespeaks-preprod`. Le nom vient de
   la variable `STACK`, obligatoire, et chaque déploiement vérifie le nom
   annoncé par Compose avant toute action (incident lehno du 14 septembre).
-- Domaines : `sheleads.techiesconnect.org` (prod),
+- Domaines : `shespeaks.techiesconnect.org` (prod),
   `sheleads.techiesconnect.net` (preprod). Enregistrements A vers
   `77.237.234.91`, DNS only.
 - Traefik : réseau externe `web`, entrypoint `websecure`, certresolver `le`.
@@ -1240,7 +1240,7 @@ esac
 # --rehearsal: same steps into the preprod, without the Vercel step.
 set -euo pipefail
 if [ "${1:-}" = "--rehearsal" ]; then STACK=shespeaks-preprod; DIR=shespeaks-preprod; DOMAIN=sheleads.techiesconnect.net; REH=1
-else STACK=shespeaks; DIR=shespeaks; DOMAIN=sheleads.techiesconnect.org; REH=0; fi
+else STACK=shespeaks; DIR=shespeaks; DOMAIN=shespeaks.techiesconnect.org; REH=0; fi
 R() { ssh deploy-vps "cd ~/$DIR && ops/cutover-remote.sh $STACK $1"; }
 t0=$(date +%s); step() { echo; echo "== [$(( $(date +%s) - t0 ))s] $*"; }
 
@@ -1311,7 +1311,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { redirectTarget } from './redirect.ts';
 
-const NEW = 'https://sheleads.techiesconnect.org';
+const NEW = 'https://shespeaks.techiesconnect.org';
 const TOKEN = 'Ab3_dE-f'.repeat(4);
 
 test('a candidate with a session goes to her resume link on the new domain', () => {
@@ -1336,7 +1336,7 @@ test('a malformed cookie is ignored, not put in a URL', () => {
 ```ts
 // The old Vercel address now only forwards to the VPS. A candidate's session cookie belongs to the old domain and does not
 // follow the redirect: when she has one, she is sent through her resume link, which sets it again on the new domain.
-export const NEW_ORIGIN = 'https://sheleads.techiesconnect.org';
+export const NEW_ORIGIN = 'https://shespeaks.techiesconnect.org';
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 
 export function redirectTarget(pathname: string, search: string, token: string | undefined): { url: string; status: 307 | 308 } {
@@ -1368,7 +1368,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ```tsx
 export default function Page() {
-  return <p>SheSpeaks a déménagé : https://sheleads.techiesconnect.org</p>;
+  return <p>SheSpeaks a déménagé : https://shespeaks.techiesconnect.org</p>;
 }
 ```
 
@@ -1400,7 +1400,7 @@ Expected : 4 tests passent, build OK.
   preview de cette branche, non promu)
 
 ```bash
-git add -A && git commit -m "Old Vercel address forwards to sheleads.techiesconnect.org; candidates keep their session through their resume link"
+git add -A && git commit -m "Old Vercel address forwards to shespeaks.techiesconnect.org; candidates keep their session through their resume link"
 git push -u origin vercel-redirect
 cd - && git worktree remove ../shespeaks-redirect
 ```
@@ -1456,7 +1456,7 @@ Chaque étape qui dépend d'un compte de l'utilisateur est marquée **[toi]**.
 
 - [ ] **Step 1 [toi]** : dans Cloudflare, créer `A sheleads → 77.237.234.91`
   dans la zone `techiesconnect.net` (preprod) et dans la zone
-  `techiesconnect.org` (prod), **DNS only**. Vérifier : `dig +short sheleads.techiesconnect.org @1.1.1.1` →
+  `techiesconnect.org` (prod), **DNS only**. Vérifier : `dig +short shespeaks.techiesconnect.org @1.1.1.1` →
   `77.237.234.91`.
 - [ ] **Step 2 [toi]** : créer le compartiment R2 `shespeaks-backups` et un
   jeton limité à ce compartiment (lecture et écriture d'objets) ; noter
@@ -1475,8 +1475,8 @@ ssh deploy-vps 'for d in shespeaks shespeaks-preprod; do [ -d ~/$d ] || git clon
   `~/shespeaks-preprod/.env.preprod` à partir de `.env.compose.example`
   (chmod 600) :
   - prod : `STACK=shespeaks`, `DEPLOY_ENV=production`,
-    `APP_DOMAIN=sheleads.techiesconnect.org`,
-    `APP_URL=https://sheleads.techiesconnect.org`, `POSTGRES_PASSWORD=$(openssl rand -hex 24)`
+    `APP_DOMAIN=shespeaks.techiesconnect.org`,
+    `APP_URL=https://shespeaks.techiesconnect.org`, `POSTGRES_PASSWORD=$(openssl rand -hex 24)`
     (généré sur le VPS), les valeurs de Vercel, les valeurs R2 ;
   - preprod : `STACK=shespeaks-preprod`, `DEPLOY_ENV=preprod`,
     `APP_DOMAIN=sheleads.techiesconnect.net`, `APP_URL` assortie,
@@ -1588,7 +1588,7 @@ test('behind Traefik the client is the last x-forwarded-for hop, whatever the vi
   reconstruise pas sa prod en pleine opération) :
   `git tag v1.0.0 origin/develop && git push origin v1.0.0`, approuver le
   déploiement dans GitHub, suivre le run jusqu'au `success`. Vérifier
-  `https://sheleads.techiesconnect.org/api/health` → `{"ok":true}` et
+  `https://shespeaks.techiesconnect.org/api/health` → `{"ok":true}` et
   `docker compose --env-file .env.production --profile prod ps` : `cron` et
   `backup` démarrés ; `logs backup` dit « uploaded ».
 - [ ] **Step 2 [toi]** : choisir le créneau (heure creuse, la nuit à Douala) ;
@@ -1603,7 +1603,7 @@ test('behind Traefik the client is the last x-forwarded-for hop, whatever the vi
   déconnecter l'intégration Git) : sinon le push sur `main` redéploie
   l'ancienne application par-dessus la redirection. Puis, après le succès :
   - tester l'ancienne adresse : `curl -sI https://shespeaks-taupe.vercel.app/interet`
-    → `308` vers `https://sheleads.techiesconnect.org/interet` ; un lien
+    → `308` vers `https://shespeaks.techiesconnect.org/interet` ; un lien
     `/reprendre/<jeton>` d'un vrai mail de `email_log` ouvre bien la session ;
   - **[toi]** se connecter en coach sur le nouveau domaine, et **tester un
     envoi de photo en production** juste après la bascule (formulaire, puis

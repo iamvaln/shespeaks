@@ -22,7 +22,7 @@ Next.js 15 (App Router, TypeScript) · **Postgres** (`postgres` driver) · speak
 SheSpeaks runs on a shared Docker VPS (Postgres, app, Traefik, daily reminders, nightly backups to R2). Full guide in French: [docs/deploy-vps.md](docs/deploy-vps.md).
 
 - `develop` → push builds the images and deploys the **preprod** (`sheleads.techiesconnect.net`, no real email, no cron).
-- A `v*` tag → deploys **production** (`sheleads.techiesconnect.org`) after a manual approval in the GitHub `production` environment.
+- A `v*` tag → deploys **production** (`shespeaks.techiesconnect.org`) after a manual approval in the GitHub `production` environment.
 - Configuration: one env file per environment on the VPS, from `.env.compose.example`. Migrations and seed run in the `migrate` service on each deploy.
 - Reminders: the `cron` service calls `/api/cron/reminders` daily; photos live in the `uploads` volume.
 - The move from Vercel + Supabase (`ops/cutover.sh`) is described in the guide.
