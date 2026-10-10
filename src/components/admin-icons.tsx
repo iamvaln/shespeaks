@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from 'react';
 
 // Small stroke icons of the coach space (one family, 24px grid). Plain components: usable from server and client code.
-export type IconName = 'dashboard' | 'users' | 'calendar' | 'coach' | 'sliders' | 'mail' | 'search' | 'menu' | 'close' | 'logout' | 'external' | 'message' | 'clock' | 'chevron' | 'check';
+export type IconName = 'dashboard' | 'users' | 'calendar' | 'coach' | 'sliders' | 'mail' | 'search' | 'menu' | 'close' | 'logout' | 'external' | 'message' | 'clock' | 'chevron' | 'check' | 'spark';
 
 const PATHS: Record<IconName, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>,
@@ -19,6 +19,7 @@ const PATHS: Record<IconName, ReactNode> = {
   clock: <><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>,
   chevron: <path d="m9 18 6-6-6-6" />,
   check: <path d="M20 6 9 17l-5-5" />,
+  spark: <><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 16v4M17 18h4" /></>,
 };
 
 export function Icon({ name, size = 18, ...rest }: { name: IconName; size?: number } & Omit<SVGProps<SVGSVGElement>, 'name'>) {
