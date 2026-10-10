@@ -24,6 +24,17 @@ export function resolveDatabaseUrl(env: Env): string | undefined {
   return params.length ? `${raw.slice(0, q)}?${params.join('&')}` : raw.slice(0, q);
 }
 
+/**
+ * TLS for the database connection. `sslmode` in the URL decides when it is there (`disable` on the VPS, where Postgres is
+ * another container of the same stack); otherwise TLS is required except on a local host, as before. The driver would read
+ * `sslmode` by itself, but an explicit `ssl` option overrides it, so the choice is made here once for the app and the scripts.
+ */
+export function databaseSsl(url: string): false | string {
+  const mode = /[?&]sslmode=([^&]+)/.exec(url)?.[1];
+  if (mode) return mode === 'disable' ? false : mode;
+  return /@(localhost|127\.0\.0\.\d+)(:|\/)/.test(url) ? false : 'require';
+}
+
 /** Public site URL: APP_URL, else the URL Vercel provides (production domain, then deployment URL), else localhost. */
 export function resolveAppUrl(env: Env): { url: string; source: 'APP_URL' | 'vercel' | 'default' } {
   const set = env.APP_URL?.trim();
@@ -71,7 +82,7 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
     add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'À renseigner ensemble ou pas du tout : il en manque une, les dépôts de photos ne fonctionneraient pas.');
   } else if (!sbUrl) {
     if (onVercel) add('error', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Manquantes. Vercel n’a pas de disque persistant : les photos de speaker ne pourraient pas être conservées.');
-    else add('warn', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Non renseignées : les photos sont écrites sur le disque local (DATA_DIR), ce qui n’est pas durable chez la plupart des hébergeurs.');
+    else if (!isSet(env.DATA_DIR)) add('warn', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'], 'Non renseignées et DATA_DIR absent : les photos sont écrites dans ./data, qui disparaît avec le conteneur. Sur le VPS, DATA_DIR pointe vers le volume uploads.');
   } else if (!/^https:\/\/.+/i.test(env.SUPABASE_URL!.trim())) {
     add('error', ['SUPABASE_URL'], 'Doit être l’URL du projet, par exemple https://xxxx.supabase.co');
   }
