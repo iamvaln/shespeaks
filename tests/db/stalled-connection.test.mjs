@@ -20,21 +20,23 @@ let lockConn;
 
 const urlFor = (database) => { const u = new URL(adminUrl.replace(/^postgres(ql)?:/, 'http:')); u.pathname = `/${database}`; u.search = ''; return u.toString().replace(/^http:/, 'postgres:'); };
 
-/** A TCP relay in front of Postgres. In `freeze` mode it forwards nothing and does not react to a close: the peer is silent. */
+/** A TCP relay in front of Postgres. `freeze()` makes the connections open at that moment silent: they forward nothing and do not react to a close. New ones are fine. */
 function startRelay(targetHost, targetPort) {
-  const state = { freeze: false, sockets: new Set() };
+  const state = { silent: new Set(), sockets: new Set() };
   const server = net.createServer({ allowHalfOpen: true }, (client) => {
     const up = net.connect({ host: targetHost, port: targetPort, allowHalfOpen: true });
     for (const s of [client, up]) { state.sockets.add(s); s.on('error', () => {}); s.on('close', () => state.sockets.delete(s)); }
-    client.on('data', (d) => { if (!state.freeze) up.write(d); });
-    up.on('data', (d) => { if (!state.freeze) client.write(d); });
-    client.on('end', () => { if (!state.freeze) up.end(); });
-    up.on('end', () => { if (!state.freeze) client.end(); });
+    const quiet = () => state.silent.has(client) || state.silent.has(up);
+    client.on('data', (d) => { if (!quiet()) up.write(d); });
+    up.on('data', (d) => { if (!quiet()) client.write(d); });
+    client.on('end', () => { if (!quiet()) up.end(); });
+    up.on('end', () => { if (!quiet()) client.end(); });
   });
   return new Promise((resolve) => server.listen(0, 'localhost', () => resolve({
     port: server.address().port,
-    freeze: () => { state.freeze = true; },
-    thaw: () => { state.freeze = false; },
+    freeze: () => { state.silent = new Set(state.sockets); },
+    thaw: () => { state.silent = new Set(); },
+    refuse: () => { server.close(); }, // no new connection can be made; the open ones stay
     destroyAll: () => { for (const s of state.sockets) s.destroy(); },
     close: () => { for (const s of state.sockets) s.destroy(); server.close(); },
   })));
@@ -160,4 +162,56 @@ test('a stalled query does not break the healthy requests of the same instance',
     assert.equal((await healthyQuery).ok, 1, 'a healthy query in flight finishes');
     assert.deepEqual(await healthyTransaction, { two: 2 }, 'a healthy transaction between two statements finishes');
   } finally { quiet.restore(); await lockConn.unsafe('ROLLBACK').catch(() => {}); await lockConn.end({ timeout: 0 }).catch(() => {}); lockConn = undefined; }
+});
+
+test('a statement nobody waits for any more is cancelled on the server, and the lock it holds is released', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_QUERY_TIMEOUT_MS = '300';
+  const watcher = postgres(directUrl, { max: 1, onnotice: () => {} });
+  const quiet = capture('error');
+  try {
+    await assert.rejects(db.all('SELECT pg_sleep(25) AS sleeping'), isTimeout);
+    await assert.rejects(db.tx(async () => { await db.all('SELECT pg_advisory_xact_lock(424242)'); await db.all('SELECT pg_sleep(25) AS holding'); }), isTimeout);
+    await sleep(800);
+    const [{ running }] = await watcher.unsafe(`select count(*)::int as running from pg_stat_activity where datname = current_database() and state = 'active' and query like '%pg_sleep(25)%' and pid <> pg_backend_pid()`);
+    assert.equal(running, 0, 'no abandoned statement is still running on the server');
+    const [{ locks }] = await watcher.unsafe(`select count(*)::int as locks from pg_locks where locktype = 'advisory' and objid = 424242 and granted`);
+    assert.equal(locks, 0, 'the advisory lock of the abandoned transaction is released');
+  } finally { quiet.restore(); await watcher.end({ timeout: 0 }); }
+});
+
+test('a stale timer does not drop the pool that replaced the stalled one', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_QUERY_TIMEOUT_MS = '600';
+  await Promise.all([db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)')]); // three warm connections
+  relay.freeze(); // the connections open now go silent; the ones opened later are fine
+  const quiet = capture('error');
+  try {
+    const first = assert.rejects(db.get('SELECT 1'), isTimeout);
+    await sleep(300);
+    const second = assert.rejects(db.get('SELECT 2'), isTimeout); // its timer fires at 900 ms, on the pool that was already dropped at 600 ms
+    await first;
+    const replacement = db.sql();
+    assert.deepEqual(await db.get('SELECT 3 AS three'), { three: 3 }, 'the new pool works');
+    await second;
+    assert.equal(db.sql(), replacement, 'the second timer left the new pool alone');
+  } finally { quiet.restore(); }
+});
+
+// keep this one last: the relay stops accepting connections
+test('an annulment that cannot connect is not an unhandled rejection', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_QUERY_TIMEOUT_MS = '300';
+  await db.get('SELECT 1 AS one');
+  relay.freeze();
+  relay.refuse(); // neither the cancel request nor a new pool can connect any more
+  const rejections = [];
+  const onRejection = (e) => rejections.push(String(e));
+  process.on('unhandledRejection', onRejection);
+  const quiet = capture('error');
+  try {
+    await assert.rejects(db.get('SELECT 1 AS one'), isTimeout);
+    await sleep(800);
+  } finally { quiet.restore(); process.off('unhandledRejection', onRejection); }
+  assert.deepEqual(rejections, []);
 });
