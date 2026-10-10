@@ -22,7 +22,7 @@ disparaissent sans réécrire l'app.
 | Sujet | Décision |
 |---|---|
 | Machine | Le VPS Contabo partagé (`77.237.234.91`, alias SSH `deploy-vps`), qui héberge déjà gabee, celva, lehno et proxiapay. Capacité vérifiée le 2026-10-10 : 6 cœurs, 8,9 Go de RAM libres, 164 Go de disque libres, charge 0,2 |
-| Domaine prod | `sheleads.techiesconnect.org` (DNS Cloudflare). Aucun enregistrement n'existe aujourd'hui pour ce nom |
+| Domaine prod | `shespeaks.techiesconnect.org` (DNS Cloudflare). Aucun enregistrement n'existe aujourd'hui pour ce nom |
 | Domaine preprod | `sheleads.techiesconnect.net` |
 | Environnements | Prod (tag `v*`) et preprod (push sur `develop`), chacun avec sa base, ses photos et ses secrets |
 | Bascule | « Bascule éclair » : 1 à 3 minutes à une heure creuse, page d'attente qui se recharge seule, sans perte de données |
@@ -115,11 +115,11 @@ Une mini-app Next qui ne contient qu'un middleware, déployée sur le **même
 projet Vercel** que la prod actuelle, construite d'avance sans être promue :
 
 - cookie candidate présent → redirection 307 vers
-  `https://sheleads.techiesconnect.org/reprendre/<jeton>` : la candidate
+  `https://shespeaks.techiesconnect.org/reprendre/<jeton>` : la candidate
   retrouve sa session (le cookie contient le jeton, et `/reprendre` le repose
   sur le nouveau domaine) ;
 - sinon → redirection 308 vers le même chemin et la même requête sur
-  `sheleads.techiesconnect.org`. Les liens `/reprendre/<jeton>` des mails déjà
+  `shespeaks.techiesconnect.org`. Les liens `/reprendre/<jeton>` des mails déjà
   envoyés continuent donc de fonctionner.
 
 Les coachs perdent leur session et se reconnectent par lien magique.
@@ -157,7 +157,7 @@ Préalables, vérifiés par le script avant toute action :
 
 - la prod tourne sur le VPS avec l'image validée en preprod, base migrée et
   vide ;
-- `sheleads.techiesconnect.org` résout vers le VPS et sert un certificat
+- `shespeaks.techiesconnect.org` résout vers le VPS et sert un certificat
   valide ;
 - la copie en masse des photos (`ops/sync-photos`) est faite ;
 - le déploiement `vercel-redirect` existe sur Vercel, non promu ;

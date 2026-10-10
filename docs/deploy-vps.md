@@ -8,7 +8,7 @@ contraire :
 
 | Environnement | Dossier sur le VPS | Fichier d'environnement | `STACK` | Adresse |
 |---|---|---|---|---|
-| Production | `~/shespeaks` | `.env.production` | `shespeaks` | https://sheleads.techiesconnect.org |
+| Production | `~/shespeaks` | `.env.production` | `shespeaks` | https://shespeaks.techiesconnect.org |
 | Préproduction | `~/shespeaks-preprod` | `.env.preprod` | `shespeaks-preprod` | https://sheleads.techiesconnect.net |
 
 Dans les exemples, `ENV` désigne le fichier d'environnement de l'environnement
@@ -83,7 +83,7 @@ Dans Cloudflare, créer deux enregistrements `A`, en **DNS only** (nuage gris) :
 Vérifier :
 
 ```bash
-dig +short sheleads.techiesconnect.org @1.1.1.1
+dig +short shespeaks.techiesconnect.org @1.1.1.1
 dig +short sheleads.techiesconnect.net @1.1.1.1
 ```
 
@@ -146,8 +146,8 @@ openssl rand -hex 32   # SESSION_SECRET, CRON_SECRET (préproduction)
 ```
 STACK=shespeaks
 DEPLOY_ENV=production
-APP_DOMAIN=sheleads.techiesconnect.org
-APP_URL=https://sheleads.techiesconnect.org
+APP_DOMAIN=shespeaks.techiesconnect.org
+APP_URL=https://shespeaks.techiesconnect.org
 POSTGRES_PASSWORD=<openssl rand -hex 24>
 SESSION_SECRET=<la valeur de Vercel, inchangée>
 CRON_SECRET=<la valeur de Vercel>
@@ -314,7 +314,7 @@ docker compose --env-file .env.production --profile prod logs --tail 200 cron
 docker compose --env-file .env.production --profile prod logs --tail 200 backup
 
 # santé de l'application
-curl -s https://sheleads.techiesconnect.org/api/health
+curl -s https://shespeaks.techiesconnect.org/api/health
 
 # console SQL (lecture seule par convention : ne pas modifier la base à la main)
 docker compose --env-file .env.production exec db psql -U shespeaks -d shespeaks
@@ -417,8 +417,10 @@ c'est ce qui rend la marche arrière possible.
 ### Avant
 
 1. La pile de production tourne (premier déploiement par tag, 2.7) et ne
-   contient que le seed ; le DNS de `sheleads.techiesconnect.org` pointe sur le
-   VPS et `/api/health` répond.
+   contient que le seed. Le DNS de `shespeaks.techiesconnect.org` pointe
+   **encore sur Vercel** (CNAME `3274a422fa4302f2.vercel-dns-017.com`) : il ne
+   change que pendant la fenêtre. Le préflight interroge donc le VPS directement
+   (`curl --resolve`), sans passer par le DNS public.
 2. Les migrations de l'image déployée sont **exactement** celles de la base
    Supabase (le préflight compare). Si une migration récente de `develop`
    manque côté Supabase : une fois cette branche fusionnée, les builds Vercel ne
@@ -440,9 +442,13 @@ c'est ce qui rend la marche arrière possible.
 4. **Pendant la fenêtre de bascule, n'approuver aucun déploiement de
    production dans GitHub** (environnement `production`) : il redémarrerait
    `app` au milieu de la copie.
-5. Une branche `vercel-redirect` existe avec le déploiement Vercel qui
-   redirige vers la nouvelle adresse ; on le **promeut en production** pendant
-   la bascule.
+5. La branche `vercel-redirect` contient la petite application qui remplace
+   SheSpeaks sur Vercel : pour `shespeaks.techiesconnect.org`, elle sert la page
+   d'attente (503, rechargement automatique) ; pour les autres adresses Vercel
+   (`shespeaks-taupe.vercel.app`…), elle redirige vers
+   `https://shespeaks.techiesconnect.org`, en passant par `/reprendre/<jeton>`
+   pour une candidate qui a une session. Pendant la bascule, on règle la
+   **Production Branch** de Vercel sur `vercel-redirect`.
 
 ### Répétition générale sur la préproduction
 
@@ -489,17 +495,21 @@ Déroulé :
    (la différence est affichée) ; **production qui contient déjà des
    candidatures** (refus avant l'ouverture de la fenêtre, voir le garde-fou
    ci-dessus ; `CUTOVER_ALLOW_OVERWRITE=1` pour passer outre). Il affiche l'état des services et le nombre de
-   lignes de la cible (le seed seulement). Puis, depuis le poste : le domaine
-   doit résoudre vers `77.237.234.91` et `/api/health` répondre.
+   lignes de la cible (le seed seulement). Puis, depuis le poste : la
+   production du VPS doit répondre pour `shespeaks.techiesconnect.org`
+   (`/api/health` par `curl --resolve`, certificat pas encore exigé).
 2. **Copie des photos en avance** (`sync-photos`) : tout le bucket Supabase
    `speaker-photos` vers le volume `uploads` (`ops/sync-photos.mjs`, sans
    dépendance). Les fichiers déjà présents sont ignorés : on peut relancer.
 3. Le script demande de taper `GO`. Rien n'est arrêté avant.
 4. **Ouverture de la fenêtre** (`stop-app`) : `app` est arrêté, la page
    d'attente est servie.
-5. **Promouvoir `vercel-redirect`** dans Vercel (Deployments, menu du
-   déploiement, Promote to Production), puis taper `PROMOTED`. Le script
-   attend 10 s (les requêtes en cours côté Vercel se terminent).
+5. **Vercel arrête d'écrire** : dans Vercel → Settings → Git, régler la
+   **Production Branch** sur `vercel-redirect` et enregistrer. Vercel construit
+   l'application (environ une minute). Le script attend tout seul que
+   `https://shespeaks.techiesconnect.org` serve la page d'attente, puis 10 s
+   (les requêtes en cours côté Vercel se terminent). À partir de là, plus rien
+   n'écrit dans Supabase.
 6. **Copie de la base** (`copy-db`) : dump des données du schéma `public`
    (sans `schema_migrations`) dans un fichier, puis, en **une seule
    transaction**, vidage des tables de la cible et chargement. Un dump qui
@@ -509,17 +519,26 @@ Déroulé :
    Supabase et la cible ; chaque ligne de `photos` a son fichier dans le
    volume ; liste des adresses présentes dans les liens de `email_log`.
    Un écart arrête le script, l'application reste arrêtée.
-9. **Redémarrage** (`start-app`) : `docker compose start app` (même conteneur,
-   même image) et attente de l'état sain.
-10. **Test de fumée** : `/`, `/interet`, `/admin/login`, `/api/health` doivent
-    répondre 200 (ou 307).
+9. **DNS** : dans Cloudflare, zone `techiesconnect.org`, remplacer
+   l'enregistrement `shespeaks` (CNAME vers Vercel) par un enregistrement `A`
+   → `77.237.234.91`, **proxy désactivé (DNS only)**. Le script attend que
+   1.1.1.1 et 8.8.8.8 répondent l'adresse du VPS. Les visiteurs dont le
+   résolveur garde l'ancienne réponse voient la page d'attente de Vercel, qui se
+   recharge seule, jusqu'à expiration.
+10. **Redémarrage** (`start-app`) : `docker compose start app` (même conteneur,
+    même image) et attente de l'état sain. Traefik obtient alors le certificat
+    Let's Encrypt (le DNS pointe enfin sur lui) ; le script attend un certificat
+    valide.
+11. **Test de fumée** : `/`, `/interet`, `/admin/login`, `/api/health` doivent
+    répondre 200 (ou 307), en TLS strict.
 
 ### Reprendre à la main après un échec
 
 Une fois `app` arrêté (étape 4), `ops/cutover.sh` ne se relance pas : son
 préflight exige `/api/health`. Si le script s'est arrêté après l'ouverture de la
 fenêtre, corriger la cause puis reprendre **à partir de l'étape qui a échoué**,
-sans rejouer celles qui ont réussi (Vercel doit déjà servir la redirection) :
+sans rejouer celles qui ont réussi (Vercel doit déjà servir la page d'attente,
+et le DNS être passé sur le VPS avant `start-app`) :
 
 ```bash
 ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks copy-db'
@@ -540,7 +559,7 @@ ssh deploy-vps 'cd ~/shespeaks && CUTOVER_ALLOW_OVERWRITE=1 ops/cutover-remote.s
 Ne jamais utiliser `CUTOVER_ALLOW_OVERWRITE=1` une fois que le VPS a reçu des
 écritures : la copie écraserait des données qui n'existent nulle part ailleurs.
 
-Renoncer : re-promouvoir le déploiement Vercel précédent (voir ci-dessous), puis
+Renoncer : revenir sur Vercel (voir « Marche arrière » ci-dessous), puis
 laisser le VPS sur la page d'attente (`app` arrêtée) en arrêtant aussi le `cron`
 de production. Si `app` doit tourner pour des vérifications (`start-app`),
 arrêter le `cron` dans tous les cas, dans une session sur le VPS :
@@ -554,12 +573,16 @@ les relances en double.
 
 ### Marche arrière
 
-Tant que Supabase n'a pas été touché (il ne l'est jamais), il suffit, dans
-Vercel, de promouvoir de nouveau le **déploiement de production précédent**.
+Supabase n'est jamais modifiée. Avant la mise en service, revenir en arrière
+demande : remettre l'enregistrement DNS `shespeaks` en CNAME vers
+`3274a422fa4302f2.vercel-dns-017.com` (s'il a déjà été changé), et remettre la
+**Production Branch** de Vercel sur `main` (Vercel redéploie l'ancienne
+application).
 Si le script s'est arrêté avant la fin et que vous voulez rouvrir le site sur
 le VPS : `ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks start-app'`.
 
-**Après la mise en service**, quand on re-promeut l'ancien déploiement Vercel,
+**Après la mise en service**, quand on revient sur Vercel (CNAME et
+Production Branch comme ci-dessus),
 arrêter aussi `app` et `cron` sur le VPS, sinon les relances partiraient deux
 fois (Vercel et VPS). Dans une session sur le VPS, avec `dcprod` (section 3) :
 
@@ -572,10 +595,9 @@ après la bascule), revenir sur Vercel les perd.
 
 ### Après la bascule : ne pas casser la redirection
 
-**Avant** de fusionner `develop` dans `main`, dans Vercel (Settings, Git) :
-régler la **Production Branch** sur `vercel-redirect`, ou déconnecter
-l'intégration Git. Sinon le push sur `main` redéploie l'ancienne application
-par-dessus la redirection.
+La **Production Branch** de Vercel reste sur `vercel-redirect` (réglée pendant
+la bascule) : un push sur `main` ne redéploie donc plus l'ancienne application.
+Ne pas la remettre sur `main`, sauf pour une marche arrière.
 
 Ensuite : fusionner `develop` dans `main`, poser un tag `v*` pour la
 production (2.7), et vérifier que la sauvegarde du lendemain apparaît avec
