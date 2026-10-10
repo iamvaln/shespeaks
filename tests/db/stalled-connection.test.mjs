@@ -71,7 +71,7 @@ before(async () => {
   process.env.SESSION_SECRET = 'test-secret';
   db = await import('../../src/lib/db.ts');
 });
-beforeEach(() => { delete process.env.DB_QUERY_TIMEOUT_MS; delete process.env.DB_SLOW_QUERY_MS; relay?.thaw(); });
+beforeEach(() => { delete process.env.DB_QUERY_TIMEOUT_MS; delete process.env.DB_SLOW_QUERY_MS; delete process.env.DB_FIRST_ATTEMPT_MS; relay?.thaw(); });
 after(async () => {
   if (!admin) return;
   delete process.env.DB_QUERY_TIMEOUT_MS;
@@ -196,6 +196,68 @@ test('a stale timer does not drop the pool that replaced the stalled one', { ski
     await second;
     assert.equal(db.sql(), replacement, 'the second timer left the new pool alone');
   } finally { quiet.restore(); }
+});
+
+
+test('a read that gets no answer on a dead connection is repeated on a new pool: the page does not fail', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_FIRST_ATTEMPT_MS = '300';
+  process.env.DB_QUERY_TIMEOUT_MS = '3000';
+  await Promise.all([db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)')]); // three warm connections
+  const pool = db.sql();
+  relay.freeze(); // all three die; the connections opened later are fine
+  const logs = capture('error'); const warns = capture('warn');
+  const started = Date.now();
+  try {
+    assert.deepEqual(await db.get('SELECT 1 AS one'), { one: 1 });
+  } finally { logs.restore(); warns.restore(); delete process.env.DB_FIRST_ATTEMPT_MS; }
+  assert.ok(Date.now() - started < 2500, `the first attempt was short (${Date.now() - started} ms)`);
+  assert.notEqual(db.sql(), pool, 'the dead pool was replaced');
+  assert.ok(warns.lines.some((l) => l.includes('repeating once')), warns.lines.join(' | '));
+});
+
+test('a page worth of parallel reads on a pool with dead connections all come back (the fiche loads nine at once)', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_FIRST_ATTEMPT_MS = '300';
+  process.env.DB_QUERY_TIMEOUT_MS = '3000';
+  await Promise.all([db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)'), db.get('SELECT pg_sleep(0.1)')]);
+  relay.freeze();
+  const logs = capture('error'); const warns = capture('warn');
+  let rows;
+  try {
+    rows = await Promise.all(Array.from({ length: 9 }, (_, i) => db.get('SELECT ?::int AS n', i + 1)));
+  } finally { logs.restore(); warns.restore(); delete process.env.DB_FIRST_ATTEMPT_MS; }
+  assert.deepEqual(rows.map((r) => r.n), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+});
+
+test('a write is never repeated: on a dead connection it fails once with the timeout and nothing reaches the table', { skip }, async () => {
+  pointAt(relayUrl());
+  process.env.DB_FIRST_ATTEMPT_MS = '300';
+  process.env.DB_QUERY_TIMEOUT_MS = '600';
+  await db.get('SELECT 1 AS one');
+  relay.freeze();
+  const logs = capture('error'); const warns = capture('warn');
+  try {
+    await assert.rejects(db.run('INSERT INTO probe (id) VALUES (?)', 77), isTimeout);
+  } finally { logs.restore(); warns.restore(); delete process.env.DB_FIRST_ATTEMPT_MS; }
+  assert.ok(!warns.lines.some((l) => l.includes('repeating once')), 'no second attempt');
+  const direct = postgres(directUrl, { max: 1, onnotice: () => {} });
+  const [{ n }] = await direct.unsafe('select count(*)::int as n from probe where id = 77');
+  await direct.end({ timeout: 0 });
+  assert.equal(n, 0);
+});
+
+test('a read cut because its pool was replaced is repeated on the new pool', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_QUERY_TIMEOUT_MS = '5000';
+  const warns = capture('warn');
+  try {
+    const reading = db.get('SELECT pg_sleep(0.4), 5 AS five');
+    await sleep(100);
+    const old = g.__shespeaksSql; g.__shespeaksSql = undefined; old.end({ timeout: 0 }).catch(() => {}); // what a reset by another request does
+    assert.equal((await reading).five, 5);
+  } finally { warns.restore(); }
+  assert.ok(warns.lines.some((l) => l.includes('repeating once')), warns.lines.join(' | '));
 });
 
 // keep this one last: the relay stops accepting connections

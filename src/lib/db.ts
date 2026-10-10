@@ -27,7 +27,18 @@ const slowQueryMs = () => Number(process.env.DB_SLOW_QUERY_MS) || 2_000;
 // A whole transaction, BEGIN and COMMIT included (the library sends those itself, outside exec()): twice the limit of one query.
 const transactionTimeoutMs = () => queryTimeoutMs() * 2;
 // How long the requests already running on a dropped pool have to finish before its connections are closed.
-const RESET_GRACE_S = 5;
+const RESET_GRACE_S = 3;
+// A plain read gets this long on its first attempt, then one more attempt on a new pool with the full limit: a connection of the pool that died while
+// idle never answers, and 15 s is a long time to find out. Writes and transactions are never repeated. Read at each call.
+const firstAttemptMs = () => Number(process.env.DB_FIRST_ATTEMPT_MS) || 4_000;
+// What the library rejects with when the connection of a statement is gone (its pool was replaced, or the server closed it).
+const CONNECTION_LOST = new Set(['CONNECTION_DESTROYED', 'CONNECTION_ENDED', 'CONNECTION_CLOSED']);
+
+/** A statement that can be run twice without harm: a plain SELECT (no row lock, no sequence, nothing named advisory, a single statement). */
+export function isRepeatableRead(text: string): boolean {
+  const t = text.trim().replace(/;\s*$/, '');
+  return /^select\b/i.test(t) && !t.includes(';') && !/\b(for\s+(no\s+key\s+)?(update|share)|for\s+key\s+share|nextval|setval|currval)\b/i.test(t) && !/advisory/i.test(t);
+}
 
 export class DbTimeoutError extends Error {
   readonly ms: number; // a plain field: Node runs this file with types stripped, which has no « constructor(public … ) » shorthand
@@ -104,14 +115,31 @@ function explain(e: unknown): unknown {
   return e;
 }
 
-/** Runs one statement with the delay above, and logs it when it is slow: the statement text only (never the values), so the Vercel logs say which query stalls. */
+/**
+ * Runs one statement. A plain read outside a transaction is given a short first attempt and, if that gets no answer or its connection is cut, one more
+ * attempt on the current pool; everything else (writes, transactions, locks) is tried once.
+ */
 async function exec(text: string, p: Param[]) {
+  const limit = queryTimeoutMs();
+  const first = Math.min(limit, firstAttemptMs());
+  const repeatable = !als.getStore() && isRepeatableRead(text);
+  try {
+    return await attempt(text, p, repeatable ? first : limit);
+  } catch (e) {
+    const again = repeatable && (e instanceof DbTimeoutError ? first < limit : CONNECTION_LOST.has((e as { code?: string })?.code ?? ''));
+    if (!again) throw e;
+    console.warn(`[db] repeating once on the current pool: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+    return attempt(text, p, limit);
+  }
+}
+
+/** One attempt, with the delay above, logged when it is slow: the statement text only (never the values), so the Vercel logs say which query stalls. */
+async function attempt(text: string, p: Param[], limit: number) {
   const started = Date.now();
   const inTx = als.getStore();
   const pool = inTx?.pool ?? sql(); // where this statement runs: the pool to replace if it stalls
   const q = (inTx?.conn ?? pool).unsafe(toPg(text), p);
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const limit = queryTimeoutMs();
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       cancelQuietly(q);
