@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 # exported that compose would read (the variables of the env file, and compose's own), then re-check the project.
 KEEP_STACK=$STACK   # the env file defines STACK too: the unset below would take the script's own value away
 while IFS= read -r v; do unset "$v"; done < <(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$ENVFILE")
-unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES
+unset STACK COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES   # STACK too: an exported one must not survive an env file without a STACK line
 STACK=$KEEP_STACK   # a fresh assignment is not exported: compose still reads STACK from the env file only
 # CUTOVER_COMPOSE_OVERRIDE: extra compose file for a local rehearsal (e.g. docker-compose.local.yml); unused on the VPS.
 DC=(docker compose)
@@ -39,6 +39,14 @@ counts() {
   for t in $tl; do n=$($run -tAc "select count(*) from public.\"$t\"") || return 1; out+="$t $n"$'\n'; done
   printf '%s' "$out"
 }
+# The copy truncates the target: on production, refuse once the VPS holds candidates (go-live already happened).
+# Run by preflight (before the window opens) and again by copy-db.
+refuse_if_candidates() {
+  [ "$STACK" = shespeaks ] && [ "${CUTOVER_ALLOW_OVERWRITE:-}" != 1 ] || return 0
+  local have
+  have=$(dst_psql -tAc "select count(*) from candidates") || { echo "cannot count the target candidates" >&2; exit 1; }
+  [ "$have" = 0 ] || { echo "REFUSED: production already holds $have candidate(s); the copy would erase them. Set CUTOVER_ALLOW_OVERWRITE=1 only if that is intended." >&2; exit 1; }
+}
 file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }   # GNU (VPS) or BSD (workstation)
 
 case "$STEP" in
@@ -60,6 +68,7 @@ case "$STEP" in
       diff <(echo "$src_mig") <(echo "$dst_mig") >&2 || true
       exit 1
     fi
+    refuse_if_candidates
     echo "migrations identical ($(echo "$src_mig" | wc -l | tr -d ' '))"
     "${DC[@]}" ps --format '{{.Service}} {{.State}} {{.Health}}'
     echo "target rows (should be the seed only):"; counts dst_psql
@@ -68,11 +77,7 @@ case "$STEP" in
   copy-db)
     tables=$(dst_psql -tAc "$TABLES_SQL" | sed 's/.*/public."&"/' | paste -sd, -)
     [ -n "$tables" ] || { echo "no table on the target: has the migrate service run?" >&2; exit 1; }
-    # The copy truncates the target: on production, refuse once the VPS holds candidates (go-live already happened).
-    if [ "$STACK" = shespeaks ] && [ "${CUTOVER_ALLOW_OVERWRITE:-}" != 1 ]; then
-      have=$(dst_psql -tAc "select count(*) from candidates") || { echo "cannot count the target candidates" >&2; exit 1; }
-      [ "$have" = 0 ] || { echo "REFUSED: production already holds $have candidate(s); copy-db would erase them. Set CUTOVER_ALLOW_OVERWRITE=1 only if that is intended." >&2; exit 1; }
-    fi
+    refuse_if_candidates
     # Dump to a file first: a dump that dies halfway must not be restored (psql would commit what it got).
     dump=$(umask 077; mktemp "${TMPDIR:-/tmp}/cutover-dump.XXXXXX")
     trap 'rm -f "$dump"' EXIT
