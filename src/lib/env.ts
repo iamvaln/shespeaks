@@ -24,6 +24,17 @@ export function resolveDatabaseUrl(env: Env): string | undefined {
   return params.length ? `${raw.slice(0, q)}?${params.join('&')}` : raw.slice(0, q);
 }
 
+/**
+ * TLS for the database connection. `sslmode` in the URL decides when it is there (`disable` on the VPS, where Postgres is
+ * another container of the same stack); otherwise TLS is required except on a local host, as before. The driver would read
+ * `sslmode` by itself, but an explicit `ssl` option overrides it, so the choice is made here once for the app and the scripts.
+ */
+export function databaseSsl(url: string): false | string {
+  const mode = /[?&]sslmode=([^&]+)/.exec(url)?.[1];
+  if (mode) return mode === 'disable' ? false : mode;
+  return /@(localhost|127\.0\.0\.\d+)(:|\/)/.test(url) ? false : 'require';
+}
+
 /** Public site URL: APP_URL, else the URL Vercel provides (production domain, then deployment URL), else localhost. */
 export function resolveAppUrl(env: Env): { url: string; source: 'APP_URL' | 'vercel' | 'default' } {
   const set = env.APP_URL?.trim();

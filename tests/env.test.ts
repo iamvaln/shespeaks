@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkEnv, hasErrors } from '../src/lib/env.ts';
+import { checkEnv, hasErrors, databaseSsl } from '../src/lib/env.ts';
 
 const good = {
   APP_URL: 'https://shespeaks.example.com', DATABASE_URL: 'postgresql://u:p@aws-0.pooler.supabase.com:6543/postgres',
@@ -101,4 +101,14 @@ test('messages shown in the coach space are in French', () => {
   const every = checkEnv({ VERCEL: '1', APP_URL: 'http://localhost:3000', DATABASE_URL: 'https://x', RESEND_API_KEY: 'nope', MAIL_FROM: 'bad', MAIL_REPLY_TO: 'bad' }, { production: true });
   assert.ok(every.length >= 8);
   for (const i of every) assert.doesNotMatch(i.message, /\b(Missing|Not set|Must|Should|Required|the|your|would)\b/, i.message);
+});
+
+test('database SSL follows sslmode in the URL, else off only for a local host', () => {
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks?sslmode=disable'), false);
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks?sslmode=require'), 'require');
+  assert.equal(databaseSsl('postgresql://u:p@h:5432/x?application_name=a&sslmode=verify-full'), 'verify-full');
+  assert.equal(databaseSsl('postgres://shespeaks:shespeaks@localhost:5432/shespeaks'), false);
+  assert.equal(databaseSsl('postgres://u:p@127.0.0.1:5432/x'), false);
+  assert.equal(databaseSsl('postgresql://u:p@aws-0-eu-west-1.pooler.supabase.com:6543/postgres'), 'require');
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks'), 'require', 'no sslmode on a remote-looking host keeps today\'s behaviour');
 });
