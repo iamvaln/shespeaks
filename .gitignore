@@ -10,3 +10,5 @@ next-env.d.ts
 .DS_Store
 .env.compose
 ops/.env.cutover
+.env.production
+.env.preprod
