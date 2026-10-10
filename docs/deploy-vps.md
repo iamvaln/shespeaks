@@ -420,8 +420,11 @@ c'est ce qui rend la marche arrière possible.
    contient que le seed ; le DNS de `sheleads.techiesconnect.org` pointe sur le
    VPS et `/api/health` répond.
 2. Les migrations de l'image déployée sont **exactement** celles de la base
-   Supabase (le préflight compare). Si une migration récente n'est pas encore
-   appliquée côté Vercel, déployer d'abord la version de Vercel correspondante.
+   Supabase (le préflight compare). Si une migration récente de `develop`
+   manque côté Supabase : une fois cette branche fusionnée, les builds Vercel ne
+   migrent plus. Appliquer la migration à Supabase avec `npm run db:setup`, lancé
+   contre l'URL de session Supabase (`DATABASE_URL=… npm run db:setup`), ou geler
+   les migrations sur `develop` jusqu'à la bascule.
 3. Sur le VPS, créer `~/shespeaks/ops/.env.cutover` (ignoré par git) en
    `chmod 600`, sans guillemets :
 
@@ -434,7 +437,10 @@ c'est ce qui rend la marche arrière possible.
 
    `SUPABASE_DB_URL` est la chaîne du pooler **en mode session (port 5432)**.
    Le même fichier est nécessaire dans `~/shespeaks-preprod/ops/` pour une répétition.
-4. Une branche `vercel-redirect` existe avec le déploiement Vercel qui
+4. **Pendant la fenêtre de bascule, n'approuver aucun déploiement de
+   production dans GitHub** (environnement `production`) : il redémarrerait
+   `app` au milieu de la copie.
+5. Une branche `vercel-redirect` existe avec le déploiement Vercel qui
    redirige vers la nouvelle adresse ; on le **promeut en production** pendant
    la bascule.
 
@@ -480,7 +486,9 @@ Déroulé :
    Supabase plus récente que celle du client de dump (`PG_CLIENT`, par défaut
    `postgres:17-alpine`) ; table `schema_migrations` illisible côté source ou
    cible ; **liste des migrations différente** entre Supabase et la cible
-   (la différence est affichée). Il affiche l'état des services et le nombre de
+   (la différence est affichée) ; **production qui contient déjà des
+   candidatures** (refus avant l'ouverture de la fenêtre, voir le garde-fou
+   ci-dessus ; `CUTOVER_ALLOW_OVERWRITE=1` pour passer outre). Il affiche l'état des services et le nombre de
    lignes de la cible (le seed seulement). Puis, depuis le poste : le domaine
    doit résoudre vers `77.237.234.91` et `/api/health` répondre.
 2. **Copie des photos en avance** (`sync-photos`) : tout le bucket Supabase
@@ -506,12 +514,38 @@ Déroulé :
 10. **Test de fumée** : `/`, `/interet`, `/admin/login`, `/api/health` doivent
     répondre 200 (ou 307).
 
+### Reprendre à la main après un échec
+
+Une fois `app` arrêté (étape 4), `ops/cutover.sh` ne se relance pas : son
+préflight exige `/api/health`. Si le script s'est arrêté après l'ouverture de la
+fenêtre, corriger la cause puis reprendre les étapes une à une, dans cet ordre,
+en s'arrêtant à la première qui échoue (Vercel doit déjà servir la redirection) :
+
+```bash
+ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks copy-db'
+ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks sync-photos'
+ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks verify'
+ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks start-app'
+```
+
+Renoncer : re-promouvoir le déploiement Vercel précédent (voir ci-dessous), puis
+soit `start-app` (le VPS reste en veille, sans trafic), soit laisser le VPS sur
+la page d'attente.
+
 ### Marche arrière
 
 Tant que Supabase n'a pas été touché (il ne l'est jamais), il suffit, dans
 Vercel, de promouvoir de nouveau le **déploiement de production précédent**.
 Si le script s'est arrêté avant la fin et que vous voulez rouvrir le site sur
 le VPS : `ssh deploy-vps 'cd ~/shespeaks && ops/cutover-remote.sh shespeaks start-app'`.
+
+**Après la mise en service**, quand on re-promeut l'ancien déploiement Vercel,
+arrêter aussi `app` et `cron` sur le VPS, sinon les relances partiraient deux
+fois (Vercel et VPS). Dans une session sur le VPS, avec `dcprod` (section 3) :
+
+```bash
+cd ~/shespeaks && dcprod stop app cron
+```
 
 Attention : une fois que le VPS a reçu des écritures (nouvelles candidatures
 après la bascule), revenir sur Vercel les perd.
