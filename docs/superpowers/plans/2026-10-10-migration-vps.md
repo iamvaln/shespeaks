@@ -1484,6 +1484,11 @@ ssh deploy-vps 'for d in shespeaks shespeaks-preprod; do [ -d ~/$d ] || git clon
     (`openssl rand -hex 32`), `RESEND_API_KEY` vide (les mails de preprod
     restent dans la page Emails), `ANTHROPIC_API_KEY` vide.
 
+  Ces fichiers ne contiennent **aucune ligne `IMAGE_TAG`** (le workflow la
+  fournit à chaque déploiement ; à la main, la passer en ligne de commande) et
+  doivent porter le bon `STACK` : `grep '^STACK=' ~/shespeaks/.env.production`
+  → `shespeaks`, `~/shespeaks-preprod/.env.preprod` → `shespeaks-preprod`.
+
   Le dépôt n'a aucune image tant que la PR n'est pas fusionnée : passer à
   l'étape suivante avant de démarrer quoi que ce soit.
 - [ ] **Step 5 : clé de déploiement et secrets GitHub**
@@ -1513,21 +1518,25 @@ gh secret set VPS_USER --body deploy
   lancé en preprod :
 
 ```bash
-ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod --profile prod run --rm --entrypoint sh cron -c "curl -fsS -X POST -H \"Authorization: Bearer \$CRON_SECRET\" http://app:3000/api/cron/reminders"'
+ssh deploy-vps 'cd ~/shespeaks-preprod && IMAGE_TAG=develop docker compose --env-file .env.preprod --profile prod run --rm --entrypoint sh cron -c "curl -fsS -X POST -H \"Authorization: Bearer \$CRON_SECRET\" http://app:3000/api/cron/reminders"'
 ```
   Expected : un rapport JSON ; les mails apparaissent dans la page Emails.
 - [ ] **Step 3** : sauvegarde et restauration. Donner temporairement les
-  variables R2 à la preprod (préfixe `BACKUP_R2_PREFIX=preprod-test`), puis :
-  `docker compose --env-file .env.preprod --profile prod run --rm backup backup`,
-  `… backup list`, `… backup restore latest` (taper le nom de la base),
-  `… backup restore-uploads latest`. Retirer ensuite ces variables et
+  variables R2 à la preprod dans `.env.preprod` (préfixe
+  `BACKUP_R2_PREFIX=preprod-test`, désormais transmis au service `backup`),
+  puis, avec `IMAGE_TAG=develop` en ligne de commande (le fichier n'a pas de
+  `IMAGE_TAG`) :
+  `IMAGE_TAG=develop docker compose --env-file .env.preprod --profile prod run --rm backup backup`,
+  `IMAGE_TAG=develop … backup list`, `IMAGE_TAG=develop … backup restore latest`
+  (taper le nom de la base), `IMAGE_TAG=develop … backup restore-uploads latest`.
+  Retirer ensuite ces variables et
   supprimer le préfixe `preprod-test/` dans R2.
 - [ ] **Step 4 : la page d'attente prend le relais (Review Focus 5)**
 
 ```bash
 ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod stop app'
 curl -s -o /dev/null -w '%{http_code}\n' https://preprod.sheleads.techiesconnect.org/interet
-ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod up -d app'
+ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod start app'
 ```
   Expected : `503` pendant l'arrêt, puis `200` une fois `app` sain.
 - [ ] **Step 5 : répétition générale**. Sur le VPS, créer
@@ -1537,6 +1546,11 @@ ssh deploy-vps 'cd ~/shespeaks-preprod && docker compose --env-file .env.preprod
   « every photo row has its file » ; noter la durée totale, la version du
   serveur Supabase et l'adresse dominante dans `email_log`. Si la version du
   serveur dépasse 17, relancer avec `PG_CLIENT=postgres:<version>-alpine`.
+  Supabase reste en service pendant la répétition : `verify` peut signaler des
+  écarts sur les tables qui bougent (`rate_limit_hits`, `login_tokens`,
+  `email_log`). Lancer la répétition à une heure creuse et relancer `verify`
+  (`ssh deploy-vps 'cd ~/shespeaks-preprod && ops/cutover-remote.sh shespeaks-preprod verify'`)
+  avant de conclure à une vraie anomalie.
   Se connecter ensuite en coach sur la preprod et ouvrir trois fiches réelles
   avec photos pour vérifier à l'œil.
 - [ ] **Step 6 : adresse IP falsifiée (Review Focus 1).** Un conteneur
@@ -1584,11 +1598,16 @@ test('behind Traefik the client is the last x-forwarded-for hop, whatever the vi
 - [ ] **Step 3** : créer `~/shespeaks/ops/.env.cutover` (chmod 600) sur le
   VPS, puis lancer `ops/cutover.sh` depuis le poste. Au message, **[toi]**
   promouvoir `vercel-redirect`.
-- [ ] **Step 4** : après le succès :
+- [ ] **Step 4** : **avant** de fusionner `develop` dans `main`, dans Vercel
+  (Settings → Git), régler la **Production Branch** sur `vercel-redirect` (ou
+  déconnecter l'intégration Git) : sinon le push sur `main` redéploie
+  l'ancienne application par-dessus la redirection. Puis, après le succès :
   - tester l'ancienne adresse : `curl -sI https://shespeaks-taupe.vercel.app/interet`
     → `308` vers `https://sheleads.techiesconnect.org/interet` ; un lien
     `/reprendre/<jeton>` d'un vrai mail de `email_log` ouvre bien la session ;
-  - **[toi]** se connecter en coach sur le nouveau domaine ;
+  - **[toi]** se connecter en coach sur le nouveau domaine, et **tester un
+    envoi de photo en production** juste après la bascule (formulaire, puis
+    affichage sur `/plan`) ;
   - supprimer `~/shespeaks/ops/.env.cutover` ;
   - fusionner `develop` dans `main`.
 - [ ] **Step 5** : le lendemain, vérifier `logs cron` (relances de 07:00
