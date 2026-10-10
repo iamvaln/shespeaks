@@ -24,6 +24,10 @@ const g = globalThis as unknown as { __shespeaksSql?: Sql };
 // with a clear error and the connection pool is replaced (a stalled connection would otherwise stay in the pool). Both are read at each call.
 const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || 15_000;
 const slowQueryMs = () => Number(process.env.DB_SLOW_QUERY_MS) || 2_000;
+// A whole transaction, BEGIN and COMMIT included (the library sends those itself, outside exec()): twice the limit of one query.
+const transactionTimeoutMs = () => queryTimeoutMs() * 2;
+// How long the requests already running on a dropped pool have to finish before its connections are closed.
+const RESET_GRACE_S = 5;
 
 export class DbTimeoutError extends Error {
   readonly ms: number; // a plain field: Node runs this file with types stripped, which has no « constructor(public … ) » shorthand
@@ -34,11 +38,15 @@ export class DbTimeoutError extends Error {
   }
 }
 
-/** Drops the shared pool (its connections are closed at once) so the next query opens fresh ones. */
+/**
+ * Drops the shared pool so the next query opens fresh connections. The old pool is not cut at once: the other requests of the instance that are
+ * running healthy statements get a few seconds to finish (the stalled connection is closed after them). Closing is a half-close, which a peer that
+ * has gone silent never answers: nothing may wait for it, which is why callers are released by their own timers (see exec() and tx()).
+ */
 function resetPool(): void {
   const old = g.__shespeaksSql;
   g.__shespeaksSql = undefined;
-  old?.end({ timeout: 0 }).catch(() => {});
+  old?.end({ timeout: RESET_GRACE_S }).catch(() => {});
 }
 
 /** One shared client per server instance. Use Supabase's *transaction pooler* URL on Vercel (port 6543). */
@@ -93,8 +101,8 @@ async function exec(text: string, p: Param[]) {
   const limit = queryTimeoutMs();
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      try { q.cancel(); } catch { /* best effort */ }
-      resetPool(); // also unblocks a transaction waiting on the stalled connection
+      // no q.cancel(): the library drops the promise of its cancel connection, which would become an unhandled rejection if that connection fails
+      resetPool();
       console.error(`[db] no answer after ${limit} ms: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
       reject(new DbTimeoutError(limit, text));
     }, limit);
@@ -134,18 +142,30 @@ export async function insert(text: string, ...p: Param[]): Promise<number> {
 
 export async function tx<T>(fn: () => Promise<T>): Promise<T> {
   if (als.getStore()) return fn(); // already inside a transaction
-  let stalled: DbTimeoutError | undefined;
+  // The caller is released by this promise, not by begin(): after a timeout the library queues a ROLLBACK on the stalled connection and settles
+  // only when that socket closes, which a silent peer never does.
+  let release!: (e: DbTimeoutError) => void;
+  const stalled = new Promise<never>((_, reject) => { release = reject; });
+  stalled.catch(() => {}); // nobody may see it as unhandled when the transaction wins
+  const running = sql().begin((t) => als.run(t as unknown as Sql, async () => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof DbTimeoutError) release(e); // the cause, not the error of the rollback that follows
+      throw e;
+    }
+  }));
+  const limit = transactionTimeoutMs();
+  const deadline = setTimeout(() => {
+    resetPool();
+    console.error(`[db] a transaction did not finish within ${limit} ms`);
+    release(new DbTimeoutError(limit, 'transaction (BEGIN, COMMIT or a statement)'));
+  }, limit);
   try {
-    return (await sql().begin((t) => als.run(t as unknown as Sql, async () => {
-      try {
-        return await fn();
-      } catch (e) {
-        if (e instanceof DbTimeoutError) stalled = e;
-        throw e;
-      }
-    }))) as T;
-  } catch (e) {
-    throw stalled ?? e; // the rollback on the stalled connection fails with an error of its own: the cause is the timeout
+    return (await Promise.race([running, stalled])) as T;
+  } finally {
+    clearTimeout(deadline);
+    running.catch(() => {}); // a rollback that ends in an error, or never ends, is not the caller's business
   }
 }
 

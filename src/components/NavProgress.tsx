@@ -24,7 +24,7 @@ function Bar() {
       if (url.pathname === location.pathname && url.search === location.search) return; // same page, or only a #anchor
       setBusy(true);
     };
-    // in the capture phase: by the time the click reaches the document, Next's Link has already handled it and called preventDefault()
+    // in the capture phase, so that this runs before Next's Link handles the click (a Link that navigates calls preventDefault() and would then be skipped)
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
   }, []);
