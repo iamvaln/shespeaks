@@ -373,3 +373,14 @@
 .a-jump { display: none; }
 @media (max-width: 1075px) { .a-jump { display: inline-flex; } }
 .a-side > section[id] { scroll-margin-top: 72px; }
+
+/* ----- navigation en cours, page en erreur ----- */
+/* a bar across the top while the next page is being built (see NavProgress); it creeps towards the end but never gets there by itself */
+.a-navbar { position: fixed; z-index: 200; inset: 0 0 auto 0; height: 3px; background: var(--amber); transform-origin: left; animation: a-nav 25s cubic-bezier(.1, .7, .2, 1) forwards; }
+@keyframes a-nav { from { transform: scaleX(.04); } to { transform: scaleX(.92); } }
+@media (prefers-reduced-motion: reduce) { .a-navbar { animation: none; transform: scaleX(.6); } }
+.a-errwrap { box-sizing: border-box; max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+.a-errbox { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 640px; }
+.a-errbox p { margin: 0; }
+.a-errbox .a-errtitle { margin: 0; font-size: 22px; line-height: 28px; font-weight: 800; font-stretch: 100%; letter-spacing: -.01em; }
+.a-errbox code { padding: 2px 8px; border-radius: 6px; background: var(--surface-sunken); font-size: 13px; }

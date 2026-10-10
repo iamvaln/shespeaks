@@ -134,6 +134,16 @@ The app validates its configuration (rules in `src/lib/env.ts`; it only ever rep
 
 Errors: `DATABASE_URL`/`POSTGRES_URL`, `APP_URL` (if unset on Vercel, the Vercel-provided URL is used with a warning; localhost is an error), `SESSION_SECRET`, `CRON_SECRET`, and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Warnings: `RESEND_API_KEY` unset, test sender `resend.dev`, `ADMIN_EMAIL`, pooler port. With a key set, `MAIL_FROM` becomes an error if missing or invalid. Escape hatch: `SKIP_ENV_CHECK=true`.
 
+## When a page is slow or fails (what the logs say)
+
+Every database query is timed (`src/lib/db.ts`). In the Vercel logs:
+
+- `[db] slow query, 3200 ms: SELECT … FROM tracks WHERE candidate_id=? …` a query that took 2 s or more (`DB_SLOW_QUERY_MS`). The statement text only: never the values.
+- `[db] no answer after 15000 ms: SELECT …` a query that got no answer in 15 s (`DB_QUERY_TIMEOUT_MS`). It fails with a `DbTimeoutError` and the connection pool is replaced (a stalled connection would otherwise stay in it), so the next request starts clean. Without this limit a stalled query held the page until the platform killed it (60 s on the candidate fiche, then a bare 504).
+- A page that fails shows « Cette page n'a pas pu s'afficher » inside the coach space, with a « Réessayer » button and a reference (the *digest*) to look up in the logs. A thin bar runs across the top of the window from the click on a link until the next page has arrived.
+
+Both variables are optional and rarely worth changing.
+
 ## Emails (Resend)
 
 1. Create a Resend account, **add and verify your sending domain** (Domains → Add domain → add the DNS records), and create an API key.
