@@ -9,8 +9,10 @@ cd "$(dirname "$0")/.."
 
 # An exported shell variable beats --env-file in compose interpolation: drop everything the caller may have
 # exported that compose would read (the variables of the env file, and compose's own), then re-check the project.
+KEEP_STACK=$STACK   # the env file defines STACK too: the unset below would take the script's own value away
 while IFS= read -r v; do unset "$v"; done < <(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$ENVFILE")
 unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES
+STACK=$KEEP_STACK   # a fresh assignment is not exported: compose still reads STACK from the env file only
 # CUTOVER_COMPOSE_OVERRIDE: extra compose file for a local rehearsal (e.g. docker-compose.local.yml); unused on the VPS.
 DC=(docker compose)
 [ -z "${CUTOVER_COMPOSE_OVERRIDE:-}" ] || DC+=(-f docker-compose.yml -f "$CUTOVER_COMPOSE_OVERRIDE")
@@ -29,14 +31,36 @@ TABLES_SQL="select tablename from pg_tables where schemaname='public' and tablen
 
 src_psql() { docker run --rm -i --env-file "$CUT" "$PG_CLIENT" sh -c 'psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 "$@"' -- "$@"; }
 dst_psql() { docker run --rm -i --network "$NET" "$PG_CLIENT" psql "$TARGET" -X -q -v ON_ERROR_STOP=1 "$@"; }
-counts() { local run=$1 out="" t; for t in $($run -tAc "$TABLES_SQL"); do out+="$t $($run -tAc "select count(*) from public.\"$t\"")"$'\n'; done; printf '%s' "$out"; }
+# Fails (instead of printing a partial list) when the table list or a count cannot be read.
+counts() {
+  local run=$1 out="" t tl n
+  tl=$($run -tAc "$TABLES_SQL") || return 1
+  [ -n "$tl" ] || return 1
+  for t in $tl; do n=$($run -tAc "select count(*) from public.\"$t\"") || return 1; out+="$t $n"$'\n'; done
+  printf '%s' "$out"
+}
 file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }   # GNU (VPS) or BSD (workstation)
 
 case "$STEP" in
   preflight)
     [ -f "$CUT" ] || { echo "missing $CUT"; exit 1; }
     [ "$(file_mode "$CUT")" = "600" ] || { echo "$CUT must be chmod 600"; exit 1; }
-    echo "supabase server: $(src_psql -tAc 'show server_version')   client: $(docker run --rm "$PG_CLIENT" pg_dump --version)"
+    server=$(src_psql -tAc 'show server_version')
+    client=$(docker run --rm "$PG_CLIENT" pg_dump --version)
+    echo "supabase server: $server   client: $client"
+    server_major=${server%%.*}
+    client_major=$(echo "$client" | sed -n 's/^pg_dump (PostgreSQL) \([0-9]*\).*/\1/p')
+    case "$server_major$client_major" in ''|*[!0-9]*) echo "cannot read the Postgres versions" >&2; exit 1 ;; esac
+    [ "$server_major" -le "$client_major" ] || { echo "Supabase server ($server_major) is newer than the dump client ($client_major): set PG_CLIENT to a newer image" >&2; exit 1; }
+    src_mig=$(src_psql -tAc "select filename from schema_migrations order by 1")
+    dst_mig=$(dst_psql -tAc "select filename from schema_migrations order by 1")
+    [ -n "$src_mig" ] && [ -n "$dst_mig" ] || { echo "cannot read schema_migrations (source or target)" >&2; exit 1; }
+    if [ "$src_mig" != "$dst_mig" ]; then
+      echo "MIGRATIONS DIFFER (< source Supabase, > target):" >&2
+      diff <(echo "$src_mig") <(echo "$dst_mig") >&2 || true
+      exit 1
+    fi
+    echo "migrations identical ($(echo "$src_mig" | wc -l | tr -d ' '))"
     "${DC[@]}" ps --format '{{.Service}} {{.State}} {{.Health}}'
     echo "target rows (should be the seed only):"; counts dst_psql
     ;;
@@ -60,7 +84,9 @@ case "$STEP" in
     docker run --rm --user 1000:1000 --env-file "$CUT" -v "$VOL:/data/uploads" -v "$PWD/ops:/ops:ro" node:22-alpine node /ops/sync-photos.mjs /data/uploads
     ;;
   verify)
-    a=$(counts src_psql); b=$(counts dst_psql)
+    a=$(counts src_psql) || { echo "cannot count the source rows" >&2; exit 1; }
+    b=$(counts dst_psql) || { echo "cannot count the target rows" >&2; exit 1; }
+    [ -n "$a" ] && [ -n "$b" ] || { echo "empty row counts" >&2; exit 1; }
     if [ "$a" != "$b" ]; then echo "ROW COUNTS DIFFER"; diff <(echo "$a") <(echo "$b") || true; exit 1; fi
     echo "row counts identical:"; echo "$a"
     want=$(dst_psql -tAc "select filename from photos order by 1")
@@ -72,12 +98,16 @@ case "$STEP" in
     dst_psql -tAc "select substring(body_text from 'https?://[^/[:space:]]+') as host, count(*) from email_log group by 1 order by 2 desc"
     ;;
   start-app)
-    "${DC[@]}" up -d app
+    "${DC[@]}" start app   # inverse of stop-app: same container, same image
     for _ in $(seq 1 30); do [ "$(docker inspect -f '{{.State.Health.Status}}' "$STACK-app-1")" = healthy ] && { echo "app healthy"; exit 0; }; sleep 3; done
     echo "app not healthy"; "${DC[@]}" logs --tail 80 app; exit 1
     ;;
   wipe)
     [ "$STACK" = shespeaks-preprod ] || { echo "wipe is for the preprod only" >&2; exit 2; }
+    # pin the tag to the running app image, not to the env file / defaults
+    IMAGE_TAG=$(docker inspect -f '{{.Config.Image}}' "$STACK-app-1" | sed 's/.*://')
+    [ -n "$IMAGE_TAG" ] || { echo "cannot read the running app image" >&2; exit 1; }
+    export IMAGE_TAG
     tables=$(dst_psql -tAc "$TABLES_SQL" | sed 's/.*/public."&"/' | paste -sd, -)
     dst_psql -c "TRUNCATE $tables RESTART IDENTITY CASCADE;"
     docker run --rm -v "$VOL:/u" alpine sh -c 'rm -rf /u/*'
