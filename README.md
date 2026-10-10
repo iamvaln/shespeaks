@@ -15,18 +15,17 @@ Interest form and coaching platform for women in tech (front office) + coach fol
 
 ## Stack
 
-Next.js 15 (App Router, TypeScript) · **Postgres on Supabase** (`postgres` driver) · **Supabase Storage** for speaker photos · **Resend** (email) · deployed on **Vercel**.
+Next.js 15 (App Router, TypeScript) · **Postgres** (`postgres` driver) · speaker photos on disk (`DATA_DIR/uploads`, a Docker volume on the VPS) · **Resend** (email) · deployed with Docker Compose on a VPS.
 
-## Deploy: Supabase + Vercel
+## Deploy
 
-1. **Supabase** → create a project. The easiest way is Vercel's **Supabase integration** (Vercel → Storage / Integrations): it creates `POSTGRES_URL` (the pooled connection, port 6543), `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for you, and the app reads them as they are (`DATABASE_URL` is only needed to override `POSTGRES_URL`). Doing it by hand instead: take the **Transaction pooler** string (Project Settings → Database → Connection pooling) as `DATABASE_URL`, the project URL as `SUPABASE_URL`, and the `service_role` key as `SUPABASE_SERVICE_ROLE_KEY` (server-side only).
-   - **Scope matters:** variables added by the integration are scoped to *Production* only. Preview deployments (every PR) get none of them, and the build's environment check fails. In Vercel → Settings → Environment Variables, edit each one and also tick **Preview** (and **Development** if you use `vercel dev`).
-   - Previews then talk to the same database as production. Fine before launch; afterwards use a separate Supabase project (or branch) for Preview.
-2. **The schema creates itself.** Every Vercel build runs `npm run db:deploy` before `next build`: it applies pending migrations (`supabase/migrations/NNNN_name.sql`), then seeds reference data. If a migration fails, the build fails and the previous deployment keeps serving. Nothing to run by hand. (Manual equivalents: `npm run db:setup`, `db:status`; see *Database, CI and deployments* below.)
-3. **Vercel** → import the repo and set the variables from `.env.example` (`APP_URL`, `DATABASE_URL`/`POSTGRES_URL`, `SUPABASE_*`, `SESSION_SECRET`, `CRON_SECRET`, `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM`). The private `speaker-photos` bucket is created automatically on first upload.
-4. **Reminders** run from **Vercel Cron** (`vercel.json`, daily at 07:00 UTC; Vercel sends `Authorization: Bearer $CRON_SECRET` itself). Hobby plans only allow daily crons; on Pro, change the schedule to hourly (`0 * * * *`) for finer reminder timing.
+SheSpeaks runs on a shared Docker VPS (Postgres, app, Traefik, daily reminders, nightly backups to R2). Full guide in French: [docs/deploy-vps.md](docs/deploy-vps.md).
 
-Photos: browsers upload **directly to Supabase Storage** through a short-lived signed URL (Vercel functions cap request bodies at ~4.5 MB; photos can be 10 Mo). The server then re-checks what landed (magic bytes, size, count) before registering it. Photos are shown through an authenticated route that redirects to a 5-minute signed URL.
+- `develop` → push builds the images and deploys the **preprod** (`preprod.sheleads.techiesconnect.org`, no real email, no cron).
+- A `v*` tag → deploys **production** (`sheleads.techiesconnect.org`) after a manual approval in the GitHub `production` environment.
+- Configuration: one env file per environment on the VPS, from `.env.compose.example`. Migrations and seed run in the `migrate` service on each deploy.
+- Reminders: the `cron` service calls `/api/cron/reminders` daily; photos live in the `uploads` volume.
+- The move from Vercel + Supabase (`ops/cutover.sh`) is described in the guide.
 
 ## Run locally
 
@@ -56,29 +55,27 @@ Contact checks (first form screen): the email is required everywhere; on the **p
 | `npm run db:setup` | migrate + seed (local dev, new database) |
 | `npm run db:migrate` / `db:seed` | one half only |
 | `npm run db:status` | applied / pending, exit 1 if an applied file was edited |
-| `npm run db:deploy` | what the Vercel build runs; honours `MIGRATE_ON_BUILD` |
+| `npm run db:deploy` | migrate + seed (what the Vercel build ran until the cutover) |
 | `npm run test:db` | integration tests against a real Postgres: migrations, reminders, tracks and AI suggestions (needs `DATABASE_URL`) |
-
-`MIGRATE_ON_BUILD`: `all` (default, every Vercel build), `production` (only production builds, for when previews get their own database) or `false`. `MIGRATE_DATABASE_URL` optionally points the migration step at a direct/session connection.
 
 If a table is missing at runtime, the error in the Vercel logs says so and tells you to run the migrations (Admin → Paramètres also shows the applied migrations).
 
-**CI** (`.github/workflows/ci.yml`, on every PR and on pushes to `develop`/`main`), against a throwaway Postgres 16: typecheck → unit tests → database tests (migrations, reminders, tracks, AI suggestions) → `db:setup` twice (second run must apply nothing) → production build with the environment check → start the server → smoke test of the four diagnostic branches, photo rules and resume link → cron endpoint auth. **Deployments** are Vercel's Git integration (preview per PR, production from your production branch); Vercel Cron calls `/api/cron/reminders`. To make CI a merge gate, enable branch protection on `develop`/`main` requiring the *CI* check.
+**CI** (`.github/workflows/ci.yml`, on every PR and on pushes to `develop`/`main`), against a throwaway Postgres 16: typecheck → unit tests → database tests (migrations, reminders, tracks, AI suggestions) → `db:setup` twice (second run must apply nothing) → production build with the environment check → start the server → smoke test of the four diagnostic branches, photo rules and resume link → cron endpoint auth. A second job builds the Docker images and smoke-tests the container. **Deployments** are `.github/workflows/deploy.yml` (see [docs/deploy-vps.md](docs/deploy-vps.md)). To make CI a merge gate, enable branch protection on `develop`/`main` requiring the *CI* check.
 
 ## Branches and deployments
 
 | Branch | Role | Deployed as |
 |---|---|---|
-| `main` | **Production.** Only receives reviewed releases. | Vercel **Production** |
-| `develop` | Integration: every feature lands here first. | Vercel Preview |
-| feature branches (`claude/...`) | One change each, opened as a PR **into `develop`**. | Vercel Preview per PR |
+| `main` | Only receives reviewed releases. | nothing by itself (production is deployed from a `v*` tag) |
+| `develop` | Integration: every feature lands here first. | **preprod** on the VPS |
+| feature branches (`claude/...`) | One change each, opened as a PR **into `develop`**. | CI only |
 
 Release = a PR from `develop` into `main`. CI runs on every PR and on pushes to `develop` and `main`.
 
 One-time setup (repository owner):
 
 1. GitHub → Settings → General → **Default branch**: `main`.
-2. Vercel → Project → Settings → Git → **Production Branch**: `main`, then redeploy `main` once.
+2. Once the cutover is done: Vercel → Project → Settings → Git → **Production Branch**: `vercel-redirect` (never `main`), see the guide.
 3. Optionally protect `main` and `develop` (require the *CI* check).
 
 Previews and production share one database (see *Deploy*), so a migration runs as soon as **any** branch builds: keep migrations additive (add first, remove in a later migration).
@@ -127,7 +124,7 @@ On the fiche of a candidate who has no precise topic yet (start points A and B, 
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):
 
-- **At build time on Vercel** (`prebuild` → `scripts/check-env.mjs`): a missing or placeholder required variable fails the deploy with a clear list, instead of surfacing in front of candidates.
+- **At deploy time on the VPS** (`migrate` service, `scripts/check-env.mjs --strict`): a missing or placeholder required variable stops the deploy with a clear list, and `app` never starts.
 - **At server start in production** (`src/instrumentation.ts`): errors are logged and the server refuses to boot. Warnings (e.g. no Resend key, so emails are not sent) are logged but don't block.
 - **In the admin**: Admin → Paramètres → *Configuration du serveur* shows what is still wrong.
 - **On demand**: `npm run check:env` (strict, reads `.env.local`).
