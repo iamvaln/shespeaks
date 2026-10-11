@@ -10,6 +10,7 @@ import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
 import type { AiProvider } from '@/lib/ai-topics';
 import { removeObject } from '@/lib/storage';
+import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
@@ -200,7 +201,7 @@ export async function selectPhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   const photoId = num(f, 'photo_id') || null;
-  await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', photoId, id);
+  await selectPhoto(id, photoId);
   return back(cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 

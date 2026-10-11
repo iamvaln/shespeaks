@@ -283,3 +283,24 @@ test('I1/I2: nothing can be sent once she counts as submitted', { skip }, async 
   assert.deepEqual(await P.requestPhoto(confirmed, 1, 'Autre'), done);
   assert.equal((await raw`select count(*)::int as n from proposals where candidate_id in (${id}, ${byStatus}, ${confirmed})`)[0].n, 0);
 });
+
+test('I3: the validation of a photo goes when the selected photo changes, is un-selected or is deleted', { skip }, async () => {
+  const photos = await import('../../src/lib/photos.ts');
+  const id = await candidate('C');
+  const add = async (n) => (await raw`insert into photos (candidate_id, filename, mime, size) values (${id}, ${`${id}/missing-${n}.jpg`}, 'image/jpeg', 10) returning id`)[0].id;
+  const validated = async () => (await raw`select photo_validated_at, selected_photo_id from candidates where id = ${id}`)[0];
+  const [a, b] = [await add(1), await add(2)];
+  await P.validatePhoto(id, a);
+  await photos.selectPhoto(id, a); // the same photo: the validation stays
+  assert.ok((await validated()).photo_validated_at);
+  await photos.selectPhoto(id, b);
+  assert.deepEqual(await validated(), { photo_validated_at: null, selected_photo_id: b });
+  await P.validatePhoto(id, b);
+  await photos.selectPhoto(id, null);
+  assert.deepEqual(await validated(), { photo_validated_at: null, selected_photo_id: null });
+  await P.validatePhoto(id, a);
+  await photos.deletePhoto(id, b); // not the selected one: the validation stays
+  assert.ok((await validated()).photo_validated_at);
+  await photos.deletePhoto(id, a);
+  assert.deepEqual(await validated(), { photo_validated_at: null, selected_photo_id: null });
+});
