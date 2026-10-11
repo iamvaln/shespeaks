@@ -30,6 +30,7 @@ export interface Candidate {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  ai_brief?: string | null; // a coach's notes for the AI suggestions (« Précisions pour l'IA »)
 }
 export interface Track {
   id: number;

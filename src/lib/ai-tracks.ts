@@ -20,7 +20,7 @@ export async function suggestTracksFor(candidateId: number, coachId: number, cli
   if (!(await checkAiRate(coachId, candidateId)).ok) return { ok: false, reason: 'limited' };
 
   const [answers, refs, tracks, event, focus] = await Promise.all([getAnswers(candidateId), getRefs(), getTracks(candidateId), aiEventFor(c), getSetting('topic_focus')]);
-  const input = { branch: c.branch, locale: c.locale, answers, refs, existingTitles: tracks.map((t) => t.title), event, focus };
+  const input = { branch: c.branch, locale: c.locale, answers, refs, existingTitles: tracks.map((t) => t.title), event, focus, brief: c.ai_brief ?? '' };
   const res = provider === 'openai' ? await suggestTitlesOpenAI(input, fetchFn) : await suggestTitles(input, client);
   if (!res.ok) {
     console.error('[ai] suggestions failed', { candidate: candidateId, provider, reason: res.reason, detail: res.detail });

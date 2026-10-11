@@ -368,3 +368,19 @@ test('OpenAI without a key is disabled, and the press is not counted', { skip },
   const id = await candidate();
   assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai'), { ok: false, reason: 'disabled' });
 });
+
+test('the coach\'s notes kept on the fiche reach the prompt of both providers', { skip }, async () => {
+  process.env.OPENAI_API_KEY = 'sk-proj-test';
+  try {
+    const id = await candidate();
+    await raw`update candidates set ai_brief = 'Elle vient du support, parler de sa reconversion vers le DevOps' where id = ${id}`;
+    const c = model(1);
+    await ai.suggestTracksFor(id, 1, c.client);
+    assert.match(c.sent.at(-1).messages[0].content, /<precisions_de_la_coach>\nElle vient du support/);
+    const o = openaiModel(1);
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', o.fetchFn);
+    assert.match(o.sent.at(-1).input, /Elle vient du support/);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
