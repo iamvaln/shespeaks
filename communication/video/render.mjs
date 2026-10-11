@@ -2,6 +2,7 @@
 //   node render.mjs episode1.html                  → ../exports/episode1.mp4
 //   node render.mjs episode1.html --stills 1,3.5,6 → ../exports/stills/episode1-3.5.png … (quick review)
 //   add --lang en for the English version             → ../exports/episode1-en.mp4
+//   node render.mjs episode1-cover.html --cover        → ../exports/covers/episode1-cover.png
 import puppeteer from 'puppeteer-core';
 import ffmpegPath from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
@@ -29,7 +30,12 @@ try {
   const duration = await tab.evaluate(() => SS.duration);
   const svg = await tab.$('#stage');
 
-  if (stillsArg) {
+  if (args.includes('--cover')) {
+    mkdirSync(path.join(exportsDir, 'covers'), { recursive: true });
+    const file = path.join(exportsDir, 'covers', `${name}.png`);
+    await svg.screenshot({ path: file });
+    console.log(file);
+  } else if (stillsArg) {
     mkdirSync(path.join(exportsDir, 'stills'), { recursive: true });
     for (const t of stillsArg.split(',').map(Number)) {
       await tab.evaluate((t) => SS.seek(t), t);

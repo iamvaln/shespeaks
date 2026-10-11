@@ -10,6 +10,9 @@ Deux épisodes verticaux (1080 × 1920, 9:16, pour statuts WhatsApp, Reels, Stor
 |---|---|
 | `exports/episode1.mp4` · `exports/episode1-en.mp4` | Épisode 1, FR · EN |
 | `exports/episode2.mp4` · `exports/episode2-en.mp4` | Épisode 2, FR · EN |
+| `exports/covers/episode1-cover.png` … `episode2-cover-en.png` | Images de couverture (1080 × 1920) à téléverser comme miniature sur Instagram, TikTok, LinkedIn |
+
+Les vidéos ne commencent pas par un fondu au noir : leur première image sert d'aperçu (statut WhatsApp).
 
 
 | Épisode | Histoire | État |
@@ -28,6 +31,7 @@ cd communication/video
 npm install                                     # puppeteer-core + ffmpeg précompilé, utilise Google Chrome installé
 node render.mjs episode1.html                   # → communication/exports/episode1.mp4 (idem episode2.html)
 node render.mjs episode1.html --lang en         # → communication/exports/episode1-en.mp4
+node render.mjs episode1-cover.html --cover     # → communication/exports/covers/episode1-cover.png (--lang en aussi)
 node render.mjs episode1.html --stills 2,4.5    # images fixes pour relire un moment précis (→ exports/stills/, non versionné)
 ```
 

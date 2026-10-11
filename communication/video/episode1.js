@@ -104,8 +104,7 @@
       <g id="hallCam">${SS.hall('hall', { focus: FOCUS, back: 'braids', slide: { label: SS.t('CONFÉRENCE TECH', 'TECH CONFERENCE'), lines: ['Building AI agents'], size: 58, diagram: true }, presenter: SS.manPresenter() })}</g>
       ${faceShot()}
       ${phoneShot()}
-      ${endCard()}
-      <rect id="black" width="1080" height="1920" fill="#000"/>`;
+      ${endCard()}`;
     const len = SS.$('l2').getComputedTextLength();
     SS.attr('underline', { d: `M198 376 H${196 + len - 18}` });
     SS.underlineLen = len - 20;
@@ -120,8 +119,7 @@
   const { popIO, fadeUp, talk } = SS;
 
   function seek(t) {
-    SS.opacity('black', 1 - prog(t, 0, 0.6, ease.out));
-
+    // No fade from black: the first frame is the preview WhatsApp shows for a status.
     // Shot A — the hall: slow push-in on her.
     SS.attr('hallCam', { transform: zoom(1 + 0.6 * prog(t, 0.5, 2.3), FOCUS.x, FOCUS.y) });
     SS.attr('spkArm', { transform: `rotate(${Math.sin(t * 2.4) * 7} 862 486)` });

@@ -156,8 +156,7 @@
 
   function build() {
     SS.$('stage').innerHTML = `${SS.defs()}
-      ${room()}${phoneShot()}${callShot()}${stageShot()}${girlShot()}${endCard()}
-      <rect id="black" width="1080" height="1920" fill="#000"/>`;
+      ${room()}${phoneShot()}${callShot()}${stageShot()}${girlShot()}${endCard()}`;
     SS.fitAll();
   }
 
@@ -252,8 +251,6 @@
     fadeUp(t, 'cardEvents', 32.85);
   }
 
-  SS.start(CUT.duration, build, (t) => {
-    draw(CUT.story(t));
-    SS.opacity('black', 1 - prog(t, 0, 0.5, ease.out));
-  });
+  // No fade from black: the first frame (the title in her room) is the preview WhatsApp shows for a status.
+  SS.start(CUT.duration, build, (t) => draw(CUT.story(t)));
 })();
