@@ -28,7 +28,7 @@ import { appUrl } from '@/lib/mail';
 import { journeyOf, listProposals } from '@/lib/proposals';
 import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
@@ -182,6 +182,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   {journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}
                 </div>
                 {journeyNow && <p style={{ margin: 0 }}><strong>Étape : {STEP_LABEL[journeyNow.step]}</strong></p>}
+                {submitted && (
+                  <form action={reopenExchangesAction} className="a-actions">
+                    <input type="hidden" name="cid" value={id} />
+                    <span className="a-muted">Besoin de lui envoyer autre chose (une autre photo, un sujet corrigé) ?</span>
+                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Tu pourras de nouveau lui envoyer des propositions ; elle confirmera sa soumission à nouveau à la fin. Son statut ne change pas.">Rouvrir les échanges</PendingButton>
+                  </form>
+                )}
                 {toHandle && (
                   <form action={markHandledAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />

@@ -61,7 +61,7 @@ async function run(branch, name, branchScreens, finalExtra) {
   ok(r.status === 422 || r.status === 409 || r.json?.fatal === 'unknown_screen', `${branch}: there is no photo screen any more`);
   const plan = await c.get('/plan');
   ok(plan.status === 200 && plan.text.includes(name), `${branch}: plan page shows name`);
-  ok(plan.text.includes('Ta prochaine action') || plan.text.includes('prochaine action'), `${branch}: plan has next action`);
+  ok(plan.text.includes('Où tu en es') && plan.text.includes('À faire maintenant') && !plan.text.includes('Ta prochaine action'), `${branch}: plan says where she stands and what to do now (the roadmap's own next action is hidden)`);
   r = await c.save('profile', profile(name)); ok(r.status === 409, `${branch}: no edits after completion`);
   return c;
 }

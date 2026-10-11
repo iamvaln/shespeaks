@@ -4,8 +4,8 @@ import { fmtDate, t } from '@/lib/i18n';
 
 /** Roadmap as the candidate sees it (also reused read-only in the admin fiche). */
 export function RoadmapView({
-  rm, locale, photoUrl, internalDeadline,
-}: { rm: Roadmap; locale: Locale; photoUrl?: string | null; internalDeadline?: string | null }) {
+  rm, locale, photoUrl, internalDeadline, hideNextAction,
+}: { rm: Roadmap; locale: Locale; photoUrl?: string | null; internalDeadline?: string | null; hideNextAction?: boolean }) {
   const d = t(locale).plan;
   const ev = rm.calendar.event;
   const current = rm.steps.find((s) => !s.done)?.n; // the ring marks the step in progress (charte)
@@ -23,10 +23,12 @@ export function RoadmapView({
         </div>
       </section>
 
-      <section className="next-action">
-        <p className="label-s">{d.nextAction}</p>
-        <p>{rm.nextAction}</p>
-      </section>
+      {!hideNextAction && (
+        <section className="next-action">
+          <p className="label-s">{d.nextAction}</p>
+          <p>{rm.nextAction}</p>
+        </section>
+      )}
 
       <section>
         <h2 className="title" style={{ marginBottom: 8 }}>{d.steps}</h2>

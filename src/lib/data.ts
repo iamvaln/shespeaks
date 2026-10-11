@@ -33,6 +33,7 @@ export interface Candidate {
   ai_brief?: string | null; // a coach's notes for the AI suggestions (« Précisions pour l'IA »)
   photo_validated_at?: string | null;
   submitted_at?: string | null;
+  reopened_at?: string | null; // « Rouvrir les échanges »: only her confirmation counts as submitted again
 }
 export interface Track {
   id: number;

@@ -35,9 +35,12 @@ const rank = (s: string) => STATUSES.findIndex((x) => x.id === s);
 /**
  * She counts as submitted when she confirmed it here, when she answered « already submitted / already accepted » in the form, or when the
  * coach moved her status to « candidature soumise » or beyond (« non retenue » sits outside the forward path). Computed, never stored.
+ * Once the coach reopened the exchanges, only her own confirmation counts again.
  */
-export function countsAsSubmitted(c: { submitted_at?: string | null; status: string }, applicationState: string | null | undefined): boolean {
-  return !!c.submitted_at || applicationState === 'soumise' || applicationState === 'retenue'
+export function countsAsSubmitted(c: { submitted_at?: string | null; reopened_at?: string | null; status: string }, applicationState: string | null | undefined): boolean {
+  if (c.submitted_at) return true;
+  if (c.reopened_at) return false;
+  return applicationState === 'soumise' || applicationState === 'retenue'
     || (c.status !== 'non_retenue' && rank(c.status) >= rank('candidature_soumise'));
 }
 const applicationStateOf = async (candidateId: number) =>
@@ -169,7 +172,8 @@ export async function photoUploaded(candidateId: number): Promise<void> {
   const done = await get<{ id: number }>(
     `UPDATE proposals SET state='repondue', response='photo_deposee', answered_at=(now() at time zone 'utc')
      WHERE candidate_id=? AND kind='photo' AND state='envoyee' RETURNING id`, candidateId);
-  if (done) mail((m) => m.toCoaches(candidateId, 'photo_deposee', null));
+  // answering a request, or her first photo at the photo step (nothing asked yet): either way the coach has a photo to look at
+  if (done || (await journeyOf(candidateId))?.step === 'photo') mail((m) => m.toCoaches(candidateId, 'photo_deposee', null));
 }
 
 export async function confirmSubmission(candidateId: number): Promise<Outcome> {
@@ -185,6 +189,14 @@ export async function confirmSubmission(candidateId: number): Promise<Outcome> {
   });
   if (!done) return { ok: false, error: 'Ta soumission est déjà confirmée.' };
   mail((m) => m.toCoaches(candidateId, 'soumise', null));
+  return { ok: true };
+}
+
+/** « Rouvrir les échanges »: the coach can send again; her space shows the step the proposals lead to, and she confirms her submission again at the end. */
+export async function reopenExchanges(candidateId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  if ((await journeyOf(candidateId))?.step !== 'soumise') return { ok: false, error: 'Les échanges sont déjà ouverts.' };
+  await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
   return { ok: true };
 }
 
