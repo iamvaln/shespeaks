@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import postgres from 'postgres';
+import './next-stub.mjs';
 import { resolveDatabaseUrl } from '../../src/lib/env.ts';
 
 const adminUrl = resolveDatabaseUrl(process.env);
@@ -20,7 +21,7 @@ before(async () => {
   const url = urlFor(dbName);
   const r = spawnSync('node', ['--experimental-strip-types', '--no-warnings', 'scripts/db.mjs', 'migrate'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: url } });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  process.env.DATABASE_URL = url; process.env.SESSION_SECRET = 'test-secret';
+  process.env.DATABASE_URL = url; process.env.SESSION_SECRET = 'test-secret'; delete process.env.RESEND_API_KEY; // mails only land in email_log
   data = await import('../../src/lib/data.ts');
   P = await import('../../src/lib/proposals.ts');
   P.setProposalMailer({ toCandidate: async (id, what) => { mails.push(`candidate:${what}`); }, toCoaches: async (id, what, comment) => { mails.push(`coach:${what}:${comment ?? ''}`); } });
@@ -173,4 +174,17 @@ test('/acces: one email listing every journey of the same mailbox; same answer f
   let limited;
   for (let k = 0; k < 6 && !limited; k++) limited = (await access.requestAccess(`${box}@gmail.com`, '198.51.100.10')).retryAfterSec;
   assert.ok(limited > 0, 'the address limit applies');
+});
+
+test('a proposal unanswered for 48 h gets one reminder, never two', { skip }, async () => {
+  const rem = await import('../../src/lib/reminders.ts');
+  const id = await candidate('C');
+  await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`;
+  await P.sendSubject(id, 1);
+  await raw`update proposals set sent_at = (now() at time zone 'utc') - interval '49 hours' where candidate_id = ${id}`;
+  assert.ok((await rem.remindPendingProposals(new Date())) >= 1);
+  const [{ reminded_at }] = await raw`select reminded_at from proposals where candidate_id = ${id}`;
+  assert.ok(reminded_at);
+  await rem.remindPendingProposals(new Date());
+  assert.equal((await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = 'candidate_proposal_reminder'`)[0].n, 1);
 });

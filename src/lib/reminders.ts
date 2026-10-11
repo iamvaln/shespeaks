@@ -1,8 +1,8 @@
 // Reminder engine: unfinished diagnostics → email to the candidate (if she left an address) AND alert to the coach(es).
 // Idempotent: a candidate is "claimed" (counter bumped) before any email goes out, so overlapping runs never double-send.
-import { all, getSetting } from './db.ts';
+import { all, get, getSetting } from './db.ts';
 import { claimReminder, eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
-import { appUrl, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
+import { appUrl, candidateProposalReminder, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
 import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
 import { mailboxKey } from './contact.ts';
@@ -14,6 +14,7 @@ export interface ReminderReport {
   checked: number;
   candidateEmails: number;
   coachAlerts: number;
+  proposalReminders: number;
   due: { id: number; name: string; tier: number }[];
 }
 
@@ -25,7 +26,7 @@ export function screenProgress(c: Pick<Candidate, 'branch' | 'current_screen'>) 
 }
 
 export async function runReminders(now = new Date()): Promise<ReminderReport> {
-  const report: ReminderReport = { checked: 0, candidateEmails: 0, coachAlerts: 0, due: [] };
+  const report: ReminderReport = { checked: 0, candidateEmails: 0, coachAlerts: 0, proposalReminders: 0, due: [] };
   if ((await getSetting('reminders_enabled')) !== 'true') return report;
   const first = Number(await getSetting('reminder_first_hours')) || 24;
   const interval = Number(await getSetting('reminder_interval_hours')) || 48;
@@ -68,12 +69,36 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
       byRecipient.set(r.email, g);
     }
   }
+  report.proposalReminders = await remindPendingProposals(now);
   for (const [email, g] of byRecipient) {
-    const m = coachStalledDigest(g.name, g.items);
+    const m = coachStalledDigest(g.name, g.items, report.proposalReminders);
     await sendMail({ ...m, to: email, kind: 'coach_stalled_digest' });
     report.coachAlerts++;
   }
   return report;
+}
+
+/**
+ * One reminder for a proposal left unanswered for 48 hours (claimed first, so two runs never send it twice).
+ * Candidates a coach has set aside (non_retenue) or without an address are skipped, like the form reminders above.
+ */
+export async function remindPendingProposals(now = new Date()): Promise<number> {
+  const due = await all<{ id: number; candidate_id: number }>(
+    `SELECT p.id, p.candidate_id FROM proposals p JOIN candidates c ON c.id = p.candidate_id
+     WHERE p.state='envoyee' AND p.reminded_at IS NULL AND p.sent_at <= (?::timestamp - interval '48 hours')
+       AND c.status <> 'non_retenue' AND c.email IS NOT NULL AND c.email <> ''`,
+    now.toISOString().replace('T', ' ').slice(0, 19));
+  let sent = 0;
+  for (const p of due) {
+    const claimed = await get<{ id: number }>(`UPDATE proposals SET reminded_at=(now() at time zone 'utc') WHERE id=? AND reminded_at IS NULL RETURNING id`, p.id);
+    if (!claimed) continue;
+    const c = await getCandidate(p.candidate_id);
+    if (!c?.email) continue;
+    const m = candidateProposalReminder(c.name ?? '', `${appUrl()}/reprendre/${c.token}`, c.locale);
+    await sendMail({ ...m, to: c.email, kind: 'candidate_proposal_reminder', candidateId: c.id });
+    sent++;
+  }
+  return sent;
 }
 
 /** Manual reminder from the coach's fiche (does not touch the automatic counter). 'unavailable' = no address or form already done. */

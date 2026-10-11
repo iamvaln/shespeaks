@@ -296,7 +296,7 @@ export interface StalledItem {
   tier: number;
   url: string;
 }
-export function coachStalledDigest(recipientName: string, items: StalledItem[]): Built {
+export function coachStalledDigest(recipientName: string, items: StalledItem[], proposalReminders = 0): Built {
   const n = items.length;
   return build(n === 1 ? `Relance à faire : ${items[0].name} n’a pas fini son formulaire` : `Relances à faire : ${n} candidates n’ont pas fini leur formulaire`, {
     heading: n === 1 ? 'Une candidate n’a pas terminé son formulaire' : `${n} candidates n’ont pas terminé leur formulaire`,
@@ -306,6 +306,7 @@ export function coachStalledDigest(recipientName: string, items: StalledItem[]):
         (i) =>
           `• ${i.name} — ${i.eventLabel} — arrêtée à « ${i.screenLabel} » depuis ${i.hoursIdle < 48 ? `${i.hoursIdle} h` : `${Math.round(i.hoursIdle / 24)} jours`} (relance n° ${i.tier})\n  WhatsApp : ${i.whatsapp}${i.email ? ` · ${i.email}` : ''}\n  Fiche : ${i.url}`,
       ),
+      ...(proposalReminders > 0 ? [`Propositions relancées ce matin : ${proposalReminders}`] : []),
     ],
     cta: { label: 'Voir les candidates en cours', url: `${appUrl()}/admin/candidates?status=en_cours` },
     footer: 'SheSpeaks · espace coach',
