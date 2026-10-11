@@ -24,8 +24,12 @@ import { currentSubject } from '@/lib/ai-subject';
 import { getSubjectProposal } from '@/lib/ai-subject-store';
 import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
+import { appUrl } from '@/lib/mail';
+import { journeyOf, listProposals } from '@/lib/proposals';
+import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
+  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
 export const metadata = { title: 'Fiche candidate' };
@@ -37,6 +41,16 @@ const TRACK_TONE: Record<string, string> = { generee: 'neutral', retenue_coach: 
 const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach', ia: 'Suggestion IA' };
 /** The path of a candidate who goes all the way, in order. « En cours » and « Non retenue » sit outside it. */
 const STAGES = ['diagnostic_recu', 'sujet_valide', 'candidature_soumise', 'retenue', 'slides_validees', 'repetition_faite', 'jour_j'];
+const STEP_LABEL: Record<string, string> = { choix: 'Choix du sujet', sujet: 'Sujet à valider', photo: 'Photo', soumission: 'En attente de sa soumission', soumise: 'Candidature soumise' };
+const WAITING_LABEL: Record<string, string> = { coach: 'À toi', candidate: 'En attente de la candidate', none: 'Terminé' };
+const KIND_LABEL: Record<string, string> = { choix: 'Choix de sujet', sujet: 'Sujet à valider', photo: 'Demande de photo' };
+const RESPONSE_LABEL: Record<string, string> = { choisie: 'A choisi un sujet', aucune: 'Aucun ne lui convient', approuvee: 'A approuvé le sujet', changements: 'Demande des changements', photo_deposee: 'A déposé une photo' };
+/** What the coach sent, in a few words. */
+const sentSummary = (x: Proposal): string => {
+  if (x.kind === 'choix') return (x.payload as ChoicePayload).items.map((i) => i.title).join(' · ');
+  if (x.kind === 'sujet') return (x.payload as SubjectPayload).title;
+  return (x.payload as PhotoPayload).comment;
+};
 const DATE_TIME = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' } as const;
 
 export default async function Fiche({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; err?: string; tab?: string }> }) {
@@ -47,10 +61,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const id = Number(rawId);
   const c = await getCandidate(id);
   if (!c || !c.name) notFound();
-  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, showTracks] = await Promise.all([
+  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, showTracks, journeyNow, exchanges] = await Promise.all([
     getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
-    getSetting('show_tracks_to_candidates'),
+    getSetting('show_tracks_to_candidates'), journeyOf(id), listProposals(id),
   ]);
+  const retained = tracks.filter((t) => t.state === 'retenue_coach');
+  const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
+  const history_ = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
   const startSubject = c.branch ? currentSubject(c.branch, a, subject ?? null) : null;
   const proposal = await getSubjectProposal(id);
@@ -101,6 +118,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         <div className="a-actions">
           <a className="a-btn is-ghost a-jump" href="#suivi">Suivi ↓</a>
           {wa && <a className="a-btn is-amber" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"><Icon name="message" />Écrire sur WhatsApp</a>}
+          {wa && <a className="a-btn is-ghost" href={`https://wa.me/${wa}?text=${encodeURIComponent(`Bonjour ${c.name?.split(' ')[0] ?? ''}, voici ton lien personnel pour retrouver ton espace SheSpeaks : ${appUrl()}/reprendre/${c.token}`)}`} target="_blank" rel="noopener">Envoyer son lien d’accès sur WhatsApp</a>}
           {c.email && <a className="a-btn is-ghost" href={`mailto:${c.email}`}><Icon name="mail" />Envoyer un email</a>}
           {!c.completed_at && c.email && (
             <form action={remindNowAction}>
@@ -153,6 +171,38 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
           {tab === 'sujet' && (
             <>
+              <section className="a-card a-stack" aria-labelledby="h-echanges">
+                <div className="a-row-between" style={{ flexWrap: 'wrap' }}>
+                  <h2 id="h-echanges" className="a-h2">Échanges avec la candidate</h2>
+                  {journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}
+                </div>
+                {journeyNow && <p style={{ margin: 0 }}><strong>Étape : {STEP_LABEL[journeyNow.step]}</strong></p>}
+                {toHandle && (
+                  <form action={markHandledAction} className="a-actions">
+                    <input type="hidden" name="cid" value={id} />
+                    <span className="a-muted">Elle a répondu : cette réponse compte dans « à traiter ».</span>
+                    <button className="a-btn is-sm">Marquer comme traité</button>
+                  </form>
+                )}
+                {history_.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Rien n’a encore été envoyé à la candidate.</p> : (
+                  <ul className="a-notes">
+                    {history_.map((x) => (
+                      <li key={x.id}>
+                        <div className="a-sub" style={{ whiteSpace: 'normal' }}>{fmtDate(x.sent_at, 'fr', DATE_TIME)} · {KIND_LABEL[x.kind]}{x.state === 'remplacee' ? ' · remplacée' : x.state === 'envoyee' ? ' · en attente de réponse' : ''}</div>
+                        <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{sentSummary(x)}</div>
+                        {x.state === 'repondue' && x.response && (
+                          <div style={{ marginTop: 4 }}>
+                            <strong>{RESPONSE_LABEL[x.response]}</strong>
+                            {x.response === 'choisie' && x.response_choice !== null && x.kind === 'choix' ? ` : ${(x.payload as ChoicePayload).items[x.response_choice]?.title ?? ''}` : ''}
+                            {x.answered_at ? <span className="a-sub"> · {fmtDate(x.answered_at, 'fr', DATE_TIME)}</span> : null}
+                            {x.candidate_comment && <div style={{ whiteSpace: 'pre-wrap' }}>« {x.candidate_comment} »</div>}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
               {c.branch && (
                 <section className="a-card" aria-labelledby="h-repondu">
                   <h2 id="h-repondu" className="a-h2">Ce qu’elle a répondu</h2>
@@ -212,6 +262,11 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                                 </select>
                               </span>
                               {t.hook && <span className="a-sub" style={{ whiteSpace: 'normal' }}>{t.hook}</span>}
+                              {t.state === 'retenue_coach' && (
+                                <label className="a-label">Pour la candidate : pourquoi ce sujet lui irait
+                                  <AutoGrowTextarea className="a-input" name="pitch" defaultValue={t.pitch ?? t.hook ?? ''} maxLength={400} aria-label={`Pour la candidate : pourquoi le sujet ${i + 1} lui irait`} />
+                                </label>
+                              )}
                             </div>
                             <div className="a-track-actions">
                               {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm" aria-label={`Choisir la piste ${i + 1}`}>Choisir</button>}
@@ -230,6 +285,11 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
                     <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
                     <button className="a-btn is-ghost">Ajouter</button>
+                  </form>
+                  <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
+                    <input type="hidden" name="cid" value={id} />
+                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={retained.length < 2 || retained.length > 3}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                    <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase.</span>
                   </form>
                 </section>
               )}
@@ -271,6 +331,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <div>
                       <p className="a-label" style={{ margin: '0 0 4px' }}>Comment aborder le sujet</p>
                       <ol style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>{proposal.plan.map((s, k) => <li key={k}>{s}</li>)}</ol>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                        <UseInField target="subject-why" value={proposal.note}>Utiliser comme « Pourquoi »</UseInField>
+                        <UseInField target="subject-plan" value={proposal.plan.join('\n')}>Utiliser ce plan</UseInField>
+                      </div>
                     </div>
                     <p className="a-muted" style={{ margin: 0 }}>« Utiliser » remplit le formulaire ci-dessous : rien n’est enregistré avant « Enregistrer le sujet ».</p>
                   </div>
@@ -282,12 +346,18 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <textarea id="subject-abstract" className="a-textarea" name="abstract" defaultValue={subject?.abstract ?? ''} placeholder="Ce que le public va comprendre, voir, repartir avec…" />
                     <span className="a-sub" style={{ fontWeight: 400 }}>{wordCount(subject?.abstract ?? '')} mots · cible : 80 à 200</span>
                   </label>
+                  <label className="a-label">Pourquoi ces changements (pour la candidate)<textarea id="subject-why" className="a-textarea" name="why" defaultValue={subject?.why ?? ''} maxLength={1500} /></label>
+                  <label className="a-label">Comment t’y prendre (une étape par ligne)<textarea id="subject-plan" className="a-textarea" name="plan" defaultValue={subject?.plan ?? ''} /></label>
                   <div className="a-grid-3">
                     <label className="a-label">Niveau du public<select className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                     <label className="a-label">Format<select className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                     <label className="a-label">État de la candidature<select className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                   </div>
                   <div><button className="a-btn">Enregistrer le sujet</button></div>
+                </form>
+                <form action={sendSubjectAction}>
+                  <input type="hidden" name="cid" value={id} />
+                  <PendingButton className="a-btn" pendingLabel="Envoi…" confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant.">Envoyer à la candidate pour validation</PendingButton>
                 </form>
               </section>
 
@@ -378,6 +448,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 </div>
               ) : (
                 <>
+                  {c.photo_validated_at && <p style={{ margin: 0 }}><strong>Photo validée le {fmtDate(c.photo_validated_at, 'fr', DATE_TIME)}</strong></p>}
                   <p className="a-muted" style={{ margin: 0 }}>Consentement à l’usage : <strong style={{ color: 'var(--ink)' }}>{c.consent_photo ? 'oui' : 'non'}</strong></p>
                   <div className="photo-admin">
                     {photos.map((p) => (
@@ -386,11 +457,20 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         <figcaption className="a-sub">{p.width && p.height ? `${p.width}×${p.height}` : ''} · {Math.max(1, Math.round(p.size / 1024))} Ko</figcaption>
                         <form action={selectPhotoAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="photo_id" value={p.id === c.selected_photo_id ? 0 : p.id} />
                           <button className={`a-btn is-sm${p.id === c.selected_photo_id ? '' : ' is-ghost'}`}>{p.id === c.selected_photo_id ? '✓ Retenue' : 'Retenir'}</button></form>
+                        <form action={validatePhotoAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="photo_id" value={p.id} />
+                          <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button></form>
                       </figure>
                     ))}
                   </div>
                 </>
               )}
+              <form action={requestPhotoAction} className="a-stack" style={{ gap: 8 }}>
+                <input type="hidden" name="cid" value={id} />
+                <label className="a-label">Demander une autre photo (dis-lui ce qu’il faut changer)
+                  <textarea className="a-textarea" name="comment" required maxLength={1000} />
+                </label>
+                <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
+              </form>
             </section>
           )}
 

@@ -13,6 +13,7 @@ import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
+import { markHandled, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -92,9 +93,11 @@ export async function saveSubjectAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   await run(
-    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state) VALUES (?,?,?,?,?,?)
-     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format, application_state=excluded.application_state`,
+    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state,why,plan) VALUES (?,?,?,?,?,?,?,?)
+     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format,
+       application_state=excluded.application_state, why=excluded.why, plan=excluded.plan`,
     id, str(f, 'title'), str(f, 'abstract'), str(f, 'audience') || null, str(f, 'format') || null, str(f, 'application_state') || 'a_soumettre',
+    str(f, 'why').slice(0, 1500) || null, str(f, 'plan').slice(0, 3000) || null,
   );
   return back(cpath(id), 'Sujet enregistré');
 }
@@ -162,6 +165,8 @@ export async function trackAction(f: FormData) {
     await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
     if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
   }
+  // the sentence « for the candidate » travels in the same form as the title (only retained tracks have the field)
+  if (op !== 'delete' && f.has('pitch')) await run('UPDATE tracks SET pitch=? WHERE id=?', str(f, 'pitch').slice(0, 400) || null, tid);
   let done: string;
   if (op === 'save') {
     done = 'Piste enregistrée';
@@ -295,4 +300,36 @@ export async function saveSettingsAction(f: FormData) {
   await setSetting('show_tracks_to_candidates', f.get('show_tracks_to_candidates') ? 'true' : 'false');
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
+}
+
+// ---- exchanges with the candidate (proposals flow) -------------------------------
+export async function sendChoiceAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const r = await sendChoice(id, coach.id);
+  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : back(cpath(id), r.error, true);
+}
+export async function sendSubjectAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const r = await sendSubject(id, coach.id);
+  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : back(cpath(id), r.error, true);
+}
+export async function requestPhotoAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const r = await requestPhoto(id, coach.id, str(f, 'comment'));
+  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : back(cpath(id, 'photos'), r.error, true);
+}
+export async function validatePhotoAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  const r = await validatePhoto(id, num(f, 'photo_id'));
+  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : back(cpath(id, 'photos'), r.error, true);
+}
+export async function markHandledAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  await markHandled(id);
+  return back(cpath(id), 'Réponse marquée comme traitée');
 }

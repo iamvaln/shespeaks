@@ -126,6 +126,20 @@ test('« à traiter » counts unanswered-by-coach answers until the coach sends 
   assert.equal(await admin.countToProcess(), before);
 });
 
+test('answersToHandle lists unhandled answers once per candidate, oldest first', { skip }, async () => {
+  const admin = await import('../../src/lib/admin-data.ts');
+  const a = await candidate('C'); const b = await candidate('C');
+  for (const id of [a, b]) { await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`; await P.sendSubject(id, 1); }
+  await P.answerProposal(b, (await state(b)).pending.id, 'changements', null, 'Non');
+  await new Promise((r) => setTimeout(r, 20));
+  await P.answerProposal(a, (await state(a)).pending.id, 'approuvee', null, '');
+  const mine = (await admin.answersToHandle()).filter((x) => x.id === a || x.id === b);
+  assert.deepEqual(mine.map((x) => [x.id, x.responses]), [[b, ['changements']], [a, ['approuvee']]]);
+  assert.ok(mine[0].since);
+  await P.markHandled(b);
+  assert.deepEqual((await admin.answersToHandle()).filter((x) => x.id === b), []);
+});
+
 test('non-integer ids are refused without throwing', { skip }, async () => {
   const id = await candidate('A');
   assert.deepEqual(await P.answerProposal(id, NaN, 'approuvee', null, ''), { ok: false, error: 'Proposition introuvable.' });
