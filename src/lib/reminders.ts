@@ -6,6 +6,7 @@ import { appUrl, candidateProposalReminder, candidateReminder, coachStalledDiges
 import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
 import { mailboxKey } from './contact.ts';
+import { countsAsSubmitted } from './proposals.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
 const hoursBetween = (a: Date, b: Date) => (a.getTime() - b.getTime()) / 3_600_000;
@@ -80,7 +81,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
 
 /**
  * One reminder for a proposal left unanswered for 48 hours (claimed first, so two runs never send it twice).
- * Candidates a coach has set aside (non_retenue) or without an address are skipped, like the form reminders above.
+ * Candidates a coach has set aside (non_retenue), without an address, or already counted as submitted are skipped.
  */
 export async function remindPendingProposals(now = new Date()): Promise<number> {
   const due = await all<{ id: number; candidate_id: number }>(
@@ -94,6 +95,8 @@ export async function remindPendingProposals(now = new Date()): Promise<number> 
     if (!claimed) continue;
     const c = await getCandidate(p.candidate_id);
     if (!c?.email || c.status === 'non_retenue') continue;
+    const sub = await get<{ application_state: string | null }>('SELECT application_state FROM subjects WHERE candidate_id=?', c.id);
+    if (countsAsSubmitted(c, sub?.application_state)) continue; // /plan shows « soumise » and no answer form: nothing to remind
     const m = candidateProposalReminder(c.name ?? '', `${appUrl()}/reprendre/${c.token}`, c.locale);
     await sendMail({ ...m, to: c.email, kind: 'candidate_proposal_reminder', candidateId: c.id });
     sent++;

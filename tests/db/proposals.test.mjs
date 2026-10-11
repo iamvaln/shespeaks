@@ -206,9 +206,10 @@ test('proposal reminders skip what is not due or not open, and parallel runs sen
   const replaced = await dueProposal(60, { state: 'remplacee' });
   const answered = await dueProposal(60, { state: 'repondue' });
   const aside = await dueProposal(60, { status: 'non_retenue' });
+  const submitted = await dueProposal(60, { status: 'candidature_soumise' });
   const due = await dueProposal(60);
   await Promise.all([rem.remindPendingProposals(new Date()), rem.remindPendingProposals(new Date())]);
-  for (const id of [early, replaced, answered, aside]) assert.equal(await reminderMails(id), 0);
+  for (const id of [early, replaced, answered, aside, submitted]) assert.equal(await reminderMails(id), 0);
   assert.equal(await reminderMails(due), 1, 'two parallel runs send exactly one email');
 });
 
