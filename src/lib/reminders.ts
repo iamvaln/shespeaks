@@ -90,10 +90,10 @@ export async function remindPendingProposals(now = new Date()): Promise<number> 
     now.toISOString().replace('T', ' ').slice(0, 19));
   let sent = 0;
   for (const p of due) {
-    const claimed = await get<{ id: number }>(`UPDATE proposals SET reminded_at=(now() at time zone 'utc') WHERE id=? AND reminded_at IS NULL RETURNING id`, p.id);
+    const claimed = await get<{ id: number }>(`UPDATE proposals SET reminded_at=(now() at time zone 'utc') WHERE id=? AND reminded_at IS NULL AND state='envoyee' RETURNING id`, p.id);
     if (!claimed) continue;
     const c = await getCandidate(p.candidate_id);
-    if (!c?.email) continue;
+    if (!c?.email || c.status === 'non_retenue') continue;
     const m = candidateProposalReminder(c.name ?? '', `${appUrl()}/reprendre/${c.token}`, c.locale);
     await sendMail({ ...m, to: c.email, kind: 'candidate_proposal_reminder', candidateId: c.id });
     sent++;

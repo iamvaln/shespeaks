@@ -185,6 +185,29 @@ test('a proposal unanswered for 48 h gets one reminder, never two', { skip }, as
   assert.ok((await rem.remindPendingProposals(new Date())) >= 1);
   const [{ reminded_at }] = await raw`select reminded_at from proposals where candidate_id = ${id}`;
   assert.ok(reminded_at);
-  await rem.remindPendingProposals(new Date());
+  assert.equal(await rem.remindPendingProposals(new Date()), 0, 'second call sends nothing');
   assert.equal((await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = 'candidate_proposal_reminder'`)[0].n, 1);
+});
+
+async function dueProposal(hours, over = {}) {
+  const id = await candidate('C');
+  await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`;
+  await P.sendSubject(id, 1);
+  await raw`update proposals set sent_at = (now() at time zone 'utc') - make_interval(hours => ${hours}) where candidate_id = ${id}`;
+  if (over.state) await raw`update proposals set state = ${over.state} where candidate_id = ${id}`;
+  if (over.status) await raw`update candidates set status = ${over.status} where id = ${id}`;
+  return id;
+}
+const reminderMails = async (id) => (await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = 'candidate_proposal_reminder'`)[0].n;
+
+test('proposal reminders skip what is not due or not open, and parallel runs send once', { skip }, async () => {
+  const rem = await import('../../src/lib/reminders.ts');
+  const early = await dueProposal(47);
+  const replaced = await dueProposal(60, { state: 'remplacee' });
+  const answered = await dueProposal(60, { state: 'repondue' });
+  const aside = await dueProposal(60, { status: 'non_retenue' });
+  const due = await dueProposal(60);
+  await Promise.all([rem.remindPendingProposals(new Date()), rem.remindPendingProposals(new Date())]);
+  for (const id of [early, replaced, answered, aside]) assert.equal(await reminderMails(id), 0);
+  assert.equal(await reminderMails(due), 1, 'two parallel runs send exactly one email');
 });
