@@ -65,12 +65,16 @@ jobs:
           grep -q "nothing to apply" second-run.log
           npm run db:status
 
-      - name: Build (runs the environment check)
-        run: npm run build
+      - name: Environment check (production rules)
+        run: npm run check:env
         env:
           APP_URL: https://ci.example.com
           SESSION_SECRET: ci-session-secret-0123456789abcdef
           CRON_SECRET: ci-cron-secret-0123456789abcdef
+          DATA_DIR: ./data
+
+      - name: Build
+        run: npm run build
 
       - name: Start the production server
         run: |
@@ -95,3 +99,46 @@ jobs:
       - name: Server log (always)
         if: always()
         run: cat server.log || true
+
+  image:
+    name: Docker image, migrations and smoke test against the container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: shespeaks, POSTGRES_PASSWORD: shespeaks, POSTGRES_DB: shespeaks }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shespeaks" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t shespeaks:ci .
+      - run: docker build -t shespeaks-backup:ci ops/backup
+      - name: Compose file is valid (prod profile, dummy variables)
+        run: >-
+          STACK=ci DEPLOY_ENV=production POSTGRES_PASSWORD=ci APP_URL=https://ci.example.com
+          SESSION_SECRET=ci CRON_SECRET=ci APP_DOMAIN=ci.example.com
+          docker compose --profile prod config -q
+      - name: Migrations from the image (environment check included)
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL='postgresql://shespeaks:shespeaks@localhost:5432/shespeaks?sslmode=disable'
+          -e APP_URL=https://ci.example.com -e SESSION_SECRET=ci-session-secret-0123456789abcdef
+          -e CRON_SECRET=ci-cron-secret-0123456789abcdef -e ADMIN_EMAIL=coach@example.com -e DEPLOY_ENV=preprod
+          shespeaks:ci sh -c 'node --experimental-strip-types --no-warnings scripts/check-env.mjs --strict && node --experimental-strip-types --no-warnings scripts/db.mjs setup'
+      - name: Start the container
+        run: |
+          docker run -d --name app --network host \
+            -e DATABASE_URL='postgresql://shespeaks:shespeaks@localhost:5432/shespeaks?sslmode=disable' \
+            -e APP_URL=https://ci.example.com -e SESSION_SECRET=ci-session-secret-0123456789abcdef \
+            -e CRON_SECRET=ci-cron-secret-0123456789abcdef -e DEPLOY_ENV=preprod shespeaks:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health > /dev/null && exit 0; sleep 1; done
+          docker logs app; exit 1
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Smoke test against the container
+        run: node scripts/smoke.mjs
+        env: { SESSION_SECRET: ci-session-secret-0123456789abcdef }
+      - if: always()
+        run: docker logs app || true

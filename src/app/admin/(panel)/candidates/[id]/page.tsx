@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { all } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
-import { STATUSES, getSetting, statusLabel } from '@/lib/db';
+import { STATUSES, statusLabel } from '@/lib/db';
 import {
   eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
 } from '@/lib/data';
@@ -14,15 +14,22 @@ import { RoadmapView } from '@/components/RoadmapView';
 import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
-import { aiConfigured } from '@/lib/ai-topics';
+import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
-import { BRANCH_SHORT, elapsed, one } from '@/lib/admin-format';
+import { BRANCH_SHORT, elapsed, one, topicSummary } from '@/lib/admin-format';
+import { currentSubject } from '@/lib/ai-subject';
+import { getSubjectProposal } from '@/lib/ai-subject-store';
+import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
+import { appUrl } from '@/lib/mail';
+import { journeyOf, listProposals } from '@/lib/proposals';
+import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
+  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
 export const metadata = { title: 'Fiche candidate' };
@@ -34,6 +41,16 @@ const TRACK_TONE: Record<string, string> = { generee: 'neutral', retenue_coach: 
 const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach', ia: 'Suggestion IA' };
 /** The path of a candidate who goes all the way, in order. « En cours » and « Non retenue » sit outside it. */
 const STAGES = ['diagnostic_recu', 'sujet_valide', 'candidature_soumise', 'retenue', 'slides_validees', 'repetition_faite', 'jour_j'];
+const STEP_LABEL: Record<string, string> = { choix: 'Choix du sujet', sujet: 'Sujet à valider', photo: 'Photo', soumission: 'En attente de sa soumission', soumise: 'Candidature soumise' };
+const WAITING_LABEL: Record<string, string> = { coach: 'À toi', candidate: 'En attente de la candidate', none: 'Terminé' };
+const KIND_LABEL: Record<string, string> = { choix: 'Choix de sujet', sujet: 'Sujet à valider', photo: 'Demande de photo' };
+const RESPONSE_LABEL: Record<string, string> = { choisie: 'A choisi un sujet', aucune: 'Aucun ne lui convient', approuvee: 'A approuvé le sujet', changements: 'Demande des changements', photo_deposee: 'A déposé une photo' };
+/** What the coach sent, in a few words. */
+const sentSummary = (x: Proposal): string => {
+  if (x.kind === 'choix') return (x.payload as ChoicePayload).items.map((i) => i.title).join(' · ');
+  if (x.kind === 'sujet') return (x.payload as SubjectPayload).title;
+  return (x.payload as PhotoPayload).comment;
+};
 const DATE_TIME = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' } as const;
 
 export default async function Fiche({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; err?: string; tab?: string }> }) {
@@ -44,11 +61,21 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const id = Number(rawId);
   const c = await getCandidate(id);
   if (!c || !c.name) notFound();
-  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, showTracks] = await Promise.all([
+  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, journeyNow, exchanges] = await Promise.all([
     getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
-    getSetting('show_tracks_to_candidates'),
+    journeyOf(id), listProposals(id),
   ]);
+  const retained = tracks.filter((t) => t.state === 'retenue_coach');
+  // the button needs 2 or 3 retained tracks, each with a SAVED sentence (the hook shown as a starting point is not sent)
+  const choiceReady = retained.length >= 2 && retained.length <= 3 && retained.every((t) => (t.pitch ?? '').trim());
+  // once she counts as submitted (her confirmation, « déjà soumise » in the form, or a status moved forward) nothing more is sent
+  const submitted = journeyNow?.step === 'soumise';
+  const SUBMITTED_NOTE = 'La candidature est déjà soumise : plus rien n’est envoyé à la candidate.';
+  const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
+  const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
+  const startSubject = c.branch ? currentSubject(c.branch, a, subject ?? null) : null;
+  const proposal = await getSubjectProposal(id);
   const coaches = allCoaches.filter((x) => x.active || x.id === c.coach_id);
   const history = await all<{ old_status: string | null; new_status: string; author: string; at: string }>('SELECT * FROM status_history WHERE candidate_id=? ORDER BY id DESC', id);
   const notes = await all<{ text: string; at: string; next_point_date: string | null; coach: string | null }>(
@@ -96,6 +123,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         <div className="a-actions">
           <a className="a-btn is-ghost a-jump" href="#suivi">Suivi ↓</a>
           {wa && <a className="a-btn is-amber" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"><Icon name="message" />Écrire sur WhatsApp</a>}
+          {wa && <a className="a-btn is-ghost" href={`https://wa.me/${wa}?text=${encodeURIComponent(`${c.locale === 'en' ? `Hello ${c.name?.split(' ')[0] ?? ''}, here is your personal link to get back to your SheSpeaks space: ` : `Bonjour ${c.name?.split(' ')[0] ?? ''}, voici ton lien personnel pour retrouver ton espace SheSpeaks : `}${appUrl()}/reprendre/${c.token}`)}`} target="_blank" rel="noopener noreferrer">Envoyer son lien d’accès sur WhatsApp</a>}
           {c.email && <a className="a-btn is-ghost" href={`mailto:${c.email}`}><Icon name="mail" />Envoyer un email</a>}
           {!c.completed_at && c.email && (
             <form action={remindNowAction}>
@@ -148,6 +176,54 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
           {tab === 'sujet' && (
             <>
+              <section className="a-card a-stack" aria-labelledby="h-echanges">
+                <div className="a-row-between" style={{ flexWrap: 'wrap' }}>
+                  <h2 id="h-echanges" className="a-h2">Échanges avec la candidate</h2>
+                  {journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}
+                </div>
+                {journeyNow && <p style={{ margin: 0 }}><strong>Étape : {STEP_LABEL[journeyNow.step]}</strong></p>}
+                {submitted && (
+                  <form action={reopenExchangesAction} className="a-actions">
+                    <input type="hidden" name="cid" value={id} />
+                    <span className="a-muted">Besoin de lui envoyer autre chose (une autre photo, un sujet corrigé) ?</span>
+                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Tu pourras de nouveau lui envoyer des propositions ; elle confirmera sa soumission à nouveau à la fin. Son statut ne change pas.">Rouvrir les échanges</PendingButton>
+                  </form>
+                )}
+                {toHandle && (
+                  <form action={markHandledAction} className="a-actions">
+                    <input type="hidden" name="cid" value={id} />
+                    <span className="a-muted">Elle a répondu : cette réponse compte dans « à traiter ».</span>
+                    <button className="a-btn is-sm">Marquer comme traité</button>
+                  </form>
+                )}
+                {exchangesNewestFirst.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Rien n’a encore été envoyé à la candidate.</p> : (
+                  <ul className="a-notes">
+                    {exchangesNewestFirst.map((x) => (
+                      <li key={x.id}>
+                        <div className="a-sub" style={{ whiteSpace: 'normal' }}>{fmtDate(x.sent_at, 'fr', DATE_TIME)} · {KIND_LABEL[x.kind]}{x.state === 'remplacee' ? ' · remplacée' : x.state === 'envoyee' ? ' · en attente de réponse' : ''}</div>
+                        <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{sentSummary(x)}</div>
+                        {x.state === 'repondue' && x.response && (
+                          <div style={{ marginTop: 4 }}>
+                            <strong>{RESPONSE_LABEL[x.response]}</strong>
+                            {x.response === 'choisie' && x.response_choice !== null && x.kind === 'choix' ? ` : ${(x.payload as ChoicePayload).items[x.response_choice]?.title ?? ''}` : ''}
+                            {x.answered_at ? <span className="a-sub"> · {fmtDate(x.answered_at, 'fr', DATE_TIME)}</span> : null}
+                            {x.candidate_comment && <div style={{ whiteSpace: 'pre-wrap' }}>« {x.candidate_comment} »</div>}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {c.branch && (
+                <section className="a-card" aria-labelledby="h-repondu">
+                  <h2 id="h-repondu" className="a-h2">Ce qu’elle a répondu</h2>
+                  <p className="a-muted" style={{ margin: '2px 0 8px' }}>
+                    Ses réponses utiles pour le sujet, à lire avant les pistes. Tout le formulaire : onglet <Link href={tabHref('reponses')}>Réponses</Link>.
+                  </p>
+                  <dl className="a-qa">{topicSummary(c.branch, a).map((q) => (<div key={q.code}><dt>{q.label.fr}</dt><dd style={{ whiteSpace: 'pre-line' }}>{fmtVal(q, a[q.code])}</dd></div>))}</dl>
+                </section>
+              )}
               {(c.branch === 'A' || c.branch === 'B') && (
                 <section className="a-card is-flush" aria-labelledby="h-pistes">
                   <div className="a-card-head" style={{ flexWrap: 'wrap' }}>
@@ -156,17 +232,26 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <p className="a-muted" style={{ margin: '2px 0 0' }}>
                         Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
-                        {!aiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper.'}
-                        {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate (une suggestion de l’IA seulement une fois retenue ou choisie).' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
+                        {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
+                        {' La candidate ne voit pas ces pistes : seulement ce que tu lui envoies (« Envoyer les pistes retenues »).'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {aiConfigured() && c.completed_at && (
-                        <form action={suggestTracksAction}>
+                      {c.completed_at && (aiConfigured() || openaiConfigured()) && (
+                        <form action={suggestTracksAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', flexBasis: '100%' }}>
                           <input type="hidden" name="cid" value={id} />
-                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer au fournisseur d’IA les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de l’IA non retenues sont remplacées.">
-                            <Icon name="spark" size={16} />Suggérer avec l’IA
-                          </PendingButton>
+                          <label className="a-label" style={{ flex: '1 1 320px' }}>
+                            Précisions pour l’IA (facultatif, gardées sur la fiche)
+                            <AutoGrowTextarea className="a-input" name="ai_brief" defaultValue={c.ai_brief ?? ''} maxLength={800} placeholder="Ex. : elle vient du support et veut raconter sa reconversion vers le DevOps ; éviter le mobile." />
+                          </label>
+                          {([
+                            ['claude', 'Claude', aiConfigured()],
+                            ['openai', 'OpenAI', openaiConfigured()],
+                          ] as const).filter(([, , on]) => on).map(([provider, name]) => (
+                            <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé, tes précisions et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
+                              <Icon name="spark" size={16} />Suggérer avec {name}
+                            </PendingButton>
+                          ))}
                         </form>
                       )}
                       <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
@@ -183,12 +268,18 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <AutoGrowTextarea className="a-track-title" name="title" defaultValue={t.title} aria-label={`Titre de la piste ${i + 1}`} />
                               <span className="a-track-meta">
                                 <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
-                                <span>{ORIGIN[t.origin] ?? t.origin}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
+                                <span>{ORIGIN[t.origin] ?? t.origin}{t.origin === 'ia' ? ` · ${t.model ?? 'Claude'}` : ''}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
                                 <select className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
                                   <option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option>
                                 </select>
                               </span>
                               {t.hook && <span className="a-sub" style={{ whiteSpace: 'normal' }}>{t.hook}</span>}
+                              {t.state === 'retenue_coach' && (
+                                <label className="a-label">Pour la candidate : pourquoi ce sujet lui irait
+                                  <AutoGrowTextarea className="a-input" name="pitch" defaultValue={t.pitch ?? t.hook ?? ''} maxLength={400} aria-label={`Pour la candidate : pourquoi le sujet ${i + 1} lui irait`} />
+                                </label>
+                              )}
+                              {t.state === 'retenue_coach' && !(t.pitch ?? '').trim() && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Phrase pas encore enregistrée : relis-la, adapte-la pour elle, puis Enregistrer.</span>}
                             </div>
                             <div className="a-track-actions">
                               {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm" aria-label={`Choisir la piste ${i + 1}`}>Choisir</button>}
@@ -208,18 +299,70 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
                     <button className="a-btn is-ghost">Ajouter</button>
                   </form>
+                  {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', padding: '12px 16px', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                    <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
+                      <input type="hidden" name="cid" value={id} />
+                      <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                      <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase enregistrée.</span>
+                    </form>
+                  )}
                 </section>
               )}
 
               <section className="a-card a-stack" aria-labelledby="h-sujet">
                 <div><h2 id="h-sujet" className="a-h2">Sujet retenu et candidature</h2><p className="a-muted" style={{ margin: '2px 0 0' }}>Se remplit tout seul quand tu choisis une piste ; à compléter avant de valider le sujet.</p></div>
+                {c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
+                  <form action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <input type="hidden" name="cid" value={id} />
+                    <label className="a-label" style={{ flex: '1 1 320px' }}>
+                      Précisions pour l’IA (facultatif, gardées sur la fiche)
+                      <AutoGrowTextarea className="a-input" name="ai_brief" defaultValue={c.ai_brief ?? ''} maxLength={800} placeholder="Ex. : garder son exemple réel ; viser un public débutant ; plus orienté démo." />
+                    </label>
+                    {([
+                      ['claude', 'Claude', aiConfigured()],
+                      ['openai', 'OpenAI', openaiConfigured()],
+                    ] as const).filter(([, , on]) => on).map(([provider, name]) => (
+                      <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} son sujet actuel (titre, résumé${c.branch === 'C' ? ', idées clés' : ''}), son poste ou ses études, son ancienneté, l’événement visé et tes précisions pour obtenir une proposition d’amélioration ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). La proposition précédente est remplacée.`}>
+                        <Icon name="spark" size={16} />Améliorer avec {name}
+                      </PendingButton>
+                    ))}
+                  </form>
+                )}
+                {proposal && (
+                  <div className="a-stack" role="region" aria-labelledby="h-proposition" style={{ gap: 10, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
+                    <h3 id="h-proposition" className="a-eyebrow" style={{ margin: 0, color: 'var(--amber-text)' }}>Proposition d’amélioration · {proposal.model} · {fmtDate(proposal.created_at, 'fr', DATE_TIME)}</h3>
+                    {proposal.note && <p style={{ margin: 0 }}><strong>Ce qui change :</strong> {proposal.note}</p>}
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Titres</p>
+                      <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
+                        {proposal.titles.map((t, k) => <li key={k}><span style={{ marginRight: 8 }}>{t}</span><UseInField target="subject-title" value={t} label={`Utiliser le titre : ${t}`}>Utiliser ce titre</UseInField></li>)}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Résumé <span className="a-muted" style={{ fontWeight: 400 }}>({wordCount(proposal.abstract)} mots)</span></p>
+                      <p style={{ margin: '0 0 6px', whiteSpace: 'pre-line' }}>{proposal.abstract}</p>
+                      <UseInField target="subject-abstract" value={proposal.abstract}>Utiliser ce résumé</UseInField>
+                    </div>
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Comment aborder le sujet</p>
+                      <ol style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>{proposal.plan.map((s, k) => <li key={k}>{s}</li>)}</ol>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                        <UseInField target="subject-why" value={proposal.note}>Utiliser comme « Pourquoi »</UseInField>
+                        <UseInField target="subject-plan" value={proposal.plan.join('\n')}>Utiliser ce plan</UseInField>
+                      </div>
+                    </div>
+                    <p className="a-muted" style={{ margin: 0 }}>« Utiliser » remplit le formulaire ci-dessous : rien n’est enregistré avant « Enregistrer le sujet ».</p>
+                  </div>
+                )}
                 <form action={saveSubjectAction} className="a-stack">
                   <input type="hidden" name="id" value={id} />
-                  <label className="a-label">Titre<input className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
+                  <label className="a-label">Titre<input id="subject-title" className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
                   <label className="a-label">Résumé
-                    <textarea className="a-textarea" name="abstract" defaultValue={subject?.abstract ?? ''} placeholder="Ce que le public va comprendre, voir, repartir avec…" />
+                    <textarea id="subject-abstract" className="a-textarea" name="abstract" defaultValue={subject?.abstract ?? ''} placeholder="Ce que le public va comprendre, voir, repartir avec…" />
                     <span className="a-sub" style={{ fontWeight: 400 }}>{wordCount(subject?.abstract ?? '')} mots · cible : 80 à 200</span>
                   </label>
+                  <label className="a-label">Pourquoi ces changements (pour la candidate)<textarea id="subject-why" className="a-textarea" name="why" defaultValue={subject?.why ?? ''} maxLength={1500} /></label>
+                  <label className="a-label">Comment t’y prendre (une étape par ligne)<textarea id="subject-plan" className="a-textarea" name="plan" defaultValue={subject?.plan ?? ''} /></label>
                   <div className="a-grid-3">
                     <label className="a-label">Niveau du public<select className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                     <label className="a-label">Format<select className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
@@ -227,6 +370,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   </div>
                   <div><button className="a-btn">Enregistrer le sujet</button></div>
                 </form>
+                {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                  <form action={sendSubjectAction}>
+                    <input type="hidden" name="cid" value={id} />
+                    <PendingButton className="a-btn" pendingLabel="Envoi…" confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant.">Envoyer à la candidate pour validation</PendingButton>
+                  </form>
+                )}
               </section>
 
               {c.branch === 'D' && (
@@ -316,6 +465,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 </div>
               ) : (
                 <>
+                  {c.photo_validated_at && <p style={{ margin: 0 }}><strong>Photo validée le {fmtDate(c.photo_validated_at, 'fr', DATE_TIME)}</strong></p>}
                   <p className="a-muted" style={{ margin: 0 }}>Consentement à l’usage : <strong style={{ color: 'var(--ink)' }}>{c.consent_photo ? 'oui' : 'non'}</strong></p>
                   <div className="photo-admin">
                     {photos.map((p) => (
@@ -324,10 +474,23 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         <figcaption className="a-sub">{p.width && p.height ? `${p.width}×${p.height}` : ''} · {Math.max(1, Math.round(p.size / 1024))} Ko</figcaption>
                         <form action={selectPhotoAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="photo_id" value={p.id === c.selected_photo_id ? 0 : p.id} />
                           <button className={`a-btn is-sm${p.id === c.selected_photo_id ? '' : ' is-ghost'}`}>{p.id === c.selected_photo_id ? '✓ Retenue' : 'Retenir'}</button></form>
+                        <form action={validatePhotoAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="photo_id" value={p.id} />
+                          {p.id === c.selected_photo_id && c.photo_validated_at
+                            ? <span className="a-pill is-green">✓ Validée</span>
+                            : <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button>}</form>
                       </figure>
                     ))}
                   </div>
                 </>
+              )}
+              {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                <form action={requestPhotoAction} className="a-stack" style={{ gap: 8 }}>
+                  <input type="hidden" name="cid" value={id} />
+                  <label className="a-label">Demander une autre photo (dis-lui ce qu’il faut changer)
+                    <textarea className="a-textarea" name="comment" required maxLength={1000} />
+                  </label>
+                  <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
+                </form>
               )}
             </section>
           )}

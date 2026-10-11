@@ -1,0 +1,18 @@
+#!/bin/bash
+# Restore the photos from R2 into UPLOADS_DIR: `docker compose run --rm backup restore-uploads latest`.
+# Files are added or overwritten, never deleted.
+set -euo pipefail
+: "${BACKUP_R2_ACCOUNT_ID:?}" "${BACKUP_R2_BUCKET:?}"
+PREFIX=${BACKUP_R2_PREFIX:-backups}
+UPLOADS_DIR=${UPLOADS_DIR:-/uploads}
+EP="https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+target="${1:-}"
+[ -z "$target" ] && { echo "usage: restore-uploads <name|latest>" >&2; exit 2; }
+if [ "$target" = "latest" ]; then
+  target=$(aws s3 ls "s3://${BACKUP_R2_BUCKET}/${PREFIX}/" --endpoint-url "$EP" | awk '{print $NF}' | grep -E '^shespeaks-uploads-[0-9]{8}T[0-9]{6}Z\.tar\.gz$' | sort | tail -1)
+  [ -z "$target" ] && { echo "restore-uploads: no photo archive found" >&2; exit 1; }
+fi
+aws s3 cp "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${target}" "/tmp/${target}" --endpoint-url "$EP" --no-progress
+tar -C "${UPLOADS_DIR}" -xzf "/tmp/${target}"
+rm -f "/tmp/${target}"
+echo "[restore-uploads] ${target} → ${UPLOADS_DIR}"

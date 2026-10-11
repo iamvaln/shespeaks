@@ -8,15 +8,19 @@ import type { ComponentProps, ReactNode } from 'react';
  * anything is sent.
  */
 export function PendingButton({ children, pendingLabel, confirmText, onClick, ...props }: { children: ReactNode; pendingLabel: string; confirmText?: string } & ComponentProps<'button'>) {
-  const { pending } = useFormStatus();
+  const { pending: formPending, data } = useFormStatus();
+  // several submit buttons in one form (name + value): only the one that was pressed is relabelled; the others are only inert
+  const mine = !props.name || props.value === undefined || data?.get(String(props.name)) === String(props.value);
+  const pending = formPending && mine;
+  const inert = formPending && !mine;
   return (
     <>
       <button
         {...props}
-        aria-disabled={pending || props.disabled || undefined}
+        aria-disabled={pending || inert || props.disabled || undefined}
         aria-busy={pending}
         onClick={(e) => {
-          if (pending) { e.preventDefault(); return; }
+          if (pending || inert) { e.preventDefault(); return; }
           if (confirmText && !window.confirm(confirmText)) { e.preventDefault(); return; }
           onClick?.(e);
         }}

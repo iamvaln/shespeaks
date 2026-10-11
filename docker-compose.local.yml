@@ -1,0 +1,9 @@
+# Local run of the VPS stack: `docker network create web` once, then
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --env-file .env.compose up -d --build
+services:
+  migrate:
+    build: .
+    image: shespeaks:local
+  app:
+    image: shespeaks:local
+    ports: ["3000:3000"]

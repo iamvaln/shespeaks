@@ -4,13 +4,18 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
+import { getRefs, getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
+import { improveSubjectFor } from '@/lib/ai-subject-store';
+import type { AiProvider } from '@/lib/ai-topics';
 import { removeObject } from '@/lib/storage';
+import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
+import { markHandled, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -90,9 +95,11 @@ export async function saveSubjectAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   await run(
-    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state) VALUES (?,?,?,?,?,?)
-     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format, application_state=excluded.application_state`,
+    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state,why,plan) VALUES (?,?,?,?,?,?,?,?)
+     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format,
+       application_state=excluded.application_state, why=excluded.why, plan=excluded.plan`,
     id, str(f, 'title'), str(f, 'abstract'), str(f, 'audience') || null, str(f, 'format') || null, str(f, 'application_state') || 'a_soumettre',
+    str(f, 'why').slice(0, 1500) || null, str(f, 'plan').slice(0, 3000) || null,
   );
   return back(cpath(id), 'Sujet enregistré');
 }
@@ -112,9 +119,28 @@ const AI_MESSAGE: Record<string, string> = {
 export async function suggestTracksAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
-  const r = await suggestTracksFor(id, coach.id);
-  if (!r.ok) return back(cpath(id), AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed, true);
-  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de l’IA (les précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
+  const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
+  const name = provider === 'openai' ? 'OpenAI' : 'Claude';
+  // « Précisions pour l'IA »: kept on the fiche (every next request reuses them), saved before the call so a failure keeps them too
+  if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
+  const r = await suggestTracksFor(id, coach.id, undefined, provider);
+  if (!r.ok) return back(cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
+  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
+}
+
+/** « Améliorer avec Claude / OpenAI » in « Sujet retenu »: three titles, an abstract and how to approach the talk, for the coach to read. */
+export async function improveSubjectAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
+  const name = provider === 'openai' ? 'OpenAI' : 'Claude';
+  if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
+  const r = await improveSubjectFor(id, coach.id, provider);
+  if (!r.ok) {
+    const why = r.reason === 'not_eligible' ? 'Il faut un formulaire terminé et un sujet de départ (titre ou résumé).' : AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed;
+    return back(cpath(id), `${name} : ${why}`, true);
+  }
+  return back(cpath(id), `Proposition d’amélioration de ${name} prête, sous le sujet : à relire, puis « Utiliser » ce qui te convient et enregistrer`);
 }
 
 export async function trackAction(f: FormData) {
@@ -141,6 +167,9 @@ export async function trackAction(f: FormData) {
     await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
     if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
   }
+  // the sentence « for the candidate » travels in the same form as the title (only retained tracks have the field); only « Enregistrer » keeps it
+  const pitch = pitchToSave(op, f.has('pitch') ? str(f, 'pitch') : null);
+  if (pitch !== undefined) await run('UPDATE tracks SET pitch=? WHERE id=?', pitch, tid);
   let done: string;
   if (op === 'save') {
     done = 'Piste enregistrée';
@@ -174,7 +203,7 @@ export async function selectPhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   const photoId = num(f, 'photo_id') || null;
-  await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', photoId, id);
+  await selectPhoto(id, photoId);
   return back(cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 
@@ -210,19 +239,38 @@ export async function saveEventAction(f: FormData) {
   const posterRaw = str(f, 'poster_url');
   if (badDate(nz('cfp_close_date')) || badDate(nz('event_date'))) return back('/admin/events', 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (posterRaw && !safePoster(posterRaw)) return back('/admin/events', 'L’affiche doit être un chemin du site (/events/mon-affiche.jpg) ou une adresse https://', true);
+  const ctx = await eventContext(f);
   if (id) {
     await run(
-      'UPDATE devfest_events SET title=?, name=?, poster_url=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=? WHERE id=?',
-      title || place, place, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'), id,
+      'UPDATE devfest_events SET title=?, name=?, poster_url=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=?, theme=?, description=?, accepted_formats=?, themes=? WHERE id=?',
+      title || place, place, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'),
+      ctx.theme, ctx.description, ctx.accepted_formats, ctx.themes, id,
     );
     return back('/admin/events', 'Événement mis à jour');
   }
   if (!title) return back('/admin/events', 'Le nom de l’événement est requis', true);
   const slug = (title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!slug || (await get('SELECT 1 FROM devfest_events WHERE city=?', slug))) return back('/admin/events', 'Un événement portant ce nom existe déjà', true);
-  await run('INSERT INTO devfest_events (city,name,title,poster_url,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    slug, place || title, title, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'));
+  await run('INSERT INTO devfest_events (city,name,title,poster_url,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label,theme,description,accepted_formats,themes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    slug, place || title, title, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'),
+    ctx.theme, ctx.description, ctx.accepted_formats, ctx.themes);
   return back('/admin/events', 'Événement ajouté');
+}
+
+/** Theme, description, accepted formats and expected themes of an event: lists keep known ids only, in a stable order. */
+async function eventContext(f: FormData) {
+  const pick = (key: string, known: readonly string[]) => {
+    const chosen = new Set(f.getAll(key).map(String));
+    const ids = known.filter((v) => chosen.has(v));
+    return ids.length ? ids.join(',') : null;
+  };
+  const domains = (await getRefs()).domains.map((d) => d.value);
+  return {
+    theme: str(f, 'theme').slice(0, 200) || null,
+    description: str(f, 'description').slice(0, 3000) || null,
+    accepted_formats: pick('accepted_formats', ['talk', 'lightning', 'atelier']),
+    themes: pick('themes', domains),
+  };
 }
 
 // ---- coaches -----------------------------------------------------------------------
@@ -250,9 +298,56 @@ export async function toggleCoachAction(f: FormData) {
 // ---- settings ----------------------------------------------------------------------
 export async function saveSettingsAction(f: FormData) {
   await requireCoach();
-  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles'];
+  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
-  await setSetting('show_tracks_to_candidates', f.get('show_tracks_to_candidates') ? 'true' : 'false');
+  // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
+}
+
+// ---- exchanges with the candidate (proposals flow) -------------------------------
+/** An unknown candidate has no fiche to come back to: the banner shows on the list. */
+const fail = (id: number, error: string, tab = ''): never => back(error === 'Candidate introuvable' ? '/admin/candidates' : cpath(id, tab), error, true);
+const validCid = (n: number) => Number.isInteger(n) && n >= 1 && n <= 2147483647;
+export async function sendChoiceAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await sendChoice(id, coach.id);
+  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : fail(id, r.error);
+}
+export async function sendSubjectAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await sendSubject(id, coach.id);
+  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : fail(id, r.error);
+}
+export async function requestPhotoAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await requestPhoto(id, coach.id, str(f, 'comment'));
+  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : fail(id, r.error, 'photos');
+}
+export async function validatePhotoAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await validatePhoto(id, num(f, 'photo_id'));
+  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : fail(id, r.error, 'photos');
+}
+export async function reopenExchangesAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await reopenExchanges(id);
+  return r.ok ? back(cpath(id), 'Échanges rouverts : tu peux de nouveau lui envoyer une proposition') : back(cpath(id), r.error, true);
+}
+export async function markHandledAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  await markHandled(id);
+  return back(cpath(id), 'Réponse marquée comme traitée');
 }

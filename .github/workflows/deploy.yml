@@ -1,0 +1,97 @@
+name: Deploy
+
+on:
+  push:
+    branches: [develop]
+    tags: ['v*']
+
+concurrency:
+  group: deploy-${{ github.ref_type == 'tag' && 'production' || 'preprod' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/iamvaln
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: t
+        run: echo "tag=${{ github.ref_type == 'tag' && github.ref_name || 'develop' }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/shespeaks:${{ steps.t.outputs.tag }}
+            ${{ github.ref_type == 'tag' && format('{0}/shespeaks:latest', env.REGISTRY) || '' }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ops/backup
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/shespeaks-backup:${{ steps.t.outputs.tag }}
+            ${{ github.ref_type == 'tag' && format('{0}/shespeaks-backup:latest', env.REGISTRY) || '' }}
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: read }
+    environment: ${{ github.ref_type == 'tag' && 'production' || 'preprod' }}
+    steps:
+      - uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # the VPS ECDSA host key (not ed25519: the action sets no HostKeyAlgorithms, so Go x/crypto negotiates ECDSA first): the token must not be sent to whatever host answers
+          fingerprint: SHA256:DbZyfJfnbrBvLGjx4YRow4l8SSip7Pt+2VaHizZY3vk
+          envs: GHCR_USER,GHCR_TOKEN,TAG,STACK,DIR,ENVFILE,PROFILE,REF
+          script: |
+            set -euo pipefail
+            # the registry login lives in a throwaway config: ~/.docker/config.json is shared by every project of the deploy user
+            DOCKER_CONFIG=$(mktemp -d)
+            export DOCKER_CONFIG
+            trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+            cd "$HOME/$DIR"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GHCR_TOKEN" | base64 -w0)" fetch --tags origin
+            git checkout --force "$REF"
+            export IMAGE_TAG="$TAG"
+            # the project Compose announces must be this environment's, never the other one (lehno, 14 September)
+            # env -u STACK: STACK is exported for this script, which would override the env file and make the guard always pass
+            PROJET=$(env -u STACK docker compose --env-file "$ENVFILE" config --format json | sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' | head -1)
+            [ "$PROJET" = "$STACK" ] || { echo "STOP: Compose announces « $PROJET », expected « $STACK »"; exit 1; }
+            n=0
+            until docker compose --env-file "$ENVFILE" $PROFILE pull; do
+              n=$((n+1)); [ "$n" -ge 3 ] && { echo "pull failed $n times"; exit 1; }; sleep 10
+            done
+            # migrate runs BEFORE `up -d`: depends_on only orders the start, and `up -d` replaces `app` first, so a failing migrate would take the site down
+            docker compose --env-file "$ENVFILE" $PROFILE run --rm migrate || { echo "migrate failed: the running version keeps serving"; exit 1; }
+            docker compose --env-file "$ENVFILE" $PROFILE up -d --remove-orphans || { docker compose --env-file "$ENVFILE" logs --tail 80 migrate app; exit 1; }
+            # `up -d` returns before the app is healthy: wait for it, and fail the run if it never is
+            for i in $(seq 1 30); do
+              s=$(docker inspect -f '{{.State.Health.Status}}' "$STACK-app-1" 2>/dev/null || echo none)
+              [ "$s" = "healthy" ] && break
+              sleep 3
+            done
+            [ "$s" = "healthy" ] || { docker compose --env-file "$ENVFILE" logs --tail 80 migrate app; exit 1; }
+            docker image prune -f
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.images.outputs.tag }}
+          REF: ${{ github.ref_type == 'tag' && github.ref_name || 'origin/develop' }}
+          STACK: ${{ github.ref_type == 'tag' && 'shespeaks' || 'shespeaks-preprod' }}
+          DIR: ${{ github.ref_type == 'tag' && 'shespeaks' || 'shespeaks-preprod' }}
+          ENVFILE: ${{ github.ref_type == 'tag' && '.env.production' || '.env.preprod' }}
+          PROFILE: ${{ github.ref_type == 'tag' && '--profile prod' || '' }}

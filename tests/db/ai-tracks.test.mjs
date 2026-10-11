@@ -281,3 +281,106 @@ test('a storage error becomes « failed » for the coach and leaves the fiche as
   assert.ok(logged.some((a) => String(a[0]).includes('could not store')), 'logged');
   assert.ok(!JSON.stringify(logged).includes('Un titre suggéré'), 'no title in the log');
 });
+
+test('the model is told about her event: theme, description, accepted formats (also enforced in the schema), expected themes', { skip }, async () => {
+  await raw`insert into devfest_events (city, name, title, event_date, theme, description, accepted_formats, themes)
+    values ('evt-ai', 'Douala', 'DevFest Test 2026', '2026-11-28', 'Stand Alone Complex', 'Exposés basés sur l’expérience.', 'talk,atelier', 'mobile,cloud')`;
+  const id = await candidate();
+  await raw`update candidates set city = 'evt-ai' where id = ${id}`;
+  const m = model(2);
+  assert.deepEqual(await ai.suggestTracksFor(id, 1, m.client), { ok: true, added: 2 });
+  const p = m.sent.at(-1);
+  const user = p.messages[0].content;
+  assert.match(p.system, /au DevFest Test 2026 \(28 novembre 2026\)/);
+  assert.match(p.system, /Orientation de l’équipe SheSpeaks pour tous les événements.*agents IA et à l’automatisation/, 'the default team orientation reaches the model');
+  for (const wanted of ['Stand Alone Complex', 'Exposés basés sur l’expérience.', 'Talk, Atelier', 'Mobile, Cloud & DevOps']) assert.ok(user.includes(wanted), wanted);
+  assert.deepEqual(p.output_config.format.schema.properties.suggestions.items.properties.format.enum, ['talk', 'atelier']);
+});
+
+test('an event she typed herself is named without details; no event leaves the generic framing', { skip }, async () => {
+  const typed = await candidate();
+  await raw`update candidates set city = 'autre', city_other = 'Women Techmakers Kribi' where id = ${typed}`;
+  const m = model(1);
+  await ai.suggestTracksFor(typed, 1, m.client);
+  assert.match(m.sent.at(-1).messages[0].content, /Women Techmakers Kribi/);
+  assert.match(m.sent.at(-1).messages[0].content, /aucun détail/);
+  const none = await candidate();
+  const n = model(1);
+  await ai.suggestTracksFor(none, 1, n.client);
+  assert.match(n.sent.at(-1).system, /dans un événement tech/);
+});
+
+/** A stand-in for the OpenAI Responses API. */
+function openaiModel(n = 2) {
+  const sent = [];
+  return {
+    sent,
+    fetchFn: async (_url, init) => {
+      sent.push(JSON.parse(init.body));
+      const items = Array.from({ length: n }, () => ({ title: `Une suggestion OpenAI numéro ${++counter} sur Flutter`, angle: 'demo', format: 'talk', hook: 'Parce qu’elle fait du Flutter.' }));
+      return new Response(JSON.stringify({ status: 'completed', usage: { input_tokens: 700, output_tokens: 200 }, output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ suggestions: items }) }] }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  };
+}
+
+test('each provider stores its model and replaces only its own untouched suggestions', { skip }, async () => {
+  process.env.OPENAI_API_KEY = 'sk-proj-test';
+  try {
+    const id = await candidate();
+    assert.deepEqual(await ai.suggestTracksFor(id, 1, model(2).client), { ok: true, added: 2 });
+    const o = openaiModel(3);
+    assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai', o.fetchFn), { ok: true, added: 3 });
+    assert.equal(o.sent[0].model, 'gpt-5.5');
+    let t = await raw`select provider || ':' || model as m from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => x.m), ['claude:claude-sonnet-5-5', 'claude:claude-sonnet-5-5', 'openai:gpt-5.5', 'openai:gpt-5.5', 'openai:gpt-5.5']);
+    // OpenAI again: its 3 are replaced by 2 new ones, Claude's 2 stay
+    assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(2).fetchFn), { ok: true, added: 2 });
+    t = await raw`select model from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => x.model), ['claude-sonnet-5-5', 'claude-sonnet-5-5', 'gpt-5.5', 'gpt-5.5']);
+    // Claude again: its 2 are replaced, OpenAI's stay; a legacy suggestion without model counts as Claude's
+    await raw`insert into tracks (candidate_id, title, origin, position) values (${id}, 'Ancienne suggestion sans modèle enregistré', 'ia', 99)`;
+    assert.deepEqual(await ai.suggestTracksFor(id, 1, model(1).client), { ok: true, added: 1 });
+    t = await raw`select coalesce(model, '∅') as m from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => x.m), ['gpt-5.5', 'gpt-5.5', 'claude-sonnet-5-5']);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('the split follows the provider, not the model name: an OpenAI model named « claude… » is still OpenAI\'s; retained suggestions stay', { skip }, async () => {
+  process.env.OPENAI_API_KEY = 'sk-proj-test';
+  process.env.OPENAI_MODEL = 'claude-lookalike';
+  try {
+    const id = await candidate();
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(2).fetchFn);
+    await raw`update tracks set state = 'retenue_coach' where id = (select min(id) from tracks where candidate_id = ${id} and origin = 'ia')`;
+    await ai.suggestTracksFor(id, 1, model(1).client); // Claude: must not touch OpenAI's
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(1).fetchFn); // OpenAI: replaces its untouched one, keeps the retained one
+    const t = await raw`select provider, state from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => `${x.provider}/${x.state}`), ['openai/retenue_coach', 'claude/generee', 'openai/generee']);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_MODEL;
+  }
+});
+
+test('OpenAI without a key is disabled, and the press is not counted', { skip }, async () => {
+  const id = await candidate();
+  assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai'), { ok: false, reason: 'disabled' });
+});
+
+test('the coach\'s notes kept on the fiche reach the prompt of both providers', { skip }, async () => {
+  process.env.OPENAI_API_KEY = 'sk-proj-test';
+  try {
+    const id = await candidate();
+    await raw`update candidates set ai_brief = 'Elle vient du support, parler de sa reconversion vers le DevOps' where id = ${id}`;
+    const c = model(1);
+    await ai.suggestTracksFor(id, 1, c.client);
+    assert.match(c.sent.at(-1).messages[0].content, /<precisions_de_la_coach>\nElle vient du support/);
+    const o = openaiModel(1);
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', o.fetchFn);
+    assert.match(o.sent.at(-1).input, /Elle vient du support/);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});

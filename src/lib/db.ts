@@ -1,7 +1,7 @@
 // Postgres (Supabase) connection and tiny query helpers. Schema: supabase/migrations/*.sql
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { resolveDatabaseUrl } from './env.ts';
+import { resolveDatabaseUrl, databaseSsl } from './env.ts';
 
 export const STATUSES = [
   { id: 'en_cours', label: 'En cours' },
@@ -79,11 +79,10 @@ export function sql(): Sql {
   if (!g.__shespeaksSql) {
     const url = resolveDatabaseUrl(process.env);
     if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set');
-    const local = /localhost|127\.0\.0\.1/.test(url);
     g.__shespeaksSql = postgres(url, {
-      max: 3,
-      prepare: false, // required behind pgbouncer / Supabase pooler
-      ssl: local ? false : 'require',
+      max: 10, // one long-lived process next to its database (it was 3 on serverless functions)
+      prepare: false, // kept for the cutover: required behind the Supabase pooler, harmless on a direct connection
+      ssl: databaseSsl(url) as false | 'require',
       idle_timeout: 20,
       connect_timeout: 10,
       onnotice: () => {},
@@ -226,6 +225,8 @@ export const SETTING_DEFAULTS = {
   reminder_max: '2',
   domains: '',
   angles: '',
+  // the team's orientation for the AI title suggestions, for every event (empty = none)
+  topic_focus: 'Tous les DevFest s’intéressent particulièrement aux agents IA et à l’automatisation. Privilégie des sujets qui montrent comment elle automatise son travail ou met des agents IA au service de son domaine : par exemple, pour une personne qui fait du DevOps, « Automatiser votre déploiement sur GCP ».',
 } as const;
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
 

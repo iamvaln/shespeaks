@@ -30,6 +30,10 @@ export interface Candidate {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  ai_brief?: string | null; // a coach's notes for the AI suggestions (« Précisions pour l'IA »)
+  photo_validated_at?: string | null;
+  submitted_at?: string | null;
+  reopened_at?: string | null; // « Rouvrir les échanges »: only her confirmation counts as submitted again
 }
 export interface Track {
   id: number;
@@ -42,6 +46,9 @@ export interface Track {
   origin: string;
   state: string;
   position: number;
+  provider?: string | null; // claude | openai (origin 'ia')
+  model?: string | null; // the AI model that wrote it (origin 'ia')
+  pitch?: string | null; // « pourquoi ce sujet lui irait », for the candidate
 }
 export interface Subject {
   candidate_id: number;
@@ -51,6 +58,8 @@ export interface Subject {
   format: string | null;
   application_state: string;
   abstract_edited: number;
+  why?: string | null; // « Pourquoi ces changements »
+  plan?: string | null; // « Comment t'y prendre », one step per line
 }
 export interface Photo {
   id: number;
@@ -169,6 +178,8 @@ export async function setStatus(id: number, newStatus: string, author: string) {
 // ---- events / calendar -------------------------------------------------------
 export type EventRow = DevfestEvent & { id: number };
 export const listEvents = () => all<EventRow>('SELECT * FROM devfest_events ORDER BY event_date IS NULL, event_date, name');
+/** A comma-separated list column (accepted_formats, themes) as ids; empty means « not stated ». */
+export const csvList = (s: string | null | undefined): string[] => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 /** Public name of an event: "DevFest Douala 2026" (falls back to the place name). */
 export const eventName = (e: { title?: string | null; name: string }) => e.title?.trim() || e.name;
 

@@ -340,6 +340,42 @@ test('a slow read that makes the pool be replaced does not cut a transaction who
   assert.equal(n, 1, 'the transaction committed');
 });
 
+test('a write cut because its pool was replaced is not repeated (it may have reached the server)', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_QUERY_TIMEOUT_MS = '5000';
+  const warns = capture('warn');
+  let failure = null;
+  try {
+    const writing = db.run('INSERT INTO probe (id) SELECT 66 FROM (SELECT pg_sleep(0.6)) s');
+    await sleep(150);
+    const old = g.__shespeaksSql; g.__shespeaksSql = undefined; old.end({ timeout: 0 }).catch(() => {}); // what a reset by another request does
+    failure = await writing.then(() => null, (e) => e);
+  } finally { warns.restore(); }
+  assert.equal(failure?.code, 'CONNECTION_DESTROYED', `the write was cut and reported, not run again (${failure ? failure.code : 'it succeeded'})`);
+  assert.ok(!warns.lines.some((l) => l.includes('repeating once')), warns.lines.join(' | '));
+  await sleep(900); // the server may still have finished the cut statement: once at most, never twice
+  const direct = postgres(directUrl, { max: 1, onnotice: () => {} });
+  const [{ n }] = await direct.unsafe('select count(*)::int as n from probe where id = 66');
+  await direct.end({ timeout: 0 });
+  assert.ok(n <= 1, `inserted ${n} times`);
+});
+
+test('the pool being replaced leaves a transaction the limit of a transaction, not the limit of one statement', { skip }, async () => {
+  pointAt(directUrl);
+  process.env.DB_FIRST_ATTEMPT_MS = '200';
+  process.env.DB_QUERY_TIMEOUT_MS = '2000'; // a statement may take 2 s, a transaction 4 s
+  const logs = capture('error'); const warns = capture('warn');
+  try {
+    const pool = db.sql();
+    const saving = db.tx(async () => { await db.all('SELECT pg_sleep(1.2)'); await db.all('SELECT pg_sleep(1.2)'); return db.get('SELECT pg_sleep(0.4), 8 AS eight'); }); // 2.8 s in all, each statement well inside its limit
+    await sleep(100);
+    const reading = db.get('SELECT pg_sleep(0.6), 1 AS ok'); // cut at 200 ms: the pool is replaced and the old one is closed after the grace
+    assert.equal((await reading).ok, 1);
+    assert.notEqual(db.sql(), pool, 'the slow read did replace the pool');
+    assert.equal((await saving).eight, 8, 'a grace of one statement limit (2 s) would have closed the connection of the transaction at about 2.3 s');
+  } finally { logs.restore(); warns.restore(); }
+});
+
 // keep this one last: the relay stops accepting connections
 test('an annulment that cannot connect is not an unhandled rejection', { skip }, async () => {
   pointAt(relayUrl());

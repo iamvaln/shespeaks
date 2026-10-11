@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import postgres from 'postgres';
-import { resolveDatabaseUrl } from '../src/lib/env.ts';
+import { resolveDatabaseUrl, databaseSsl } from '../src/lib/env.ts';
 
 const LOCK_ID = 727265001; // arbitrary constant shared by every process that migrates this database
 const DIR = path.resolve(process.env.MIGRATIONS_DIR || 'supabase/migrations');
@@ -26,8 +26,7 @@ function connect() {
   // MIGRATE_DATABASE_URL: optional override for migrations only (e.g. a session-mode / direct connection), if the pooler ever misbehaves for DDL.
   const url = resolveDatabaseUrl({ DATABASE_URL: process.env.MIGRATE_DATABASE_URL, POSTGRES_URL: undefined }) ?? resolveDatabaseUrl(process.env);
   if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set');
-  const local = /localhost|127\.0\.0\.[0-9]/.test(url);
-  return postgres(url, { max: 1, prepare: false, ssl: local ? false : 'require', onnotice: () => {}, connect_timeout: 20 });
+  return postgres(url, { max: 1, prepare: false, ssl: databaseSsl(url), onnotice: () => {}, connect_timeout: 20 });
 }
 
 function files() {

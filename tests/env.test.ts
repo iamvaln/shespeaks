@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkEnv, hasErrors } from '../src/lib/env.ts';
+import { checkEnv, hasErrors, databaseSsl } from '../src/lib/env.ts';
 
 const good = {
   APP_URL: 'https://shespeaks.example.com', DATABASE_URL: 'postgresql://u:p@aws-0.pooler.supabase.com:6543/postgres',
@@ -38,6 +38,13 @@ test('supabase storage: both or neither; neither is an error only on Vercel', ()
   assert.ok(names({ ...neither, VERCEL: '1' }).includes('error:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
 });
 
+test('photos on disk: no warning when DATA_DIR is set (the VPS volume), a warning otherwise, an error on Vercel', () => {
+  const disk = { ...good, SUPABASE_URL: undefined, SUPABASE_SERVICE_ROLE_KEY: undefined };
+  assert.ok(!names({ ...disk, DATA_DIR: '/data' }).some((n) => n.includes('SUPABASE')));
+  assert.ok(names(disk).includes('warn:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
+  assert.ok(names({ ...disk, VERCEL: '1', DATA_DIR: '/data' }).includes('error:SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY'));
+});
+
 test('resend: missing key warns; bad key, missing/invalid/test sender are flagged', () => {
   assert.ok(names({ ...good, RESEND_API_KEY: undefined }).includes('warn:RESEND_API_KEY'));
   assert.ok(names({ ...good, RESEND_API_KEY: 'sk_live_nope' }).includes('error:RESEND_API_KEY'));
@@ -53,6 +60,9 @@ test('AI suggestions: the key is optional (a warning, never an error) and must l
   assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'change-me' }), ['warn:ANTHROPIC_API_KEY'], 'a placeholder counts as unset');
   assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'sk-live-nope' }), ['warn:ANTHROPIC_API_KEY']);
   assert.equal(hasErrors(checkEnv({ ...good, ANTHROPIC_API_KEY: undefined, VERCEL: '1' }, { production: true })), false);
+  // OpenAI is optional: absent is fine, a malformed key is a warning
+  assert.deepEqual(names({ ...good, OPENAI_API_KEY: 'sk-proj-abc123' }), []);
+  assert.deepEqual(names({ ...good, OPENAI_API_KEY: 'nope' }), ['warn:OPENAI_API_KEY']);
 });
 
 test('development only requires DATABASE_URL', () => {
@@ -101,4 +111,14 @@ test('messages shown in the coach space are in French', () => {
   const every = checkEnv({ VERCEL: '1', APP_URL: 'http://localhost:3000', DATABASE_URL: 'https://x', RESEND_API_KEY: 'nope', MAIL_FROM: 'bad', MAIL_REPLY_TO: 'bad' }, { production: true });
   assert.ok(every.length >= 8);
   for (const i of every) assert.doesNotMatch(i.message, /\b(Missing|Not set|Must|Should|Required|the|your|would)\b/, i.message);
+});
+
+test('database SSL follows sslmode in the URL, else off only for a local host', () => {
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks?sslmode=disable'), false);
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks?sslmode=require'), 'require');
+  assert.equal(databaseSsl('postgresql://u:p@h:5432/x?application_name=a&sslmode=verify-full'), 'verify-full');
+  assert.equal(databaseSsl('postgres://shespeaks:shespeaks@localhost:5432/shespeaks'), false);
+  assert.equal(databaseSsl('postgres://u:p@127.0.0.1:5432/x'), false);
+  assert.equal(databaseSsl('postgresql://u:p@aws-0-eu-west-1.pooler.supabase.com:6543/postgres'), 'require');
+  assert.equal(databaseSsl('postgresql://u:p@db:5432/shespeaks'), 'require', 'no sslmode on a remote-looking host keeps today\'s behaviour');
 });

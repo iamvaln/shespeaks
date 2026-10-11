@@ -1,0 +1,26 @@
+#!/bin/bash
+# Dispatcher for the backup container. The default `loop` mode is the long-
+# running schedule that runs nightly inside compose; `backup`, `restore`,
+# `list`, and `shell` are one-shot modes invoked via:
+#
+#   docker compose run --rm backup backup
+#   docker compose run --rm backup restore latest
+#   docker compose run --rm backup list
+#   docker compose run --rm backup shell
+#
+# Anything else falls through to exec so callers can run ad-hoc commands
+# inside the image (e.g. `docker compose run --rm backup psql -c '\dt'`).
+set -euo pipefail
+
+cmd="${1:-loop}"
+shift || true
+
+case "$cmd" in
+  loop)    exec backup-loop ;;
+  backup)  exec backup-once ;;
+  restore) exec restore "$@" ;;
+  restore-uploads) exec restore-uploads "$@" ;;
+  list)    exec list-backups ;;
+  shell)   exec /bin/bash ;;
+  *)       exec "$cmd" "$@" ;;
+esac

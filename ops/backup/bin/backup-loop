@@ -1,0 +1,43 @@
+#!/bin/bash
+# Long-running scheduler — sleeps until the next BACKUP_SCHEDULE_HOUR_UTC,
+# then runs one backup, then repeats. Plus an immediate startup run so any
+# misconfig (wrong creds, unreachable R2, schema mismatch) surfaces within
+# minutes of deploy instead of hours.
+set -euo pipefail
+
+SCHEDULE_HOUR=${BACKUP_SCHEDULE_HOUR_UTC:-3}
+RETENTION=${BACKUP_RETENTION_DAYS:-14}
+
+echo "[backup-loop] started — daily at ${SCHEDULE_HOUR}:00 UTC, retention ${RETENTION}d, target s3://${BACKUP_R2_BUCKET}/${BACKUP_R2_PREFIX:-backups}/"
+
+# Startup run. Failure here doesn't abort the loop — the next scheduled run
+# may succeed (e.g. transient R2 outage), and the failure is logged loudly
+# enough for the operator to notice via `docker compose logs backup`.
+if backup-once; then
+  echo "[backup-loop] startup backup OK"
+else
+  echo "[backup-loop] startup backup FAILED (rc=$?) — will retry on schedule" >&2
+fi
+
+while true; do
+  # Seconds until next SCHEDULE_HOUR:00:00 UTC. Pure-arithmetic so we don't
+  # rely on GNU `date -d` syntax (busybox-compatible).
+  current_h=$(date -u +%H)
+  current_m=$(date -u +%M)
+  current_s=$(date -u +%S)
+  now=$((10#$current_h * 3600 + 10#$current_m * 60 + 10#$current_s))
+  target=$((SCHEDULE_HOUR * 3600))
+  if [ "$target" -le "$now" ]; then
+    target=$((target + 86400))
+  fi
+  sleep_s=$((target - now))
+
+  echo "[backup-loop] next run in ${sleep_s}s ($(date -u -d "@$(($(date -u +%s) + sleep_s))" +'%Y-%m-%dT%H:%M:%SZ'))"
+  sleep "$sleep_s"
+
+  if backup-once; then
+    echo "[backup-loop] scheduled backup OK"
+  else
+    echo "[backup-loop] scheduled backup FAILED (rc=$?) — will retry next cycle" >&2
+  fi
+done

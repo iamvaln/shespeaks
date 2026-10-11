@@ -73,6 +73,15 @@ export async function checkLoginRate(ip: string, email: string): Promise<RateRes
   return hit({ bucket: 'login:email', key: rateKey(email), max: LOGIN_MAX_PER_EMAIL, windowSec: LOGIN_WINDOW_SEC });
 }
 
+export const ACCESS_MAX_PER_IP = 10;
+export const ACCESS_MAX_PER_EMAIL = 3;
+/** « Retrouver mon espace »: it emails a link, so the address limit protects the inbox and the IP limit stops automation. */
+export async function checkAccessRate(ip: string, email: string): Promise<RateResult> {
+  const byIp = await hit({ bucket: 'access:ip', key: rateKey(ipBucket(ip)), max: ACCESS_MAX_PER_IP, windowSec: LOGIN_WINDOW_SEC });
+  if (!byIp.ok || !email) return byIp;
+  return hit({ bucket: 'access:email', key: rateKey(email), max: ACCESS_MAX_PER_EMAIL, windowSec: LOGIN_WINDOW_SEC });
+}
+
 export const checkVerifyRate = (ip: string): Promise<RateResult> =>
   hit({ bucket: 'verify:ip', key: rateKey(ipBucket(ip)), max: VERIFY_MAX_PER_IP, windowSec: LOGIN_WINDOW_SEC });
 

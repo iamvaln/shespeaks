@@ -10,6 +10,9 @@ test('strict contact checks: on for the production deployment, switchable with S
   assert.equal(strictContactChecks({ VERCEL_ENV: 'production', STRICT_CONTACT_CHECKS: '0' }), false);
   assert.equal(strictContactChecks({ STRICT_CONTACT_CHECKS: '1' }), true);
   assert.equal(strictContactChecks({ STRICT_CONTACT_CHECKS: 'true', VERCEL_ENV: 'preview' }), true);
+  assert.equal(strictContactChecks({ DEPLOY_ENV: 'production' }), true);
+  assert.equal(strictContactChecks({ DEPLOY_ENV: 'preprod' }), false);
+  assert.equal(strictContactChecks({ DEPLOY_ENV: 'production', STRICT_CONTACT_CHECKS: '0' }), false);
 });
 
 test('WhatsApp number: real mobile numbers of any country pass, made-up or non-mobile ones do not', () => {

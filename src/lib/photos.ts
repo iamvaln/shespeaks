@@ -91,7 +91,16 @@ export async function deletePhoto(candidateId: number, photoId: number) {
   if (!p) return;
   await removeObject(p.filename);
   await run('DELETE FROM photos WHERE id=?', photoId);
-  await run('UPDATE candidates SET selected_photo_id=NULL WHERE id=? AND selected_photo_id=?', candidateId, photoId);
+  // the coach's validation was for this photo: it goes with it
+  await run('UPDATE candidates SET selected_photo_id=NULL, photo_validated_at=NULL WHERE id=? AND selected_photo_id=?', candidateId, photoId);
+}
+
+/** The coach picks (or un-picks, with null) the photo kept for her: a validation only survives when the same photo stays selected. */
+export async function selectPhoto(candidateId: number, photoId: number | null) {
+  await run(
+    `UPDATE candidates SET photo_validated_at = CASE WHEN selected_photo_id IS NOT DISTINCT FROM ?::int THEN photo_validated_at END, selected_photo_id=? WHERE id=?`,
+    photoId, photoId, candidateId,
+  );
 }
 
 export const photosOf = (candidateId: number) => all<Photo>('SELECT * FROM photos WHERE candidate_id=? ORDER BY id', candidateId);

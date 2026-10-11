@@ -50,3 +50,14 @@ test('one: the first value of a query parameter, whatever shape it arrives in', 
   assert.deepEqual(['a', 'b'].map((v) => one([v, 'z'])), ['a', 'b']);
   assert.equal(one(['a', 'b']), 'a');
 });
+
+test('the answers summary on a fiche: her profile for the topic first, then every topic answer of her branch, nothing about fears', async () => {
+  const { topicSummary } = await import('../src/lib/admin-format.ts');
+  const codes = (b: 'A' | 'B' | 'C' | 'D', a: Record<string, unknown> = {}) => topicSummary(b, a as never).map((q) => q.code);
+  assert.deepEqual(codes('A').slice(0, 6), ['P6', 'P7', 'D1', 'D4', 'P5', 'D6']);
+  assert.deepEqual(codes('A').slice(6), ['A1', 'A2', 'A3', 'A7', 'A4', 'A5', 'A6']);
+  assert.deepEqual(codes('B').slice(6), ['B1', 'B2', 'B3', 'B4', 'B5']);
+  assert.ok(codes('C').includes('C1') && codes('C').includes('C-abstract'));
+  assert.ok(codes('D').includes('D1-a'));
+  for (const b of ['A', 'B', 'C', 'D'] as const) for (const hidden of ['P1', 'P3', 'P4', 'D2', 'D3', 'D5']) assert.ok(!codes(b).includes(hidden), `${b} ${hidden}`);
+});

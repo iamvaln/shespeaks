@@ -23,7 +23,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
     first: await getSetting('reminder_first_hours'), interval: await getSetting('reminder_interval_hours'), max: await getSetting('reminder_max'),
-    deadline: await getSetting('internal_deadline'), show: await getSetting('show_tracks_to_candidates'),
+    deadline: await getSetting('internal_deadline'),
+    focus: await getSetting('topic_focus'),
   };
   return (
     <div className="a-page" style={{ gap: 20, maxWidth: 860 }}>
@@ -78,7 +79,12 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
         <section className="a-card a-stack">
           <h2 className="a-h2">Pistes de sujets</h2>
-          <label className="a-check"><input type="checkbox" name="show_tracks_to_candidates" defaultChecked={v.show === 'true'} /><span>Afficher les pistes (non écartées) directement à la candidate sur son plan de route ; une suggestion de l’IA n’apparaît qu’une fois retenue ou choisie par une coach. Désactivé pendant la phase de test : la coach relit d’abord les pistes.</span></label>
+          <p className="a-muted" style={{ margin: 0 }}>La candidate ne voit jamais les pistes : seulement ce que sa coach lui envoie depuis la fiche (choix de sujets, sujet ajusté).</p>
+          <label className="a-label">
+            Orientation des sujets (tous les événements)
+            <textarea className="a-textarea" name="topic_focus" maxLength={600} style={{ minHeight: 110 }} defaultValue={v.focus} />
+            <span className="a-sub" style={{ fontWeight: 400, whiteSpace: 'normal' }}>Transmise à l’IA pour toutes les candidates, comme une priorité à appliquer quand elle correspond à ce que fait la candidate. Vide : aucune orientation. Le thème propre à chaque événement se règle dans Événements.</span>
+          </label>
         </section>
 
         <section className="a-card a-stack">
