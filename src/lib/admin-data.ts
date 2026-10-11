@@ -29,6 +29,8 @@ export async function candidateRows(): Promise<Row[]> {
 
 /** Interests waiting for a coach (the figure beside « Candidates » in the menu). */
 export async function countToProcess(): Promise<number> {
-  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates WHERE status='diagnostic_recu' AND name IS NOT NULL AND name <> ''`);
+  // new interests, plus candidates whose answer to a proposal the coach has not dealt with yet
+  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates c WHERE c.name IS NOT NULL AND c.name <> '' AND (
+    c.status='diagnostic_recu' OR EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id AND p.state='repondue' AND p.handled_at IS NULL))`);
   return r?.n ?? 0;
 }
