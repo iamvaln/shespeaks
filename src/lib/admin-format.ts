@@ -1,4 +1,5 @@
 // Small pure helpers shared by the coach-space screens (kept free of framework imports so they are unit-tested).
+import { SCREENS, flowFor, visibleQuestions, type Answers, type Branch, type Question } from './questions.ts';
 
 /** Short wording of the start point, for lists (the long form « A · Recherche de sujet » is for emails and the fiche). */
 export const BRANCH_SHORT: Record<string, string> = {
@@ -58,3 +59,17 @@ export function pageList(current: number, total: number): (number | '…')[] {
 
 /** One value out of a query parameter: ?q=a&q=b arrives as a list, a missing one as undefined. */
 export const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? v[0] : v) ?? '';
+
+/** Profile answers that matter for choosing a topic, in the order a coach reads them (contacts, comfort and time are not here). */
+const TOPIC_PROFILE: [string, string][] = [['profile', 'P6'], ['profile', 'P7'], ['diag1', 'D1'], ['diag2', 'D4'], ['diag2', 'P5'], ['diag2', 'D6']];
+
+/**
+ * What a coach reads before the topic suggestions on a fiche: her profile for the topic, then every answer of her branch's topic
+ * screens (only the questions she was shown). The full form stays in the « Réponses » tab.
+ */
+export function topicSummary(branch: Branch, a: Answers): Question[] {
+  const profile = TOPIC_PROFILE.map(([sid, code]) => SCREENS[sid].questions.find((q) => q.code === code)).filter((q): q is Question => !!q);
+  const topic = flowFor(branch).filter((sid) => !['profile', 'diag1', 'diag2'].includes(sid) && SCREENS[sid].questions.length)
+    .flatMap((sid) => visibleQuestions(SCREENS[sid], a));
+  return [...profile, ...topic];
+}

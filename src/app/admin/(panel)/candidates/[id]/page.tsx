@@ -19,7 +19,7 @@ import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
-import { BRANCH_SHORT, elapsed, one } from '@/lib/admin-format';
+import { BRANCH_SHORT, elapsed, one, topicSummary } from '@/lib/admin-format';
 import { initials, wordCount } from '@/lib/text';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
@@ -148,6 +148,15 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
           {tab === 'sujet' && (
             <>
+              {c.branch && (
+                <section className="a-card" aria-labelledby="h-repondu">
+                  <h2 id="h-repondu" className="a-h2">Ce qu’elle a répondu</h2>
+                  <p className="a-muted" style={{ margin: '2px 0 8px' }}>
+                    Ses réponses utiles pour le sujet, à lire avant les pistes. Tout le formulaire : onglet <Link href={tabHref('reponses')}>Réponses</Link>.
+                  </p>
+                  <dl className="a-qa">{topicSummary(c.branch, a).map((q) => (<div key={q.code}><dt>{q.label.fr}</dt><dd style={{ whiteSpace: 'pre-line' }}>{fmtVal(q, a[q.code])}</dd></div>))}</dl>
+                </section>
+              )}
               {(c.branch === 'A' || c.branch === 'B') && (
                 <section className="a-card is-flush" aria-labelledby="h-pistes">
                   <div className="a-card-head" style={{ flexWrap: 'wrap' }}>
