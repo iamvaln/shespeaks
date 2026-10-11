@@ -148,7 +148,7 @@ export default async function Dashboard() {
                   </li>
                 ))}
               </ul>
-              {answers.length > 6 && <p className="a-sub" style={{ margin: 0 }}>Et {answers.length - 6} autre{answers.length - 6 > 1 ? 's' : ''}, dans le menu « Candidates ».</p>}
+              {answers.length > 6 && <p className="a-sub" style={{ margin: 0 }}>Et {answers.length - 6} autre{answers.length - 6 > 1 ? 's' : ''} réponse{answers.length - 6 > 1 ? 's' : ''} à traiter.</p>}
             </section>
           )}
 

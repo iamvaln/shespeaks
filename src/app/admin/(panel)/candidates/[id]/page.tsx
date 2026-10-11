@@ -66,8 +66,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     getSetting('show_tracks_to_candidates'), journeyOf(id), listProposals(id),
   ]);
   const retained = tracks.filter((t) => t.state === 'retenue_coach');
+  // the button needs 2 or 3 retained tracks, each with a SAVED sentence (the hook shown as a starting point is not sent)
+  const choiceReady = retained.length >= 2 && retained.length <= 3 && retained.every((t) => (t.pitch ?? '').trim());
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
-  const history_ = [...exchanges].reverse();
+  const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
   const startSubject = c.branch ? currentSubject(c.branch, a, subject ?? null) : null;
   const proposal = await getSubjectProposal(id);
@@ -118,7 +120,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         <div className="a-actions">
           <a className="a-btn is-ghost a-jump" href="#suivi">Suivi ↓</a>
           {wa && <a className="a-btn is-amber" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"><Icon name="message" />Écrire sur WhatsApp</a>}
-          {wa && <a className="a-btn is-ghost" href={`https://wa.me/${wa}?text=${encodeURIComponent(`Bonjour ${c.name?.split(' ')[0] ?? ''}, voici ton lien personnel pour retrouver ton espace SheSpeaks : ${appUrl()}/reprendre/${c.token}`)}`} target="_blank" rel="noopener">Envoyer son lien d’accès sur WhatsApp</a>}
+          {wa && <a className="a-btn is-ghost" href={`https://wa.me/${wa}?text=${encodeURIComponent(`${c.locale === 'en' ? `Hello ${c.name?.split(' ')[0] ?? ''}, here is your personal link to get back to your SheSpeaks space: ` : `Bonjour ${c.name?.split(' ')[0] ?? ''}, voici ton lien personnel pour retrouver ton espace SheSpeaks : `}${appUrl()}/reprendre/${c.token}`)}`} target="_blank" rel="noopener noreferrer">Envoyer son lien d’accès sur WhatsApp</a>}
           {c.email && <a className="a-btn is-ghost" href={`mailto:${c.email}`}><Icon name="mail" />Envoyer un email</a>}
           {!c.completed_at && c.email && (
             <form action={remindNowAction}>
@@ -184,9 +186,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <button className="a-btn is-sm">Marquer comme traité</button>
                   </form>
                 )}
-                {history_.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Rien n’a encore été envoyé à la candidate.</p> : (
+                {exchangesNewestFirst.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Rien n’a encore été envoyé à la candidate.</p> : (
                   <ul className="a-notes">
-                    {history_.map((x) => (
+                    {exchangesNewestFirst.map((x) => (
                       <li key={x.id}>
                         <div className="a-sub" style={{ whiteSpace: 'normal' }}>{fmtDate(x.sent_at, 'fr', DATE_TIME)} · {KIND_LABEL[x.kind]}{x.state === 'remplacee' ? ' · remplacée' : x.state === 'envoyee' ? ' · en attente de réponse' : ''}</div>
                         <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{sentSummary(x)}</div>
@@ -267,6 +269,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                                   <AutoGrowTextarea className="a-input" name="pitch" defaultValue={t.pitch ?? t.hook ?? ''} maxLength={400} aria-label={`Pour la candidate : pourquoi le sujet ${i + 1} lui irait`} />
                                 </label>
                               )}
+                              {t.state === 'retenue_coach' && !(t.pitch ?? '').trim() && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Phrase pas encore enregistrée : relis-la, adapte-la pour elle, puis Enregistrer.</span>}
                             </div>
                             <div className="a-track-actions">
                               {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm" aria-label={`Choisir la piste ${i + 1}`}>Choisir</button>}
@@ -288,8 +291,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   </form>
                   <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
                     <input type="hidden" name="cid" value={id} />
-                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={retained.length < 2 || retained.length > 3}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
-                    <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase.</span>
+                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                    <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase enregistrée.</span>
                   </form>
                 </section>
               )}
@@ -458,7 +461,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         <form action={selectPhotoAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="photo_id" value={p.id === c.selected_photo_id ? 0 : p.id} />
                           <button className={`a-btn is-sm${p.id === c.selected_photo_id ? '' : ' is-ghost'}`}>{p.id === c.selected_photo_id ? '✓ Retenue' : 'Retenir'}</button></form>
                         <form action={validatePhotoAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="photo_id" value={p.id} />
-                          <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button></form>
+                          {p.id === c.selected_photo_id && c.photo_validated_at
+                            ? <span className="a-pill is-green">✓ Validée</span>
+                            : <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button>}</form>
                       </figure>
                     ))}
                   </div>

@@ -303,33 +303,41 @@ export async function saveSettingsAction(f: FormData) {
 }
 
 // ---- exchanges with the candidate (proposals flow) -------------------------------
+/** An unknown candidate has no fiche to come back to: the banner shows on the list. */
+const fail = (id: number, error: string, tab = ''): never => back(error === 'Candidate introuvable' ? '/admin/candidates' : cpath(id, tab), error, true);
+const validCid = (n: number) => Number.isInteger(n) && n >= 1 && n <= 2147483647;
 export async function sendChoiceAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await sendChoice(id, coach.id);
-  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : back(cpath(id), r.error, true);
+  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : fail(id, r.error);
 }
 export async function sendSubjectAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await sendSubject(id, coach.id);
-  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : back(cpath(id), r.error, true);
+  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : fail(id, r.error);
 }
 export async function requestPhotoAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await requestPhoto(id, coach.id, str(f, 'comment'));
-  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : back(cpath(id, 'photos'), r.error, true);
+  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : fail(id, r.error, 'photos');
 }
 export async function validatePhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await validatePhoto(id, num(f, 'photo_id'));
-  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : back(cpath(id, 'photos'), r.error, true);
+  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : fail(id, r.error, 'photos');
 }
 export async function markHandledAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   await markHandled(id);
   return back(cpath(id), 'Réponse marquée comme traitée');
 }

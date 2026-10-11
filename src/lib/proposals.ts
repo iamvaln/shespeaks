@@ -47,7 +47,14 @@ async function send(candidateId: number, coachId: number, kind: ProposalKind, pa
   });
 }
 
+/** Postgres integer ids: anything else would make the query throw instead of answering « not found ». */
+const validId = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 2147483647;
+const NO_CANDIDATE: Outcome = { ok: false, error: 'Candidate introuvable' };
+/** An unknown candidate is answered with a message, never a foreign-key error. */
+const candidateExists = async (id: unknown): Promise<boolean> => validId(id) && !!(await get('SELECT 1 FROM candidates WHERE id=?', id));
+
 export async function sendChoice(candidateId: number, coachId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const tracks = await all<Track>(`SELECT * FROM tracks WHERE candidate_id=? AND state='retenue_coach' ORDER BY position, id`, candidateId);
   const items: ChoiceItem[] = tracks.map((t) => ({ title: t.title.trim(), format: t.format ?? 'talk', pitch: (t.pitch ?? '').trim() }));
   const error = validateChoice(items);
@@ -58,6 +65,7 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
 }
 
 export async function sendSubject(candidateId: number, coachId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const s = await get<{ title: string | null; abstract: string | null; why: string | null; plan: string | null }>('SELECT title,abstract,why,plan FROM subjects WHERE candidate_id=?', candidateId);
   const payload: SubjectPayload = { title: (s?.title ?? '').trim(), abstract: (s?.abstract ?? '').trim(), why: (s?.why ?? '').trim(), plan: planLines(s?.plan ?? '') };
   const error = validateSubject(payload);
@@ -68,6 +76,7 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
 }
 
 export async function requestPhoto(candidateId: number, coachId: number, comment: string): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const c = comment.trim().slice(0, COMMENT_MAX);
   if (!c) return { ok: false, error: 'Un commentaire est nécessaire pour demander une autre photo.' };
   await run('UPDATE candidates SET photo_validated_at=NULL WHERE id=?', candidateId);
@@ -76,10 +85,8 @@ export async function requestPhoto(candidateId: number, coachId: number, comment
   return { ok: true };
 }
 
-/** Postgres integer ids: anything else would make the query throw instead of answering « not found ». */
-const validId = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 2147483647;
-
 export async function validatePhoto(candidateId: number, photoId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   if (!validId(photoId)) return { ok: false, error: 'Photo introuvable.' };
   if (!(await get('SELECT 1 FROM photos WHERE id=? AND candidate_id=?', photoId, candidateId))) return { ok: false, error: 'Photo introuvable.' };
   await tx(async () => {
@@ -157,5 +164,6 @@ export async function confirmSubmission(candidateId: number): Promise<Outcome> {
 }
 
 export async function markHandled(candidateId: number): Promise<void> {
+  if (!validId(candidateId)) return;
   await run(`UPDATE proposals SET handled_at=(now() at time zone 'utc') WHERE candidate_id=? AND state='repondue' AND handled_at IS NULL`, candidateId);
 }

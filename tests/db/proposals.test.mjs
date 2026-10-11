@@ -140,6 +140,16 @@ test('answersToHandle lists unhandled answers once per candidate, oldest first',
   assert.deepEqual((await admin.answersToHandle()).filter((x) => x.id === b), []);
 });
 
+test('an unknown candidate is refused with a message, never a foreign-key error', { skip }, async () => {
+  const unknown = { ok: false, error: 'Candidate introuvable' };
+  assert.deepEqual(await P.sendChoice(2000000000, 1), unknown);
+  assert.deepEqual(await P.sendSubject(2000000000, 1), unknown);
+  assert.deepEqual(await P.requestPhoto(2000000000, 1, 'Autre'), unknown);
+  assert.deepEqual(await P.validatePhoto(2000000000, 1), unknown);
+  assert.deepEqual(await P.sendChoice(NaN, 1), unknown);
+  await P.markHandled(3000000000); // no throw
+});
+
 test('non-integer ids are refused without throwing', { skip }, async () => {
   const id = await candidate('A');
   assert.deepEqual(await P.answerProposal(id, NaN, 'approuvee', null, ''), { ok: false, error: 'Proposition introuvable.' });
