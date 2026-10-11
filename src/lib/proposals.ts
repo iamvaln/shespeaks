@@ -20,7 +20,7 @@ async function getMailer(): Promise<ProposalMailer> {
   if (!mailer) {
     // the module path sits in a variable so typecheck passes before proposals-mailer.ts exists
     const path = './proposals-mailer.ts';
-    try { mailer = ((await import(path)) as { realMailer: ProposalMailer }).realMailer; } catch { mailer = { toCandidate: async () => {}, toCoaches: async () => {} }; }
+    try { mailer = ((await import(path)) as { realMailer: ProposalMailer }).realMailer; } catch (e) { console.error('[proposals] could not load the mailer: emails are not sent', e); mailer = { toCandidate: async () => {}, toCoaches: async () => {} }; }
   }
   return mailer;
 }
@@ -79,6 +79,7 @@ export async function requestPhoto(candidateId: number, coachId: number, comment
 }
 
 export async function validatePhoto(candidateId: number, photoId: number): Promise<Outcome> {
+  if (!Number.isInteger(photoId)) return { ok: false, error: 'Photo introuvable.' };
   if (!(await get('SELECT 1 FROM photos WHERE id=? AND candidate_id=?', photoId, candidateId))) return { ok: false, error: 'Photo introuvable.' };
   await tx(async () => {
     await run(`UPDATE candidates SET selected_photo_id=?, photo_validated_at=(now() at time zone 'utc') WHERE id=?`, photoId, candidateId);
@@ -100,6 +101,7 @@ async function advance(candidateId: number, target: string, author: string) {
 }
 
 export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string): Promise<Outcome> {
+  if (!Number.isInteger(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
   const p = await get<Row>('SELECT * FROM proposals WHERE id=? AND candidate_id=?', proposalId, candidateId);
   if (!p) return { ok: false, error: 'Proposition introuvable.' };
   if (p.state === 'remplacee') return { ok: false, error: 'Cette proposition a été remplacée : recharge la page.' };
@@ -108,20 +110,25 @@ export async function answerProposal(candidateId: number, proposalId: number, re
   if (NEEDS_COMMENT.includes(response) && !c) return { ok: false, error: 'Un commentaire est nécessaire.' };
   const items = p.kind === 'choix' ? (JSON.parse(p.payload) as { items: ChoiceItem[] }).items : [];
   if (response === 'choisie' && (choice === null || !Number.isInteger(choice) || choice < 0 || choice >= items.length)) return { ok: false, error: 'Choisis un des sujets proposés.' };
-  const done = await get<{ id: number }>(
-    `UPDATE proposals SET state='repondue', response=?, response_choice=?, candidate_comment=?, answered_at=(now() at time zone 'utc')
-     WHERE id=? AND candidate_id=? AND state='envoyee' RETURNING id`,
-    response, response === 'choisie' ? choice : null, c || null, proposalId, candidateId,
-  );
-  if (!done) return { ok: false, error: 'Tu as déjà répondu à cette proposition.' };
-  if (response === 'choisie') {
-    // the chosen topic becomes the starting point of the subject the coach develops (only when nothing is written yet)
-    await run(`INSERT INTO subjects (candidate_id,title) VALUES (?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=COALESCE(NULLIF(subjects.title,''), excluded.title)`, candidateId, items[choice!].title);
+  const done = await tx(async () => {
+    const row = await get<{ id: number }>(
+      `UPDATE proposals SET state='repondue', response=?, response_choice=?, candidate_comment=?, answered_at=(now() at time zone 'utc')
+       WHERE id=? AND candidate_id=? AND state='envoyee' RETURNING id`,
+      response, response === 'choisie' ? choice : null, c || null, proposalId, candidateId,
+    );
+    if (!row) return false;
+    if (response === 'choisie') {
+      // the chosen topic becomes the starting point of the subject the coach develops (only when nothing is written yet)
+      await run(`INSERT INTO subjects (candidate_id,title) VALUES (?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=COALESCE(NULLIF(subjects.title,''), excluded.title)`, candidateId, items[choice!].title);
+    }
+    if (response === 'approuvee') await advance(candidateId, 'sujet_valide', 'la candidate');
+    return true;
+  });
+  if (!done) {
+    const now = await get<{ state: string }>('SELECT state FROM proposals WHERE id=? AND candidate_id=?', proposalId, candidateId);
+    return { ok: false, error: now?.state === 'remplacee' ? 'Cette proposition a été remplacée : recharge la page.' : 'Tu as déjà répondu à cette proposition.' };
   }
-  if (response === 'approuvee') {
-    await advance(candidateId, 'sujet_valide', 'la candidate');
-    if ((await journeyOf(candidateId))?.step === 'soumission') mail((m) => m.toCandidate(candidateId, 'pret'));
-  }
+  if (response === 'approuvee' && (await journeyOf(candidateId))?.step === 'soumission') mail((m) => m.toCandidate(candidateId, 'pret'));
   mail((m) => m.toCoaches(candidateId, response, c || null));
   return { ok: true };
 }
@@ -136,10 +143,14 @@ export async function photoUploaded(candidateId: number): Promise<void> {
 
 export async function confirmSubmission(candidateId: number): Promise<Outcome> {
   if ((await journeyOf(candidateId))?.step !== 'soumission') return { ok: false, error: 'La soumission n’est pas encore ouverte.' };
-  const done = await get<{ id: number }>(`UPDATE candidates SET submitted_at=(now() at time zone 'utc') WHERE id=? AND submitted_at IS NULL RETURNING id`, candidateId);
+  const done = await tx(async () => {
+    const row = await get<{ id: number }>(`UPDATE candidates SET submitted_at=(now() at time zone 'utc') WHERE id=? AND submitted_at IS NULL RETURNING id`, candidateId);
+    if (!row) return false;
+    await run(`UPDATE subjects SET application_state='soumise' WHERE candidate_id=?`, candidateId);
+    await advance(candidateId, 'candidature_soumise', 'la candidate');
+    return true;
+  });
   if (!done) return { ok: false, error: 'Ta soumission est déjà confirmée.' };
-  await run(`UPDATE subjects SET application_state='soumise' WHERE candidate_id=?`, candidateId);
-  await advance(candidateId, 'candidature_soumise', 'la candidate');
   mail((m) => m.toCoaches(candidateId, 'soumise', null));
   return { ok: true };
 }
