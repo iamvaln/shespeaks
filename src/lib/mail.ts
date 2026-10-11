@@ -253,9 +253,11 @@ const ANSWER_LABEL: Record<string, string> = {
   choisie: 'a choisi un sujet', aucune: 'ne retient aucun des sujets proposés', approuvee: 'approuve son sujet', changements: 'demande des changements sur son sujet',
   photo_deposee: 'a déposé une nouvelle photo', soumise: 'a soumis sa candidature',
 };
-export function coachCandidateAnswered(c: { name: string }, what: string, comment: string | null, ficheUrl: string): Built {
-  return build(`${c.name} ${ANSWER_LABEL[what] ?? 'a répondu'}`, {
-    heading: `${c.name} ${ANSWER_LABEL[what] ?? 'a répondu'}`,
+/** `topic`: the title of the topic she chose, from the frozen copy of the choice (only for « choisie »). */
+export function coachCandidateAnswered(c: { name: string }, what: string, comment: string | null, ficheUrl: string, topic: string | null = null): Built {
+  const line = `${c.name} ${ANSWER_LABEL[what] ?? 'a répondu'}${topic ? ` : « ${topic} »` : ''}`;
+  return build(line, {
+    heading: line,
     paragraphs: comment ? ['Son commentaire :', comment] : ['Ouvre sa fiche pour la suite.'],
     cta: { label: 'Ouvrir la fiche', url: ficheUrl },
     footer: 'SheSpeaks · espace coach',

@@ -304,3 +304,23 @@ test('I3: the validation of a photo goes when the selected photo changes, is un-
   await photos.deletePhoto(id, a);
   assert.deepEqual(await validated(), { photo_validated_at: null, selected_photo_id: null });
 });
+
+test('I4 and M2: « tout est prêt » carries the approved frozen copy; the coach email names the chosen topic', { skip }, async () => {
+  const { realMailer } = await import('../../src/lib/proposals-mailer.ts');
+  const id = await candidate('A');
+  await raw`update candidates set coach_id = 1 where id = ${id}`;
+  await retained(id, 2);
+  await P.sendChoice(id, 1);
+  await P.answerProposal(id, (await state(id)).pending.id, 'choisie', 1, '');
+  await realMailer.toCoaches(id, 'choisie', null);
+  const [coachMail] = await raw`select subject, body_text from email_log where candidate_id = ${id} and kind = 'coach_answer_choisie' order by id desc limit 1`;
+  assert.match(coachMail.subject, /Sujet 1/);
+  await subjectFor(id, 'Titre approuvé', 'Résumé approuvé');
+  await P.sendSubject(id, 1);
+  await P.answerProposal(id, (await state(id)).pending.id, 'approuvee', null, '');
+  await subjectFor(id, 'Titre retouché après', 'Résumé retouché après');
+  await realMailer.toCandidate(id, 'pret');
+  const [ready] = await raw`select body_text from email_log where candidate_id = ${id} and kind = 'candidate_proposal_pret' order by id desc limit 1`;
+  assert.ok(ready.body_text.includes('Titre approuvé') && ready.body_text.includes('Résumé approuvé'), ready.body_text);
+  assert.ok(!ready.body_text.includes('retouché'));
+});

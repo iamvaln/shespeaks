@@ -26,3 +26,10 @@ test('comments are escaped in HTML', () => {
   assert.ok(!m.html.includes('<script>') && m.html.includes('&lt;script&gt;'));
   assert.ok(!candidatePhotoRequested('A', url, 'fr', '<b>x</b>').html.includes('<b>x</b>'));
 });
+
+test('the coach email names the chosen topic when there is one', () => {
+  const m = coachCandidateAnswered({ name: 'Aïcha' }, 'choisie', null, 'https://shespeaks.test/admin/candidates/1', 'Automatiser son déploiement');
+  assert.match(m.subject, /a choisi un sujet : « Automatiser son déploiement »/);
+  assert.ok(m.text.includes('Automatiser son déploiement'));
+  assert.equal(coachCandidateAnswered({ name: 'Aïcha' }, 'approuvee', null, 'https://shespeaks.test/admin/candidates/1').subject, 'Aïcha approuve son sujet');
+});
