@@ -101,3 +101,11 @@ test('no key: disabled; an unusable answer keeps the previous proposal; a failur
   assert.deepEqual(await store.improveSubjectFor(id, 1, 'claude', { client: down }), { ok: false, reason: 'failed' });
   assert.equal((await raw`select count(*)::int as n from rate_limit_hits`)[0].n, before, 'a failed call gives the press back');
 });
+
+test('a cut answer (billed) stays counted against the limits; only an outage is given back', { skip }, async () => {
+  const id = await candidate();
+  const cut = { messages: { create: async () => ({ stop_reason: 'max_tokens', content: [] }) } };
+  const before = (await raw`select count(*)::int as n from rate_limit_hits`)[0].n;
+  assert.deepEqual(await store.improveSubjectFor(id, 1, 'claude', { client: cut }), { ok: false, reason: 'truncated' });
+  assert.ok((await raw`select count(*)::int as n from rate_limit_hits`)[0].n > before, 'counted');
+});

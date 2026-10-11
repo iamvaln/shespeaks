@@ -22,8 +22,9 @@ export async function improveSubjectFor(candidateId: number, coachId: number, pr
   const res = await improveSubject({ branch: c.branch, locale: c.locale, answers, refs, current, event, focus, brief: c.ai_brief ?? '' }, provider, opts);
   if (!res.ok) {
     console.error('[ai] subject improvement failed', { candidate: candidateId, provider, reason: res.reason, detail: res.detail });
-    // nothing to show for an outage or a cut answer: the press is given back (a refusal or an unusable answer stays counted)
-    if (res.reason === 'failed' || res.reason === 'truncated') await refundAiRate(coachId, candidateId).catch(() => {});
+    // only an outage (the call did not complete, nothing billed) gives the press back; a cut, refused or unusable answer was produced and
+    // may be billed: it stays counted, so the daily limits keep bounding the spend
+    if (res.reason === 'failed') await refundAiRate(coachId, candidateId).catch(() => {});
     return { ok: false, reason: res.reason };
   }
   const p = res.proposal;
