@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
   const r = await commitUpload(c.id, String(path ?? ''));
   if (r.error) return NextResponse.json({ error: r.error }, { status: 422 });
   await touchCandidate(c.id);
-  await photoUploaded(c.id);
+  // answering the coach's photo request must never break the upload itself
+  try { await photoUploaded(c.id); } catch (e) { console.error('photoUploaded failed', e); }
   const photos = (await photosOf(c.id)).map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }));
   return NextResponse.json({ photos });
 }

@@ -1,16 +1,17 @@
 import type { Journey, Proposal, ChoicePayload, SubjectPayload, PhotoPayload } from '@/lib/journey';
 import { ProposalAnswer } from './ProposalAnswer';
 import { CopyButton, SubmittedButton } from './SubmitPanel';
-import { fmtDate } from '@/lib/i18n';
-import type { Locale } from '@/lib/questions';
+import { fmtDate, type Dict } from '@/lib/i18n';
+import { FORMATS, type Locale } from '@/lib/questions';
 
 type Props = {
-  j: Journey; proposals: Proposal[]; locale: Locale; d: Record<string, any>;
+  j: Journey; proposals: Proposal[]; locale: Locale; d: Dict['journey'];
   submit: { title: string; abstract: string; photoUrl: string | null; cfpUrl: string | null; cfpLabel: string | null; deadline: string | null };
 };
 
 export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
   const p = j.pending;
+  const fmtLabel = (v: string) => FORMATS.find((f) => f.value === v)?.label[locale] ?? null;
   return (
     <>
       <section className="card card-lg stack-sm" aria-labelledby="h-where">
@@ -31,18 +32,18 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
           : j.step === 'soumission' ? (
             <div className="stack-sm">
               <p>{d.submitIntro}</p>
-              <p><strong>{submit.title}</strong> <CopyButton value={submit.title} d={d as never} /></p>
-              <p style={{ whiteSpace: 'pre-line' }}>{submit.abstract}</p><CopyButton value={submit.abstract} d={d as never} />
+              <p><strong>{submit.title}</strong> <CopyButton value={submit.title} d={d} /></p>
+              <p style={{ whiteSpace: 'pre-line' }}>{submit.abstract}</p><CopyButton value={submit.abstract} d={d} />
               {submit.photoUrl && <p><a href={submit.photoUrl} download>{d.downloadPhoto}</a></p>}
-              {submit.deadline && <p>{d.deadline} : {submit.deadline}</p>}
+              {submit.deadline && <p>{d.deadline}{d.colon}{submit.deadline}</p>}
               {submit.cfpUrl && <p><a className="btn btn-ghost" href={submit.cfpUrl} target="_blank" rel="noopener">{submit.cfpLabel || d.submitLink}</a></p>}
               <SubmittedButton label={d.submitted} error={d.error} />
             </div>)
           : p?.kind === 'choix' ? (
             <div className="stack-sm">
               <p>{d.choiceIntro}</p>
-              <ol>{(p.payload as ChoicePayload).items.map((it, k) => <li key={k}><strong>{it.title}</strong><br />{it.pitch}</li>)}</ol>
-              <ProposalAnswer proposalId={p.id} kind="choix" count={(p.payload as ChoicePayload).items.length} d={d as never} />
+              <ProposalAnswer key={p.id} proposalId={p.id} kind="choix" formatLabel={d.format} d={d}
+                items={(p.payload as ChoicePayload).items.map((it) => ({ title: it.title, formatLabel: fmtLabel(it.format), pitch: it.pitch }))} />
             </div>)
           : p?.kind === 'sujet' ? (
             <div className="stack-sm">
@@ -51,7 +52,7 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
               <p style={{ whiteSpace: 'pre-line' }}>{(p.payload as SubjectPayload).abstract}</p>
               {(p.payload as SubjectPayload).why && <><h4 style={{ margin: 0 }}>{d.why}</h4><p>{(p.payload as SubjectPayload).why}</p></>}
               {(p.payload as SubjectPayload).plan.length > 0 && <><h4 style={{ margin: 0 }}>{d.how}</h4><ol>{(p.payload as SubjectPayload).plan.map((s, k) => <li key={k}>{s}</li>)}</ol></>}
-              <ProposalAnswer proposalId={p.id} kind="sujet" count={0} d={d as never} />
+              <ProposalAnswer key={p.id} proposalId={p.id} kind="sujet" items={[]} formatLabel="" d={d} />
             </div>)
           : p?.kind === 'photo' ? <p>{d.photoAsked} {(p.payload as PhotoPayload).comment}</p>
           : j.step === 'photo' ? <p>{d.photoPending}</p>
@@ -66,8 +67,13 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
               <li key={x.id}>
                 <details>
                   <summary>{fmtDate(x.sent_at, locale)} · {x.kind === 'choix' ? d.sentChoice : x.kind === 'sujet' ? d.sentSubject : d.sentPhoto}
-                    {x.state === 'remplacee' ? ` · ${d.replaced}` : x.response ? ` · ${d.answered[x.response]}${x.response === 'choisie' && x.kind === 'choix' ? ` : ${(x.payload as ChoicePayload).items[x.response_choice ?? 0]?.title ?? ''}` : ''}` : ''}</summary>
-                  {x.kind === 'sujet' && <p><strong>{(x.payload as SubjectPayload).title}</strong></p>}
+                    {x.state === 'remplacee' ? ` · ${d.replaced}` : x.response ? ` · ${d.answered[x.response]}${x.response === 'choisie' && x.kind === 'choix' ? `${d.colon}${(x.payload as ChoicePayload).items[x.response_choice ?? 0]?.title ?? ''}` : ''}` : ''}</summary>
+                  {x.kind === 'sujet' && <>
+                    <p><strong>{(x.payload as SubjectPayload).title}</strong></p>
+                    <p style={{ whiteSpace: 'pre-line' }}>{(x.payload as SubjectPayload).abstract}</p>
+                    {(x.payload as SubjectPayload).why && <p>{(x.payload as SubjectPayload).why}</p>}
+                    {(x.payload as SubjectPayload).plan.length > 0 && <ol>{(x.payload as SubjectPayload).plan.map((st, k) => <li key={k}>{st}</li>)}</ol>}
+                  </>}
                   {x.kind === 'choix' && <ol>{(x.payload as ChoicePayload).items.map((it, k) => <li key={k}>{it.title}</li>)}</ol>}
                   {x.kind === 'photo' && <p>{(x.payload as PhotoPayload).comment}</p>}
                   {x.candidate_comment && <p>« {x.candidate_comment} »</p>}

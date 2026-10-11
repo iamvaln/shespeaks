@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
   const r = await addPhoto(c.id, Buffer.from(await file.arrayBuffer()));
   if (r.error) return NextResponse.json({ error: r.error }, { status: r.error === 'too_big' ? 413 : 422 });
   await touchCandidate(c.id);
-  await photoUploaded(c.id);
+  // answering the coach's photo request must never break the upload itself
+  try { await photoUploaded(c.id); } catch (e) { console.error('photoUploaded failed', e); }
   return NextResponse.json({ photos: await list(c.id) });
 }
 

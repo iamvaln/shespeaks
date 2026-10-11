@@ -76,8 +76,11 @@ export async function requestPhoto(candidateId: number, coachId: number, comment
   return { ok: true };
 }
 
+/** Postgres integer ids: anything else would make the query throw instead of answering « not found ». */
+const validId = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 2147483647;
+
 export async function validatePhoto(candidateId: number, photoId: number): Promise<Outcome> {
-  if (!Number.isInteger(photoId)) return { ok: false, error: 'Photo introuvable.' };
+  if (!validId(photoId)) return { ok: false, error: 'Photo introuvable.' };
   if (!(await get('SELECT 1 FROM photos WHERE id=? AND candidate_id=?', photoId, candidateId))) return { ok: false, error: 'Photo introuvable.' };
   await tx(async () => {
     await run(`UPDATE candidates SET selected_photo_id=?, photo_validated_at=(now() at time zone 'utc') WHERE id=?`, photoId, candidateId);
@@ -99,7 +102,7 @@ async function advance(candidateId: number, target: string, author: string) {
 }
 
 export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string): Promise<Outcome> {
-  if (!Number.isInteger(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
+  if (!validId(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
   const p = await get<Row>('SELECT * FROM proposals WHERE id=? AND candidate_id=?', proposalId, candidateId);
   if (!p) return { ok: false, error: 'Proposition introuvable.' };
   if (p.state === 'remplacee') return { ok: false, error: 'Cette proposition a été remplacée : recharge la page.' };

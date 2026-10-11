@@ -130,6 +130,10 @@ test('non-integer ids are refused without throwing', { skip }, async () => {
   const id = await candidate('A');
   assert.deepEqual(await P.answerProposal(id, NaN, 'approuvee', null, ''), { ok: false, error: 'Proposition introuvable.' });
   assert.deepEqual(await P.validatePhoto(id, NaN), { ok: false, error: 'Photo introuvable.' });
+  for (const bad of [3000000000, 0, -1]) {
+    assert.deepEqual(await P.answerProposal(id, bad, 'approuvee', null, ''), { ok: false, error: 'Proposition introuvable.' });
+    assert.deepEqual(await P.validatePhoto(id, bad), { ok: false, error: 'Photo introuvable.' });
+  }
 });
 
 test('/acces: one email listing every journey of the same mailbox; same answer for an unknown address; rate limited', { skip }, async () => {

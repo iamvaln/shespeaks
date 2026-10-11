@@ -8,6 +8,7 @@ import { PlanPhotos } from '@/components/PlanPhotos';
 import { getSetting } from '@/lib/db';
 import { t, fmtDate } from '@/lib/i18n';
 import { journeyOf, listProposals } from '@/lib/proposals';
+import type { SubjectPayload } from '@/lib/journey';
 import { JourneyPanel } from '@/components/JourneyPanel';
 import { appUrl } from '@/lib/mail';
 
@@ -28,8 +29,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     answers, branch: c.branch, locale,
     subjectTitle: sub?.title, event: ev, eventName: await eventLabelFor(c, locale),
   });
+  // the submission block shows the frozen copy she approved, never the live subject
+  const approved = ([...proposals].reverse().find((x) => x.kind === 'sujet' && x.response === 'approuvee')?.payload ?? null) as SubjectPayload | null;
   const validated = photos.find((p) => p.id === c.selected_photo_id);
-  const photo = photos.find((p) => p.id === c.selected_photo_id) ?? photos[0];
+  const photo = validated ?? photos[0];
 
   return (
     <div className="container narrow" style={{ paddingBottom: 40 }}>
@@ -45,12 +48,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           </div>
         </div>
 
-        <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
-
         {j && <JourneyPanel j={j} proposals={proposals} locale={locale} d={t(locale).journey} submit={{
-          title: sub?.title ?? '', abstract: sub?.abstract ?? '', photoUrl: validated ? `/api/photos/${validated.id}` : null,
+          title: approved?.title ?? '', abstract: approved?.abstract ?? '', photoUrl: validated ? `/api/photos/${validated.id}` : null,
           cfpUrl: ev?.submission_url ?? null, cfpLabel: ev?.submission_label ?? null, deadline: ev?.cfp_close_date ? fmtDate(ev.cfp_close_date, locale) : null,
         }} />}
+
+        <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
 
         <PlanPhotos initial={photos.map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }))} consent={!!c.consent_photo} locale={locale} />
 
