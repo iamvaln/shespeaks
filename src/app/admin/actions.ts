@@ -7,6 +7,7 @@ import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/
 import { getRefs, getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
+import { improveSubjectFor } from '@/lib/ai-subject-store';
 import type { AiProvider } from '@/lib/ai-topics';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
@@ -120,6 +121,21 @@ export async function suggestTracksAction(f: FormData) {
   const r = await suggestTracksFor(id, coach.id, undefined, provider);
   if (!r.ok) return back(cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
   return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
+}
+
+/** « Améliorer avec Claude / OpenAI » in « Sujet retenu »: three titles, an abstract and how to approach the talk, for the coach to read. */
+export async function improveSubjectAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
+  const name = provider === 'openai' ? 'OpenAI' : 'Claude';
+  if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
+  const r = await improveSubjectFor(id, coach.id, provider);
+  if (!r.ok) {
+    const why = r.reason === 'not_eligible' ? 'Il faut un formulaire terminé et un sujet de départ (titre ou résumé).' : AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed;
+    return back(cpath(id), `${name} : ${why}`, true);
+  }
+  return back(cpath(id), `Proposition d’amélioration de ${name} prête, sous le sujet : à relire, puis « Utiliser » ce qui te convient et enregistrer`);
 }
 
 export async function trackAction(f: FormData) {

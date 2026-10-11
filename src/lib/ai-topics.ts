@@ -10,8 +10,8 @@ import { norm, textLocale, truncate } from './text.ts';
 /** Claude Sonnet 5.5: chosen by the owner. The bare id, as the API documents it (no date suffix). */
 export const AI_MODEL = 'claude-sonnet-5-5';
 export const AI_COUNT = 5;
-const MAX_TOKENS = 8000; // thinking tokens count too; titles themselves are short
-const TIMEOUT_MS = 40_000; // the fiche page allows 60 s; one attempt, the coach can try again
+export const MAX_TOKENS = 8000; // thinking tokens count too; titles themselves are short
+export const TIMEOUT_MS = 40_000; // the fiche page allows 60 s; one attempt, the coach can try again
 
 const realKey = (key: string | undefined): boolean => !!key?.trim() && !/^(change-?me|changeme|xxx+|your[-_ ].*|\[.*\])$/i.test(key.trim());
 export const aiConfigured = (env: Record<string, string | undefined> = process.env): boolean => realKey(env.ANTHROPIC_API_KEY);
@@ -76,14 +76,14 @@ export const allowedFormats = (formats?: TrackFormat[]): TrackFormat[] => {
   return f.length ? f : FORMATS;
 };
 
-function optionLabel(code: string, value: unknown, loc: Locale): string {
+export function optionLabel(code: string, value: unknown, loc: Locale): string {
   for (const screen of Object.values(SCREENS)) {
     const q = screen.questions.find((x) => x.code === code);
     if (q && Array.isArray(q.options)) return (q.options as Option[]).find((o) => o.value === value)?.label[loc] ?? String(value ?? '');
   }
   return String(value ?? '');
 }
-const questionLabel = (code: string, loc: Locale): string => {
+export const questionLabel = (code: string, loc: Locale): string => {
   for (const screen of Object.values(SCREENS)) {
     const q = screen.questions.find((x) => x.code === code);
     if (q) return q.label[loc];
@@ -92,7 +92,7 @@ const questionLabel = (code: string, loc: Locale): string => {
 };
 
 /** « <  > » would let a free-text answer pretend to close the block it sits in. */
-const defang = (s: string): string => s.replace(/</g, '‹').replace(/>/g, '›').replace(/\u0000/g, '');
+export const defang = (s: string): string => s.replace(/</g, '‹').replace(/>/g, '›').replace(/\u0000/g, '');
 
 /**
  * Contact details typed inside a free-text answer are masked before they leave (an address; a run of at least nine digits, which is a phone
@@ -142,7 +142,7 @@ export function facts(i: AiInput): string[] {
 
 /** What she typed as her event (« Autre »): one line, contacts masked, capped. It only ever goes inside the event block. */
 /** One line of plain text: control characters (a NUL would be refused by the database) and bidirectional overrides are dropped. */
-const oneLine = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+export const oneLine = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
 const typedEventName = (s: string): string => defang(truncate(maskContacts(oneLine(s)), 80));
 
 /** The event block: only what is stated (no empty lines), in the coaches' words, defanged like any other text. */
@@ -288,14 +288,13 @@ async function defaultClient(): Promise<AiClient> {
   return new Anthropic({ timeout: TIMEOUT_MS, maxRetries: 0 }) as unknown as AiClient;
 }
 
-/**
- * Asks the model for titles. Never throws: the caller gets a reason it can show to the coach, and the templates are untouched
- * whatever happens. No server-side fallback to another model on purpose: a refusal here is a normal answer, shown as such.
- */
-export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = TIMEOUT_MS): Promise<AiResult> {
+/** What a provider call gives back before any parsing: the model's text, or a failure reason (never throws). */
+export type RawCall = { ok: true; text: string; model: string; inputTokens: number; outputTokens: number } | { ok: false; reason: AiFailure; detail?: string };
+export type ModelRequest = { system: string; user: string; schema: Record<string, unknown> };
+
+/** One request to Claude with a strict JSON schema. */
+export async function callClaude(req: ModelRequest, client?: AiClient, timeoutMs = TIMEOUT_MS): Promise<RawCall> {
   if (!client && !aiConfigured()) return { ok: false, reason: 'disabled' };
-  const { system, user } = buildPrompt(i);
-  const formats = i.event?.known ? (i.event.formats ?? []) : [];
   // The SDK's own timeout covers the wait for the response headers only: this signal bounds the whole call, body included.
   const signal = AbortSignal.timeout(timeoutMs);
   try {
@@ -303,26 +302,39 @@ export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = T
     const res = await c.messages.create({
       model: AI_MODEL,
       max_tokens: MAX_TOKENS,
-      system,
-      messages: [{ role: 'user', content: user }],
+      system: req.system,
+      messages: [{ role: 'user', content: req.user }],
       // thinking is left to the model (adaptive, the only mode on this model besides « between_tools »); effort `low`: a short creative task
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: outputSchema(i.refs, formats) } },
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: req.schema } },
     }, { signal });
     if (res.stop_reason === 'refusal') return { ok: false, reason: 'refused' };
     if (res.stop_reason === 'max_tokens') return { ok: false, reason: 'truncated' };
     const text = res.content.find((b) => b.type === 'text')?.text ?? '';
-    const titles = parseSuggestions(text, i.refs, i.existingTitles, formats);
-    if (!titles.length) return { ok: false, reason: 'empty' };
-    return {
-      ok: true,
-      titles,
-      domain: singleDomain(i),
-      model: AI_MODEL,
-      inputTokens: res.usage?.input_tokens ?? 0,
-      outputTokens: res.usage?.output_tokens ?? 0,
-    };
+    return { ok: true, text, model: AI_MODEL, inputTokens: res.usage?.input_tokens ?? 0, outputTokens: res.usage?.output_tokens ?? 0 };
   } catch (e) {
     return { ok: false, reason: 'failed', detail: describeError(e, signal.aborted) };
+  }
+}
+
+/**
+ * Asks the model for titles. Never throws: the caller gets a reason it can show to the coach, and the templates are untouched
+ * whatever happens. No server-side fallback to another model on purpose: a refusal here is a normal answer, shown as such.
+ */
+export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = TIMEOUT_MS): Promise<AiResult> {
+  const { system, user } = buildPrompt(i);
+  const formats = i.event?.known ? (i.event.formats ?? []) : [];
+  const raw = await callClaude({ system, user, schema: outputSchema(i.refs, formats) }, client, timeoutMs);
+  return titlesFrom(raw, i, formats);
+}
+
+function titlesFrom(raw: RawCall, i: AiInput, formats: TrackFormat[]): AiResult {
+  if (!raw.ok) return raw;
+  try { // never throws: an answer of an unexpected shape is a failure shown to the coach, not a 500
+    const titles = parseSuggestions(raw.text, i.refs, i.existingTitles, formats);
+    if (!titles.length) return { ok: false, reason: 'empty' };
+    return { ok: true, titles, domain: singleDomain(i), model: raw.model, inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
+  } catch {
+    return { ok: false, reason: 'failed', detail: 'parse' };
   }
 }
 
@@ -341,14 +353,12 @@ type OpenAiResponse = {
 };
 
 /**
- * The same request to OpenAI (Responses API, strict JSON schema), through plain fetch: no SDK to add. Same prompt, same schema, same
- * parsing and the same failure reasons as Claude; never throws. A tests' stand-in replaces fetch.
+ * One request to OpenAI (Responses API, strict JSON schema), through plain fetch: no SDK to add. Same failure reasons as Claude; never
+ * throws. A tests' stand-in replaces fetch.
  */
-export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeoutMs = TIMEOUT_MS, env: Record<string, string | undefined> = process.env): Promise<AiResult> {
+export async function callOpenAI(req: ModelRequest, fetchFn?: FetchLike, timeoutMs = TIMEOUT_MS, env: Record<string, string | undefined> = process.env): Promise<RawCall> {
   if (!openaiConfigured(env)) return { ok: false, reason: 'disabled' };
   const model = openaiModel(env);
-  const { system, user } = buildPrompt(i);
-  const formats = i.event?.known ? (i.event.formats ?? []) : [];
   const signal = AbortSignal.timeout(timeoutMs);
   try {
     const res = await (fetchFn ?? fetch)('https://api.openai.com/v1/responses', {
@@ -356,11 +366,11 @@ export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeo
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
-        instructions: system,
-        input: user,
+        instructions: req.system,
+        input: req.user,
         max_output_tokens: MAX_TOKENS, // reasoning tokens count too
         reasoning: { effort: 'low' }, // a short creative task, as for Claude
-        text: { format: { type: 'json_schema', name: 'suggestions', schema: outputSchema(i.refs, formats), strict: true } },
+        text: { format: { type: 'json_schema', name: 'suggestions', schema: req.schema, strict: true } },
       }),
       signal,
     });
@@ -379,12 +389,17 @@ export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeo
     const parts = (d.output ?? []).filter((o) => o.type === 'message').flatMap((o) => o.content ?? []);
     if (parts.some((c) => c.type === 'refusal')) return { ok: false, reason: 'refused' };
     const text = parts.filter((c) => c.type === 'output_text').map((c) => c.text ?? '').join('');
-    const titles = parseSuggestions(text, i.refs, i.existingTitles, formats);
-    if (!titles.length) return { ok: false, reason: 'empty' };
-    return { ok: true, titles, domain: singleDomain(i), model, inputTokens: d.usage?.input_tokens ?? 0, outputTokens: d.usage?.output_tokens ?? 0 };
+    return { ok: true, text, model, inputTokens: d.usage?.input_tokens ?? 0, outputTokens: d.usage?.output_tokens ?? 0 };
   } catch (e) {
     return { ok: false, reason: 'failed', detail: describeError(e, signal.aborted) };
   }
+}
+
+/** The title suggestions through OpenAI: same prompt, schema and parsing as Claude. */
+export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeoutMs = TIMEOUT_MS, env: Record<string, string | undefined> = process.env): Promise<AiResult> {
+  const { system, user } = buildPrompt(i);
+  const formats = i.event?.known ? (i.event.formats ?? []) : [];
+  return titlesFrom(await callOpenAI({ system, user, schema: outputSchema(i.refs, formats) }, fetchFn, timeoutMs, env), i, formats);
 }
 
 /**

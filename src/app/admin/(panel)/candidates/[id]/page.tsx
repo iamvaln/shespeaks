@@ -20,9 +20,12 @@ import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
 import { screenProgress } from '@/lib/reminders';
 import { BRANCH_SHORT, elapsed, one, topicSummary } from '@/lib/admin-format';
+import { currentSubject } from '@/lib/ai-subject';
+import { getSubjectProposal } from '@/lib/ai-subject-store';
+import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
+  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, remindNowAction, saveSubjectAction, selectPhotoAction, suggestTracksAction, trackAction,
 } from '../../../actions';
 
 export const metadata = { title: 'Fiche candidate' };
@@ -49,6 +52,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     getSetting('show_tracks_to_candidates'),
   ]);
   const evLabel = await eventLabelFor(c, c.locale);
+  const startSubject = c.branch ? currentSubject(c.branch, a, subject ?? null) : null;
+  const proposal = await getSubjectProposal(id);
   const coaches = allCoaches.filter((x) => x.active || x.id === c.coach_id);
   const history = await all<{ old_status: string | null; new_status: string; author: string; at: string }>('SELECT * FROM status_history WHERE candidate_id=? ORDER BY id DESC', id);
   const notes = await all<{ text: string; at: string; next_point_date: string | null; coach: string | null }>(
@@ -231,11 +236,50 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
               <section className="a-card a-stack" aria-labelledby="h-sujet">
                 <div><h2 id="h-sujet" className="a-h2">Sujet retenu et candidature</h2><p className="a-muted" style={{ margin: '2px 0 0' }}>Se remplit tout seul quand tu choisis une piste ; à compléter avant de valider le sujet.</p></div>
+                {c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
+                  <form action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <input type="hidden" name="cid" value={id} />
+                    <label className="a-label" style={{ flex: '1 1 320px' }}>
+                      Précisions pour l’IA (facultatif, gardées sur la fiche)
+                      <AutoGrowTextarea className="a-input" name="ai_brief" defaultValue={c.ai_brief ?? ''} maxLength={800} placeholder="Ex. : garder son exemple réel ; viser un public débutant ; plus orienté démo." />
+                    </label>
+                    {([
+                      ['claude', 'Claude', aiConfigured()],
+                      ['openai', 'OpenAI', openaiConfigured()],
+                    ] as const).filter(([, , on]) => on).map(([provider, name]) => (
+                      <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} son sujet actuel (titre, résumé${c.branch === 'C' ? ', idées clés' : ''}), son poste ou ses études, son ancienneté, l’événement visé et tes précisions pour obtenir une proposition d’amélioration ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). La proposition précédente est remplacée.`}>
+                        <Icon name="spark" size={16} />Améliorer avec {name}
+                      </PendingButton>
+                    ))}
+                  </form>
+                )}
+                {proposal && (
+                  <div className="a-stack" role="region" aria-labelledby="h-proposition" style={{ gap: 10, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
+                    <h3 id="h-proposition" className="a-eyebrow" style={{ margin: 0, color: 'var(--amber-text)' }}>Proposition d’amélioration · {proposal.model} · {fmtDate(proposal.created_at, 'fr', DATE_TIME)}</h3>
+                    {proposal.note && <p style={{ margin: 0 }}><strong>Ce qui change :</strong> {proposal.note}</p>}
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Titres</p>
+                      <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
+                        {proposal.titles.map((t, k) => <li key={k}><span style={{ marginRight: 8 }}>{t}</span><UseInField target="subject-title" value={t} label={`Utiliser le titre : ${t}`}>Utiliser ce titre</UseInField></li>)}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Résumé <span className="a-muted" style={{ fontWeight: 400 }}>({wordCount(proposal.abstract)} mots)</span></p>
+                      <p style={{ margin: '0 0 6px', whiteSpace: 'pre-line' }}>{proposal.abstract}</p>
+                      <UseInField target="subject-abstract" value={proposal.abstract}>Utiliser ce résumé</UseInField>
+                    </div>
+                    <div>
+                      <p className="a-label" style={{ margin: '0 0 4px' }}>Comment aborder le sujet</p>
+                      <ol style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>{proposal.plan.map((s, k) => <li key={k}>{s}</li>)}</ol>
+                    </div>
+                    <p className="a-muted" style={{ margin: 0 }}>« Utiliser » remplit le formulaire ci-dessous : rien n’est enregistré avant « Enregistrer le sujet ».</p>
+                  </div>
+                )}
                 <form action={saveSubjectAction} className="a-stack">
                   <input type="hidden" name="id" value={id} />
-                  <label className="a-label">Titre<input className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
+                  <label className="a-label">Titre<input id="subject-title" className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
                   <label className="a-label">Résumé
-                    <textarea className="a-textarea" name="abstract" defaultValue={subject?.abstract ?? ''} placeholder="Ce que le public va comprendre, voir, repartir avec…" />
+                    <textarea id="subject-abstract" className="a-textarea" name="abstract" defaultValue={subject?.abstract ?? ''} placeholder="Ce que le public va comprendre, voir, repartir avec…" />
                     <span className="a-sub" style={{ fontWeight: 400 }}>{wordCount(subject?.abstract ?? '')} mots · cible : 80 à 200</span>
                   </label>
                   <div className="a-grid-3">
