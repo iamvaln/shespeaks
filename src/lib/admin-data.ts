@@ -29,6 +29,20 @@ export async function candidateRows(): Promise<Row[]> {
 
 /** Interests waiting for a coach (the figure beside « Candidates » in the menu). */
 export async function countToProcess(): Promise<number> {
-  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates WHERE status='diagnostic_recu' AND name IS NOT NULL AND name <> ''`);
+  // new interests, plus candidates whose answer to a proposal the coach has not dealt with yet
+  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates c WHERE c.name IS NOT NULL AND c.name <> '' AND (
+    c.status='diagnostic_recu' OR EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id AND p.state='repondue' AND p.handled_at IS NULL))`);
   return r?.n ?? 0;
+}
+
+export interface ToHandle { id: number; name: string; role: string | null; since: string; responses: string[] }
+
+/** Candidates whose answer to a proposal the coach has not dealt with yet, the oldest answer first (one query). */
+export async function answersToHandle(): Promise<ToHandle[]> {
+  return all<ToHandle>(
+    `SELECT c.id, c.name, c.role, MIN(p.answered_at) AS since, ARRAY_AGG(p.response ORDER BY p.answered_at, p.id) AS responses
+     FROM proposals p JOIN candidates c ON c.id=p.candidate_id
+     WHERE p.state='repondue' AND p.handled_at IS NULL AND c.name IS NOT NULL AND c.name <> ''
+     GROUP BY c.id, c.name, c.role ORDER BY MIN(p.answered_at), c.id`,
+  );
 }

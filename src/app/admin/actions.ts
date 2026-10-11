@@ -10,9 +10,12 @@ import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
 import type { AiProvider } from '@/lib/ai-topics';
 import { removeObject } from '@/lib/storage';
+import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
+import { markHandled, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -92,9 +95,11 @@ export async function saveSubjectAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   await run(
-    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state) VALUES (?,?,?,?,?,?)
-     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format, application_state=excluded.application_state`,
+    `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state,why,plan) VALUES (?,?,?,?,?,?,?,?)
+     ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format,
+       application_state=excluded.application_state, why=excluded.why, plan=excluded.plan`,
     id, str(f, 'title'), str(f, 'abstract'), str(f, 'audience') || null, str(f, 'format') || null, str(f, 'application_state') || 'a_soumettre',
+    str(f, 'why').slice(0, 1500) || null, str(f, 'plan').slice(0, 3000) || null,
   );
   return back(cpath(id), 'Sujet enregistré');
 }
@@ -162,6 +167,9 @@ export async function trackAction(f: FormData) {
     await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
     if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
   }
+  // the sentence « for the candidate » travels in the same form as the title (only retained tracks have the field); only « Enregistrer » keeps it
+  const pitch = pitchToSave(op, f.has('pitch') ? str(f, 'pitch') : null);
+  if (pitch !== undefined) await run('UPDATE tracks SET pitch=? WHERE id=?', pitch, tid);
   let done: string;
   if (op === 'save') {
     done = 'Piste enregistrée';
@@ -195,7 +203,7 @@ export async function selectPhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   const photoId = num(f, 'photo_id') || null;
-  await run('UPDATE candidates SET selected_photo_id=? WHERE id=?', photoId, id);
+  await selectPhoto(id, photoId);
   return back(cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 
@@ -292,7 +300,47 @@ export async function saveSettingsAction(f: FormData) {
   await requireCoach();
   const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
-  await setSetting('show_tracks_to_candidates', f.get('show_tracks_to_candidates') ? 'true' : 'false');
+  // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
+}
+
+// ---- exchanges with the candidate (proposals flow) -------------------------------
+/** An unknown candidate has no fiche to come back to: the banner shows on the list. */
+const fail = (id: number, error: string, tab = ''): never => back(error === 'Candidate introuvable' ? '/admin/candidates' : cpath(id, tab), error, true);
+const validCid = (n: number) => Number.isInteger(n) && n >= 1 && n <= 2147483647;
+export async function sendChoiceAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await sendChoice(id, coach.id);
+  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : fail(id, r.error);
+}
+export async function sendSubjectAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await sendSubject(id, coach.id);
+  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : fail(id, r.error);
+}
+export async function requestPhotoAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await requestPhoto(id, coach.id, str(f, 'comment'));
+  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : fail(id, r.error, 'photos');
+}
+export async function validatePhotoAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await validatePhoto(id, num(f, 'photo_id'));
+  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : fail(id, r.error, 'photos');
+}
+export async function markHandledAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  await markHandled(id);
+  return back(cpath(id), 'Réponse marquée comme traitée');
 }

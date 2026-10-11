@@ -70,6 +70,7 @@ export default async function Home() {
                 <Link className="lp-btn lp-btn-amber" href={cta.href}>{cta.label} <Icon name="arrow" size={18} /></Link>
                 <a className="lp-btn lp-btn-outline" href="#comment">{d.hero.secondary}</a>
               </div>
+              {!c && <p style={{ marginTop: 16 }}><Link className="lp-link" href="/acces">{t(locale).access.link}</Link></p>}
             </div>
           </div>
         </section>

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AI_MODEL, OPENAI_DEFAULT_MODEL, aiConfigured, openaiConfigured, suggestTitlesOpenAI, buildPrompt, describeError, facts, maskContacts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
 import { DEFAULT_REFS, SCREENS } from '../src/lib/questions.ts';
+import { t } from '../src/lib/i18n.ts';
 import { shownToCandidate, tracksForCandidate } from '../src/lib/topics.ts';
 
 const refs = DEFAULT_REFS;
@@ -236,6 +237,15 @@ test('the candidate-facing form says nothing about the AI tool (the owner does n
       for (const q of screen.questions ?? []) {
         assert.ok(!mention.test(q.label[loc]) && !mention.test(q.help?.[loc] ?? ''), `${id} ${q.code} (${loc})`);
       }
+    }
+  }
+  // the journey and the « find my space » screens: every string of both keys, in both languages
+  const strings = (v: unknown): string[] => typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
+  for (const loc of ['fr', 'en'] as const) {
+    for (const key of ['journey', 'access'] as const) {
+      const all = strings(t(loc)[key]);
+      assert.ok(all.length >= (key === "journey" ? 30 : 5), `${key} (${loc}) has strings to check`);
+      for (const s of all) assert.ok(!mention.test(s), `${key} (${loc}): ${s}`);
     }
   }
 });

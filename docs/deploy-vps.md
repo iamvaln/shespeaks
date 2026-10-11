@@ -258,6 +258,8 @@ Fichier modèle : `.env.compose.example`. Aucune valeur entre guillemets.
 | `BACKUP_R2_ACCOUNT_ID`, `BACKUP_R2_BUCKET` | Compte et compartiment R2 des sauvegardes. | Cloudflare (2.2). Production seulement. |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Jeton R2 (transmis au conteneur `backup` sous les noms `AWS_*`). | Cloudflare (2.2). Production seulement. |
 
+Le parcours de propositions (migration `0012_proposals.sql`) n'ajoute **aucune variable** : la migration passe par le service `migrate` existant (`scripts/db.mjs setup`) et le rappel de 48 h par la tâche cron des relances.
+
 Variables facultatives, absentes du modèle (valeurs par défaut du compose) :
 
 | Variable | Défaut | Rôle |

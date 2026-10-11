@@ -121,6 +121,17 @@ On the fiche of a candidate who has no precise topic yet (start points A and B, 
 - **Failures never break the fiche.** No key, a refusal, a timeout (40 s; the fiche page allows 60 s), a truncated or unreadable answer: the coach gets a message and the tracks are untouched. There is no server-side fallback to another model on purpose.
 - **Code.** `ai-topics.ts` (prompt, JSON schema, validation, the call: no framework or database import, the client can be replaced in tests), `ai-tracks.ts` (who may ask, limits, storage), `suggestTracksAction` in `admin/actions.ts`, the button in `candidates/[id]/page.tsx`. Tests: `tests/ai-topics.test.ts`, `tests/db/ai-tracks.test.mjs` (a stand-in replaces the model: CI has no key).
 
+## Proposals flow (coach and candidate exchanges)
+
+After the diagnostic, the coach and the candidate go through a short series of exchanges: choice of topics, adjusted subject, speaker photo, then submission to the event. Each exchange is a **proposal** the coach sends and the candidate answers from her space (`/plan`).
+
+- **Steps.** `choix` (start points A and B only), `sujet`, `photo`, `soumission`, then `soumise`. The step is never stored: `src/lib/journey.ts` (pure) computes it from the proposals, `photo_validated_at` and `submitted_at`. It also says who the ball is with (coach, candidate, nobody).
+- **Table `proposals`** (migration `0012_proposals.sql`, additive): `kind` (`choix` | `sujet` | `photo`), `payload` (frozen JSON copy of what was sent), `state` (`envoyee` | `repondue` | `remplacee`), `response`, `candidate_comment`, `handled_at` (the coach dealt with the answer), `reminded_at`. One `envoyee` proposal per kind and candidate: a new send marks the previous one `remplacee`. The migration also adds `tracks.pitch`, `subjects.why`, `subjects.plan`, `candidates.photo_validated_at` and `candidates.submitted_at`. Rules and coach/candidate actions: `src/lib/proposals.ts`. The status only moves forward (`sujet_valide` on approval, `candidature_soumise` on submission).
+- **Routes.** `POST /api/espace/repondre` (the candidate answers a proposal), `POST /api/espace/soumis` (she confirms she submitted), `POST /api/acces` (she asks for a new access link by email: the answer is the same whether the address exists or not, and the link goes only to the registered address; rate-limited, `src/lib/access.ts`).
+- **Emails** (`kind` in Admin → Emails, `src/lib/proposals-mailer.ts`): `candidate_proposal_choix`, `candidate_proposal_sujet`, `candidate_proposal_photo` (a proposal was sent), `coach_answer_<response>` (`choisie`, `aucune`, `approuvee`, `changements`, `photo_deposee`, `soumise`) to the coaches, `candidate_access_link`, and `candidate_proposal_reminder`: one reminder for a proposal still open after 48 h, sent by the existing `/api/cron/reminders` run (`remindPendingProposals` in `src/lib/reminders.ts`, one per proposal thanks to `reminded_at`) and mentioned in the coach digest.
+- **No mention of AI on the candidate side.** Pages and emails speak of « ta coach » / « your coach » only, even when a topic started as an AI suggestion.
+- **Tests.** `tests/journey.test.ts` and the other unit tests, `tests/db/*.test.mjs` for the database rules.
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

@@ -31,6 +31,8 @@ export interface Candidate {
   created_at: string;
   updated_at: string;
   ai_brief?: string | null; // a coach's notes for the AI suggestions (« Précisions pour l'IA »)
+  photo_validated_at?: string | null;
+  submitted_at?: string | null;
 }
 export interface Track {
   id: number;
@@ -45,6 +47,7 @@ export interface Track {
   position: number;
   provider?: string | null; // claude | openai (origin 'ia')
   model?: string | null; // the AI model that wrote it (origin 'ia')
+  pitch?: string | null; // « pourquoi ce sujet lui irait », for the candidate
 }
 export interface Subject {
   candidate_id: number;
@@ -54,6 +57,8 @@ export interface Subject {
   format: string | null;
   application_state: string;
   abstract_edited: number;
+  why?: string | null; // « Pourquoi ces changements »
+  plan?: string | null; // « Comment t'y prendre », one step per line
 }
 export interface Photo {
   id: number;

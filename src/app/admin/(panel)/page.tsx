@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { candidateRows } from '@/lib/admin-data';
+import { answersToHandle, candidateRows } from '@/lib/admin-data';
 import { getSetting, statusLabel } from '@/lib/db';
 import { eventName, listEvents } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
@@ -18,13 +18,15 @@ const LATE_HOURS = 48;
 /** The bar of an appel à speakers fills as the closing date comes within this many days. */
 const HORIZON_DAYS = 60;
 
+const ANSWER_LABEL: Record<string, string> = { choisie: 'a choisi un sujet', aucune: 'aucun sujet ne lui convient', approuvee: 'a approuvé son sujet', changements: 'demande des changements', photo_deposee: 'a déposé une photo' };
+
 const waMe = (n: string | null) => (n ?? '').replace(/[^\d]/g, '');
 
 export default async function Dashboard() {
   const coach = await requireCoach();
   const now = new Date();
   const today = todayIso(now);
-  const rows = await candidateRows();
+  const [rows, answers] = await Promise.all([candidateRows(), answersToHandle()]);
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');
 
@@ -134,6 +136,21 @@ export default async function Dashboard() {
             )}
             {stalled.length > 0 && <Link className="a-more" href="/admin/candidates?status=en_cours">Voir les {stalled.length} parcours →</Link>}
           </section>
+
+          {answers.length > 0 && (
+            <section className="a-card a-stack" aria-labelledby="h-reponses">
+              <h2 id="h-reponses" className="a-h2">Réponses à traiter</h2>
+              <ul className="a-list">
+                {answers.slice(0, 6).map((r) => (
+                  <li key={r.id}>
+                    <Link href={`/admin/candidates/${r.id}`} className="a-name">{r.name}</Link>
+                    <span className="a-sub" style={{ whiteSpace: 'normal' }}>{[...new Set(r.responses)].map((x) => ANSWER_LABEL[x] ?? x).join(' · ')} · il y a {elapsed(r.since, now)}</span>
+                  </li>
+                ))}
+              </ul>
+              {answers.length > 6 && <p className="a-sub" style={{ margin: 0 }}>Et {answers.length - 6} autre{answers.length - 6 > 1 ? 's' : ''} réponse{answers.length - 6 > 1 ? 's' : ''} à traiter.</p>}
+            </section>
+          )}
 
           {dueSoon.length > 0 && (
             <section className="a-card a-stack" aria-labelledby="h-points">
