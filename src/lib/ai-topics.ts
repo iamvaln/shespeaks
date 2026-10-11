@@ -13,10 +13,16 @@ export const AI_COUNT = 5;
 const MAX_TOKENS = 8000; // thinking tokens count too; titles themselves are short
 const TIMEOUT_MS = 40_000; // the fiche page allows 60 s; one attempt, the coach can try again
 
-export const aiConfigured = (env: Record<string, string | undefined> = process.env): boolean => {
-  const key = env.ANTHROPIC_API_KEY?.trim();
-  return !!key && !/^(change-?me|changeme|xxx+|your[-_ ].*|\[.*\])$/i.test(key);
-};
+const realKey = (key: string | undefined): boolean => !!key?.trim() && !/^(change-?me|changeme|xxx+|your[-_ ].*|\[.*\])$/i.test(key.trim());
+export const aiConfigured = (env: Record<string, string | undefined> = process.env): boolean => realKey(env.ANTHROPIC_API_KEY);
+
+/** The second provider, chosen by the owner next to Claude: a coach picks which one writes the suggestions. */
+export type AiProvider = 'claude' | 'openai';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.5';
+export const openaiConfigured = (env: Record<string, string | undefined> = process.env): boolean => realKey(env.OPENAI_API_KEY);
+export const openaiModel = (env: Record<string, string | undefined> = process.env): string => env.OPENAI_MODEL?.trim() || OPENAI_DEFAULT_MODEL;
+export const providerConfigured = (p: AiProvider, env: Record<string, string | undefined> = process.env): boolean =>
+  p === 'openai' ? openaiConfigured(env) : aiConfigured(env);
 
 export type AiInput = {
   branch: 'A' | 'B';
@@ -302,16 +308,75 @@ export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = T
     const text = res.content.find((b) => b.type === 'text')?.text ?? '';
     const titles = parseSuggestions(text, i.refs, i.existingTitles, formats);
     if (!titles.length) return { ok: false, reason: 'empty' };
-    // the model gives no domain per title: only a candidate who chose exactly one can have it written on every suggestion
-    const domains = domainLabelsOf(i.answers, i.branch, i.refs, textLocale(i.answers['P5'], i.locale));
     return {
       ok: true,
       titles,
-      domain: domains.length === 1 ? domains[0] : '',
+      domain: singleDomain(i),
       model: AI_MODEL,
       inputTokens: res.usage?.input_tokens ?? 0,
       outputTokens: res.usage?.output_tokens ?? 0,
     };
+  } catch (e) {
+    return { ok: false, reason: 'failed', detail: describeError(e, signal.aborted) };
+  }
+}
+
+/** The model gives no domain per title: only a candidate who chose exactly one can have it written on every suggestion. */
+function singleDomain(i: AiInput): string {
+  const domains = domainLabelsOf(i.answers, i.branch, i.refs, textLocale(i.answers['P5'], i.locale));
+  return domains.length === 1 ? domains[0] : '';
+}
+
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+type OpenAiResponse = {
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
+  output?: { type: string; content?: { type: string; text?: string }[] }[];
+  usage?: { input_tokens?: number; output_tokens?: number };
+};
+
+/**
+ * The same request to OpenAI (Responses API, strict JSON schema), through plain fetch: no SDK to add. Same prompt, same schema, same
+ * parsing and the same failure reasons as Claude; never throws. A tests' stand-in replaces fetch.
+ */
+export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeoutMs = TIMEOUT_MS, env: Record<string, string | undefined> = process.env): Promise<AiResult> {
+  if (!openaiConfigured(env)) return { ok: false, reason: 'disabled' };
+  const model = openaiModel(env);
+  const { system, user } = buildPrompt(i);
+  const formats = i.event?.known ? (i.event.formats ?? []) : [];
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    const res = await (fetchFn ?? fetch)('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        instructions: system,
+        input: user,
+        max_output_tokens: MAX_TOKENS, // reasoning tokens count too
+        reasoning: { effort: 'low' }, // a short creative task, as for Claude
+        text: { format: { type: 'json_schema', name: 'suggestions', schema: outputSchema(i.refs, formats), strict: true } },
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      // the status, the error type and the request id (to quote to support); never the message, which can echo the key or the request
+      const requestId = res.headers.get('x-request-id') ?? '';
+      const type = await res.json().then((b) => String((b as { error?: { type?: unknown } })?.error?.type ?? '')).catch(() => '');
+      const parts = [`status=${res.status}`];
+      if (/^[a-z_]{1,40}$/.test(type)) parts.push(`type=${type}`);
+      if (/^[\w-]{1,80}$/.test(requestId)) parts.push(`request_id=${requestId}`);
+      return { ok: false, reason: 'failed', detail: parts.join(' ') };
+    }
+    const d = (await res.json()) as OpenAiResponse;
+    if (d.status === 'incomplete') return { ok: false, reason: d.incomplete_details?.reason === 'content_filter' ? 'refused' : 'truncated' };
+    if (d.status && d.status !== 'completed') return { ok: false, reason: 'failed', detail: `status=${/^[a-z_]{1,20}$/.test(d.status) ? d.status : 'unknown'}` }; // failed, cancelled: an outage, refunded
+    const parts = (d.output ?? []).filter((o) => o.type === 'message').flatMap((o) => o.content ?? []);
+    if (parts.some((c) => c.type === 'refusal')) return { ok: false, reason: 'refused' };
+    const text = parts.filter((c) => c.type === 'output_text').map((c) => c.text ?? '').join('');
+    const titles = parseSuggestions(text, i.refs, i.existingTitles, formats);
+    if (!titles.length) return { ok: false, reason: 'empty' };
+    return { ok: true, titles, domain: singleDomain(i), model, inputTokens: d.usage?.input_tokens ?? 0, outputTokens: d.usage?.output_tokens ?? 0 };
   } catch (e) {
     return { ok: false, reason: 'failed', detail: describeError(e, signal.aborted) };
   }

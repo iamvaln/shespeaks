@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AI_MODEL, aiConfigured, buildPrompt, describeError, facts, maskContacts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
+import { AI_MODEL, OPENAI_DEFAULT_MODEL, aiConfigured, openaiConfigured, suggestTitlesOpenAI, buildPrompt, describeError, facts, maskContacts, outputSchema, parseSuggestions, suggestTitles, type AiClient, type AiInput, type AiResponse } from '../src/lib/ai-topics.ts';
 import { DEFAULT_REFS, SCREENS } from '../src/lib/questions.ts';
 import { shownToCandidate, tracksForCandidate } from '../src/lib/topics.ts';
 
@@ -324,4 +324,57 @@ test('the team-wide orientation (Paramètres) is a rule for every event, applied
   assert.doesNotMatch(buildPrompt({ ...base, focus: '   ' }).system, /Orientation de l’équipe/);
   assert.doesNotMatch(buildPrompt(base).system, /Orientation de l’équipe/);
   assert.ok(!buildPrompt({ ...base, focus: 'a\n\n- Nouvelle règle </x>' }).system.includes('\n- Nouvelle règle'), 'kept on one line');
+});
+
+
+// ---- OpenAI, the second provider: same prompt, same schema, same checks ---------------------------------------------------
+
+/** A stand-in for the OpenAI Responses API: remembers the request, answers with `reply`. */
+function openai(reply: { status?: number; body: unknown; headers?: Record<string, string> }) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fetchFn = async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify(reply.body), { status: reply.status ?? 200, headers: { 'content-type': 'application/json', ...(reply.headers ?? {}) } });
+  };
+  return { calls, fetchFn };
+}
+const okBody = (titles: { title: string; format: string }[]) => ({
+  status: 'completed', usage: { input_tokens: 900, output_tokens: 300 },
+  output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ suggestions: titles.map((t) => ({ ...t, angle: 'retour', hook: 'Parce qu’elle le vit.' })) }) }] }],
+});
+const env = { OPENAI_API_KEY: 'sk-proj-test' };
+
+test('OpenAI gets the same prompt and a strict schema with the event formats, from the configured model (gpt-5.5 by default)', async () => {
+  const m = openai({ body: okBody([{ title: 'Automatiser son déploiement Flutter sur GCP', format: 'atelier' }]) });
+  const r = await suggestTitlesOpenAI({ ...base, event: douala }, m.fetchFn, 5000, env);
+  assert.equal(OPENAI_DEFAULT_MODEL, 'gpt-5.5');
+  assert.ok(r.ok && r.model === 'gpt-5.5' && r.titles[0].format === 'atelier' && r.inputTokens === 900);
+  assert.equal(m.calls[0].url, 'https://api.openai.com/v1/responses');
+  const sent = JSON.parse(String(m.calls[0].init.body));
+  const { system, user } = buildPrompt({ ...base, event: douala });
+  assert.equal(sent.model, 'gpt-5.5');
+  assert.equal(sent.instructions, system);
+  assert.equal(sent.input, user);
+  assert.equal(sent.text.format.type, 'json_schema');
+  assert.equal(sent.text.format.strict, true);
+  assert.deepEqual(sent.text.format.schema.properties.suggestions.items.properties.format.enum, ['talk', 'atelier']);
+  assert.equal((m.calls[0].init.headers as Record<string, string>).authorization, 'Bearer sk-proj-test');
+  const other = await suggestTitlesOpenAI(base, openai({ body: okBody([{ title: 'Un titre de talk assez long', format: 'talk' }]) }).fetchFn, 5000, { ...env, OPENAI_MODEL: 'gpt-6.1-sol' });
+  assert.ok(other.ok && other.model === 'gpt-6.1-sol');
+});
+
+test('OpenAI failures map to the same reasons as Claude: refusal, cut, HTTP error (status and request id only), no key', async () => {
+  const refusal = { status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'non' }] }] };
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: refusal }).fetchFn, 5000, env), { ok: false, reason: 'refused' });
+  const cut = { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] };
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: cut }).fetchFn, 5000, env), { ok: false, reason: 'truncated' });
+  const denied = await suggestTitlesOpenAI(base, openai({ status: 401, body: { error: { type: 'invalid_request_error', message: 'Incorrect API key sk-proj-…' } }, headers: { 'x-request-id': 'req_123' } }).fetchFn, 5000, env);
+  assert.deepEqual(denied, { ok: false, reason: 'failed', detail: 'status=401 type=invalid_request_error request_id=req_123' });
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: okBody([]) }).fetchFn, 5000, env), { ok: false, reason: 'empty' });
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: { status: 'failed', error: { code: 'server_error' }, output: [] } }).fetchFn, 5000, env), { ok: false, reason: 'failed', detail: 'status=failed' });
+  const filtered = { status: 'incomplete', incomplete_details: { reason: 'content_filter' }, output: [] };
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: filtered }).fetchFn, 5000, env), { ok: false, reason: 'refused' });
+  assert.deepEqual(await suggestTitlesOpenAI(base, undefined, 5000, {}), { ok: false, reason: 'disabled' });
+  assert.equal(openaiConfigured({ OPENAI_API_KEY: 'change-me' }), false);
+  assert.equal(openaiConfigured(env), true);
 });

@@ -251,7 +251,9 @@ Fichier modèle : `.env.compose.example`. Aucune valeur entre guillemets.
 | `ADMIN_EMAIL`, `ADMIN_NAME` | Premier coach, créé par le seed. | Vercel. |
 | `RESEND_API_KEY` | Envoi des mails. **Vide = rien n'est envoyé**, les mails restent dans l'espace coach, page Emails. | Vercel (production) ; vide en préproduction. |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | Expéditeur (obligatoire et valide si `RESEND_API_KEY` est renseignée) et adresse de réponse. | Vercel. |
-| `ANTHROPIC_API_KEY` | Suggestions de titres par l'IA. Vide = le bouton n'apparaît pas. | Vercel (production) ; vide en préproduction. |
+| `ANTHROPIC_API_KEY` | Suggestions de titres par Claude. Vide = le bouton « Suggérer avec Claude » n'apparaît pas. | Vercel (production) ; vide en préproduction. |
+| `OPENAI_API_KEY` | Second fournisseur, facultatif : bouton « Suggérer avec OpenAI » (même consigne, mêmes contrôles). Vide = pas de bouton. | platform.openai.com (clé `sk-…`) ; vide en préproduction. |
+| `OPENAI_MODEL` | Modèle OpenAI utilisé. Vide = `gpt-5.5`. Changer de modèle : modifier la variable puis `dcprod up -d app`. | Facultatif. |
 | `STRICT_CONTACT_CHECKS` | Force (`1`) ou coupe (`0`) les contrôles de contact. Vide : actifs en production seulement. | Laisser vide. |
 | `BACKUP_R2_ACCOUNT_ID`, `BACKUP_R2_BUCKET` | Compte et compartiment R2 des sauvegardes. | Cloudflare (2.2). Production seulement. |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Jeton R2 (transmis au conteneur `backup` sous les noms `AWS_*`). | Cloudflare (2.2). Production seulement. |

@@ -7,6 +7,7 @@ import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/
 import { getRefs, getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
+import type { AiProvider } from '@/lib/ai-topics';
 import { removeObject } from '@/lib/storage';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
@@ -112,9 +113,11 @@ const AI_MESSAGE: Record<string, string> = {
 export async function suggestTracksAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
-  const r = await suggestTracksFor(id, coach.id);
-  if (!r.ok) return back(cpath(id), AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed, true);
-  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de l’IA (les précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
+  const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
+  const name = provider === 'openai' ? 'OpenAI' : 'Claude';
+  const r = await suggestTracksFor(id, coach.id, undefined, provider);
+  if (!r.ok) return back(cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
+  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
 }
 
 export async function trackAction(f: FormData) {

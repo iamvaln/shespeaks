@@ -111,6 +111,10 @@ export function checkEnv(env: Env, opts: { production: boolean }): EnvIssue[] {
   } else if (!/^sk-ant-/.test(env.ANTHROPIC_API_KEY!.trim())) {
     add('warn', ['ANTHROPIC_API_KEY'], 'Ne ressemble pas à une clé Anthropic (elles commencent par « sk-ant- »).');
   }
+  // OpenAI is the optional second provider: no warning when it is absent, only when the key looks wrong
+  if (isSet(env.OPENAI_API_KEY) && !/^sk-/.test(env.OPENAI_API_KEY!.trim())) {
+    add('warn', ['OPENAI_API_KEY'], 'Ne ressemble pas à une clé OpenAI (elles commencent par « sk- »). Le bouton « Suggérer avec OpenAI » échouerait.');
+  }
   return out;
 }
 

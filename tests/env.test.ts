@@ -60,6 +60,9 @@ test('AI suggestions: the key is optional (a warning, never an error) and must l
   assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'change-me' }), ['warn:ANTHROPIC_API_KEY'], 'a placeholder counts as unset');
   assert.deepEqual(names({ ...good, ANTHROPIC_API_KEY: 'sk-live-nope' }), ['warn:ANTHROPIC_API_KEY']);
   assert.equal(hasErrors(checkEnv({ ...good, ANTHROPIC_API_KEY: undefined, VERCEL: '1' }, { production: true })), false);
+  // OpenAI is optional: absent is fine, a malformed key is a warning
+  assert.deepEqual(names({ ...good, OPENAI_API_KEY: 'sk-proj-abc123' }), []);
+  assert.deepEqual(names({ ...good, OPENAI_API_KEY: 'nope' }), ['warn:OPENAI_API_KEY']);
 });
 
 test('development only requires DATABASE_URL', () => {
