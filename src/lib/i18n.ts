@@ -8,6 +8,15 @@ export const LANG_COOKIE = 'ss_lang';
 export const TOKEN_COOKIE = 'ss_token';
 
 const fr = {
+  access: {
+    title: 'Retrouver mon espace',
+    intro: 'Tape l’email que tu as donné dans le formulaire : on t’envoie ton lien personnel.',
+    email: 'Ton email',
+    send: 'Recevoir mon lien',
+    sent: 'Si cette adresse est connue, tu vas recevoir un email avec ton lien dans quelques minutes. Pense à vérifier tes courriers indésirables.',
+    limited: 'Trop de demandes : réessaie dans quelques minutes.',
+    link: 'Tu as déjà commencé ? Retrouve ton espace',
+  },
   brand: "SheSpeaks by Techies Connect'",
   nav: { start: 'Commencer', plan: 'Mon plan de route', lang: 'English' },
   home: {
@@ -221,6 +230,15 @@ const fr = {
 type Dict = typeof fr;
 
 const en: Dict = {
+  access: {
+    title: 'Find my space',
+    intro: 'Type the email you gave in the form: we will send you your personal link.',
+    email: 'Your email',
+    send: 'Get my link',
+    sent: 'If this address is known, you will receive an email with your link in a few minutes. Check your spam folder.',
+    limited: 'Too many requests: try again in a few minutes.',
+    link: 'Already started? Find your space',
+  },
   brand: "SheSpeaks by Techies Connect'",
   nav: { start: 'Start', plan: 'My roadmap', lang: 'Français' },
   home: {

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   SCREENS, SELF_CHECKS, flowFor, totalSteps, visibleQuestions, resolveOptions,
@@ -106,6 +107,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   return (
     <div className="form-shell">
       <div className="container form-container">
+        {idx === 0 && <p className="label-s"><Link href="/acces">{t(locale).access.link}</Link></p>}
         <div className="progress" role="group" aria-label={d.screenOf(idx + 1, total)}>
           <p className="label-s muted">{d.screenOf(idx + 1, total)}</p>
           <div className="progress-bar" role="progressbar" aria-label={d.screenOf(idx + 1, total)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={d.screenOf(idx + 1, total)}><div style={{ width: `${pct}%` }} /></div>

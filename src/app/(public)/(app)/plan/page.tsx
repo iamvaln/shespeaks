@@ -19,7 +19,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const locale = await getLocale();
   const c = await getCandidateFromCookie();
-  if (!c) redirect('/');
+  if (!c) redirect('/acces');
   if (!c.completed_at || !c.branch) redirect('/interet');
   const d = t(locale).plan;
   const [answers, sub, photos] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id)]);

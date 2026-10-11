@@ -308,5 +308,14 @@ else {
   ok(r.status === 200 && body?.ok === true && r.headers.get('cache-control')?.includes('no-store'), 'health: the database answers and the answer is not cached');
 }
 
+// lost session: /plan sends her to « Retrouver mon espace »; /api/acces answers the same for any address
+{
+  const r = await fetch(BASE + '/plan', { redirect: 'manual' });
+  ok(r.status === 307 && (r.headers.get('location') ?? '').endsWith('/acces'), 'access: /plan without a session goes to /acces');
+  const a = await fetch(BASE + '/api/acces', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': randomIp() }, body: JSON.stringify({ email: `nobody-${RUN}@example.org` }) });
+  ok(a.status === 200 && (await a.json()).ok === true, 'access: an unknown address gets the same answer');
+  ok((await fetch(BASE + '/acces')).status === 200, 'access: the page answers');
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');
 process.exit(failures ? 1 : 0);

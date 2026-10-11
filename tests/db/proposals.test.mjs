@@ -131,3 +131,18 @@ test('non-integer ids are refused without throwing', { skip }, async () => {
   assert.deepEqual(await P.answerProposal(id, NaN, 'approuvee', null, ''), { ok: false, error: 'Proposition introuvable.' });
   assert.deepEqual(await P.validatePhoto(id, NaN), { ok: false, error: 'Photo introuvable.' });
 });
+
+test('/acces: one email listing every journey of the same mailbox; same answer for an unknown address; rate limited', { skip }, async () => {
+  const access = await import('../../src/lib/access.ts');
+  const sent = [];
+  access.setAccessSender(async (to, entries, loc) => { sent.push({ to, n: entries.length, loc }); });
+  const box = `box${crypto.randomBytes(3).toString('hex')}`;
+  await raw`insert into candidates (token, name, email, locale) values (${crypto.randomBytes(8).toString('hex')}, 'A', ${box + '@gmail.com'}, 'fr'), (${crypto.randomBytes(8).toString('hex')}, 'A2', ${box + '+x@gmail.com'}, 'fr')`;
+  assert.deepEqual(await access.requestAccess(`${box}@gmail.com`, '198.51.100.9'), {});
+  assert.deepEqual(sent, [{ to: `${box}@gmail.com`, n: 2, loc: 'fr' }]);
+  assert.deepEqual(await access.requestAccess('nobody@example.org', '198.51.100.9'), {});
+  assert.equal(sent.length, 1, 'nothing sent for an unknown address');
+  let limited;
+  for (let k = 0; k < 6 && !limited; k++) limited = (await access.requestAccess(`${box}@gmail.com`, '198.51.100.10')).retryAfterSec;
+  assert.ok(limited > 0, 'the address limit applies');
+});
