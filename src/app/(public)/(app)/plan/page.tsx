@@ -53,7 +53,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           cfpUrl: ev?.submission_url ?? null, cfpLabel: ev?.submission_label ?? null, deadline: ev?.cfp_close_date ? fmtDate(ev.cfp_close_date, locale) : null,
         }} />}
 
-        <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
+        {/* « À faire maintenant » above says what comes next: the roadmap's own next action would contradict it */}
+        <RoadmapView rm={rm} locale={locale} hideNextAction={!!j} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
 
         <PlanPhotos initial={photos.map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }))} consent={!!c.consent_photo} locale={locale} />
 

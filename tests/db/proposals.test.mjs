@@ -285,6 +285,41 @@ test('I1/I2: nothing can be sent once she counts as submitted', { skip }, async 
   assert.equal((await raw`select count(*)::int as n from proposals where candidate_id in (${id}, ${byStatus}, ${confirmed})`)[0].n, 0);
 });
 
+test('« Rouvrir les échanges »: the coach can send again after her confirmation or a status moved forward; she confirms again at the end', { skip }, async () => {
+  const open = await candidate('C');
+  assert.deepEqual(await P.reopenExchanges(open), { ok: false, error: 'Les échanges sont déjà ouverts.' });
+  assert.deepEqual(await P.reopenExchanges(2000000000), { ok: false, error: 'Candidate introuvable' });
+  const id = await candidate('C');
+  await subjectFor(id);
+  await raw`update candidates set submitted_at = now() at time zone 'utc', status = 'retenue' where id = ${id}`;
+  await raw`update subjects set application_state = 'retenue' where candidate_id = ${id}`;
+  assert.equal((await state(id)).step, 'soumise');
+  assert.deepEqual(await P.reopenExchanges(id), { ok: true });
+  assert.notEqual((await state(id)).step, 'soumise', 'neither the form answer nor the status counts once reopened');
+  assert.deepEqual(await P.requestPhoto(id, 1, 'Une photo plus récente'), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'retenue', 'her status does not move back');
+  await raw`update candidates set submitted_at = now() at time zone 'utc' where id = ${id}`;
+  assert.equal((await state(id)).step, 'soumise', 'her new confirmation closes them again');
+});
+
+test('her first photo at the photo step tells the coach even when no photo was asked; not before the subject is approved', { skip }, async () => {
+  const early = await candidate('C');
+  mails.length = 0;
+  await P.photoUploaded(early);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(mails, [], 'no subject approved yet: nothing to validate');
+  const id = await candidate('C');
+  await subjectFor(id);
+  await P.sendSubject(id, 1);
+  const j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'approuvee', undefined, '');
+  assert.equal((await state(id)).step, 'photo');
+  mails.length = 0;
+  await P.photoUploaded(id);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(mails, ['coach:photo_deposee:']);
+});
+
 test('I3: the validation of a photo goes when the selected photo changes, is un-selected or is deleted', { skip }, async () => {
   const photos = await import('../../src/lib/photos.ts');
   const id = await candidate('C');

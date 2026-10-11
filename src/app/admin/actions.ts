@@ -14,7 +14,7 @@ import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
-import { markHandled, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { markHandled, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
@@ -336,6 +336,13 @@ export async function validatePhotoAction(f: FormData) {
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await validatePhoto(id, num(f, 'photo_id'));
   return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : fail(id, r.error, 'photos');
+}
+export async function reopenExchangesAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const r = await reopenExchanges(id);
+  return r.ok ? back(cpath(id), 'Échanges rouverts : tu peux de nouveau lui envoyer une proposition') : back(cpath(id), r.error, true);
 }
 export async function markHandledAction(f: FormData) {
   await requireCoach();
