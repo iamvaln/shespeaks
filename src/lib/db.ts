@@ -225,6 +225,8 @@ export const SETTING_DEFAULTS = {
   reminder_max: '2',
   domains: '',
   angles: '',
+  // the team's orientation for the AI title suggestions, for every event (empty = none)
+  topic_focus: 'Tous les DevFest s’intéressent particulièrement aux agents IA et à l’automatisation. Privilégie des sujets qui montrent comment elle automatise son travail ou met des agents IA au service de son domaine : par exemple, pour une personne qui fait du DevOps, « Automatiser votre déploiement sur GCP ».',
 } as const;
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
 

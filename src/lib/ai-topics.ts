@@ -28,6 +28,8 @@ export type AiInput = {
   existingTitles: string[];
   /** the event she chose; `known: false` when she typed one that is not in the calendar (« Autre ») */
   event?: AiEvent | null;
+  /** the team's orientation for every event (Paramètres, `topic_focus`); empty = none */
+  focus?: string;
 };
 
 /** What the coaches entered about an event (Admin → Événements). Empty lists mean « not stated ». */
@@ -168,6 +170,7 @@ export function buildPrompt(i: AiInput): { system: string; user: string; titleLo
       : '- format : talk (20 à 30 minutes), lightning (5 à 10 minutes) ou atelier (pratique, codelab). Varie les formats quand c’est pertinent.';
   const hasTheme = !!(e?.known && e.theme?.trim());
   const hasThemes = !!(e?.known && e.themes?.length);
+  const focus = defang(truncate(oneLine(i.focus ?? ''), 600));
   const system = [
     `Tu aides une personne à trouver le sujet de son intervention ${where}. Elle est accompagnée par une coach de SheSpeaks, un programme qui aide de jeunes femmes de la tech au Cameroun à prendre la parole ; la coach choisira parmi tes propositions celles à lui soumettre.`,
     '',
@@ -180,6 +183,7 @@ export function buildPrompt(i: AiInput): { system: string; user: string; titleLo
     'Règles :',
     '- Appuie-toi sur ce qu’elle a réellement écrit (ce qu’elle fait, domaine, technos, expérience, questions qu’on lui pose). N’invente aucun fait sur elle : ni employeur, ni chiffre, ni projet qu’elle n’a pas cité.',
     ...(hasTheme ? ['- Le thème de l’édition est le fil rouge : au moins 3 des 5 titres s’y inscrivent clairement ; les autres peuvent s’en écarter si le sujet est très fort pour elle (dis-le dans le hook).'] : []),
+    ...(focus ? [`- Orientation de l’équipe SheSpeaks pour tous les événements, à appliquer quand c’est cohérent avec ce qu’elle fait : ${focus}`] : []),
     ...(hasThemes ? ['- Privilégie le recoupement entre les thèmes attendus par l’événement et ce qui l’attire ; un sujet hors de ces thèmes seulement s’il est très fort pour elle, et dis-le dans le hook.'] : []),
     '- Calibre l’ambition sur son expérience de la prise de parole : si elle n’a jamais parlé en public, un sujet concret qu’elle maîtrise déjà.',
     '- Les titres doivent être différents entre eux par l’angle et par l’idée, pas seulement par la formulation.',
