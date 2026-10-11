@@ -48,7 +48,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           </div>
         </div>
 
-        {j && <JourneyPanel j={j} proposals={proposals} locale={locale} d={t(locale).journey} submit={{
+        {j && <JourneyPanel j={j} proposals={proposals} locale={locale} d={t(locale).journey} photoCount={photos.length} submit={{
           title: approved?.title ?? '', abstract: approved?.abstract ?? '', photoUrl: validated ? `/api/photos/${validated.id}` : null,
           cfpUrl: ev?.submission_url ?? null, cfpLabel: ev?.submission_label ?? null, deadline: ev?.cfp_close_date ? fmtDate(ev.cfp_close_date, locale) : null,
         }} />}

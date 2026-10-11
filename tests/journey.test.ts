@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { accessOutcome } from '../src/lib/access-outcome.ts';
 import { journey, journeySteps, pitchToSave, planLines, validateChoice, validateSubject, type Proposal } from '../src/lib/journey.ts';
 
 let n = 0;
@@ -99,4 +100,10 @@ test('the sentence for the candidate is saved only by « Enregistrer », never b
   assert.equal(pitchToSave('save', '  '), null);
   assert.equal(pitchToSave('save', null), undefined, 'a track without the field keeps its sentence');
   assert.equal(pitchToSave('save', 'x'.repeat(500))?.length, 400);
+});
+
+test('« find my space »: a network failure or a server error asks her to retry, never says « sent »', () => {
+  assert.equal(accessOutcome(200), 'sent');
+  assert.equal(accessOutcome(429), 'limited');
+  for (const status of [null, 500, 502, 503]) assert.equal(accessOutcome(status), 'retry', String(status));
 });

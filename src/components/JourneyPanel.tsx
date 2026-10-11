@@ -1,15 +1,15 @@
-import type { Journey, Proposal, ChoicePayload, SubjectPayload, PhotoPayload } from '@/lib/journey';
+import type { Journey, Proposal, ChoicePayload, SubjectPayload, PhotoPayload, Step } from '@/lib/journey';
 import { ProposalAnswer } from './ProposalAnswer';
 import { CopyButton, SubmittedButton } from './SubmitPanel';
 import { fmtDate, type Dict } from '@/lib/i18n';
 import { FORMATS, type Locale } from '@/lib/questions';
 
 type Props = {
-  j: Journey; proposals: Proposal[]; locale: Locale; d: Dict['journey'];
+  j: Journey; proposals: Proposal[]; locale: Locale; d: Dict['journey']; photoCount: number;
   submit: { title: string; abstract: string; photoUrl: string | null; cfpUrl: string | null; cfpLabel: string | null; deadline: string | null };
 };
 
-export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
+export function JourneyPanel({ j, proposals, locale, d, submit, photoCount }: Props) {
   const p = j.pending;
   // a photo request can wait while the topic is still being discussed: it is shown whatever the step
   const photoAsk = [...proposals].reverse().find((x) => x.kind === 'photo' && x.state === 'envoyee') ?? null;
@@ -19,9 +19,9 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
       <section className="card card-lg stack-sm" aria-labelledby="h-where">
         <h2 id="h-where" className="title" style={{ fontSize: 22 }}>{d.whereTitle}</h2>
         <ol className="journey-steps">
-          {['recu', ...j.steps].map((s) => {
-            const idx = j.steps.indexOf(j.step as never);
-            const mine = s === 'recu' ? -1 : j.steps.indexOf(s as never);
+          {(['recu', ...j.steps] as ('recu' | Step)[]).map((s) => {
+            const idx = j.steps.indexOf(j.step);
+            const mine = s === 'recu' ? -1 : j.steps.indexOf(s);
             const state = s === j.step ? 'current' : mine < idx ? 'done' : 'todo';
             return <li key={s} data-state={state} aria-current={state === 'current' ? 'step' : undefined}>{d.steps[s]}</li>;
           })}
@@ -57,7 +57,7 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
               <ProposalAnswer key={p.id} proposalId={p.id} kind="sujet" items={[]} formatLabel="" d={d} />
             </div>)
           : photoAsk ? null
-          : j.step === 'photo' ? <p>{d.photoPending}</p>
+          : j.step === 'photo' ? <p>{photoCount === 0 ? d.photoAdd : d.photoPending}</p>
           : <p>{d.nothing}</p>}
         {photoAsk && (
           <div className="stack-sm">
