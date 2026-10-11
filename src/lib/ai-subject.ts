@@ -29,6 +29,9 @@ export type SubjectResult =
 
 const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
+/** One line of her own words: contacts masked, defanged, capped. */
+const her = (s: string, max: number): string => defang(truncate(maskContacts(oneLine(s)), max));
+
 export function currentSubject(branch: Branch, a: Answers, row: { title?: string | null; abstract?: string | null } | null): CurrentSubject | null {
   const title = text(row?.title) || (branch === 'C' ? text(a['C1']) : branch === 'D' ? text(a['D1-a']) : '');
   const abstract = text(row?.abstract) || (branch === 'C' ? text(a['C-abstract']) : branch === 'D' ? text(a['D1-b']) : '');
@@ -37,14 +40,12 @@ export function currentSubject(branch: Branch, a: Answers, row: { title?: string
   return {
     title,
     abstract,
-    audience: level && a[level] ? optionLabel(level, a[level], 'fr') : '',
+    audience: level && a[level] ? her(optionLabel(level, a[level], 'fr'), 80) : '',
     ideas: branch === 'C' ? ['C3', 'C4', 'C5'].map((k) => text(a[k])).filter(Boolean) : [],
     takeaway: branch === 'C' ? text(a['C6']) : '',
   };
 }
 
-/** One line of her own words: contacts masked, defanged, capped. */
-const her = (s: string, max: number): string => defang(truncate(maskContacts(oneLine(s)), max));
 
 /** Her profile for the topic: what she does (studies or job), years in tech, speaking experience, the format she wants. */
 function profileLines(a: Answers): string[] {
@@ -61,7 +62,7 @@ function subjectLines(c: CurrentSubject): string[] {
   return [
     c.title && `- Titre actuel : ${her(c.title, 200)}`,
     c.abstract && `- Résumé actuel : ${her(c.abstract, 3000)}`,
-    c.audience && `- Public visé : ${defang(c.audience)}`,
+    c.audience && `- Public visé : ${c.audience}`,
     c.ideas.length > 0 && `- Idées clés : ${c.ideas.map((x) => her(x, 300)).join(' ; ')}`,
     c.takeaway && `- Ce que le public doit retenir : ${her(c.takeaway, 300)}`,
   ].filter((x): x is string => !!x);
@@ -118,7 +119,7 @@ export function subjectSchema() {
 }
 
 /** Plain text that may keep its paragraphs: control characters and bidirectional overrides dropped, blank runs folded. */
-const paragraphs = (s: string): string => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ')
+const paragraphs = (s: string): string => s.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ')
   .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
 /** The model's text -> a proposal the coach can use, or null. Anything the schema cannot say is checked here; nothing is repaired. */
@@ -149,7 +150,11 @@ export async function improveSubject(i: SubjectInput, provider: AiProvider, opts
   const req = { system, user, schema: subjectSchema() };
   const raw = provider === 'openai' ? await callOpenAI(req, opts.fetchFn, opts.timeoutMs, opts.env) : await callClaude(req, opts.client, opts.timeoutMs);
   if (!raw.ok) return raw;
-  const proposal = parseSubjectProposal(raw.text);
-  if (!proposal) return { ok: false, reason: 'empty' };
-  return { ok: true, proposal, model: raw.model, inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
+  try { // never throws
+    const proposal = parseSubjectProposal(raw.text);
+    if (!proposal) return { ok: false, reason: 'empty' };
+    return { ok: true, proposal, model: raw.model, inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
+  } catch {
+    return { ok: false, reason: 'failed', detail: 'parse' };
+  }
 }

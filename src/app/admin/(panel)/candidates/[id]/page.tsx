@@ -254,13 +254,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   </form>
                 )}
                 {proposal && (
-                  <div className="a-stack" style={{ gap: 10, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
-                    <p className="a-eyebrow" style={{ margin: 0, color: 'var(--amber-text)' }}>Proposition d’amélioration · {proposal.model} · {fmtDate(proposal.created_at, 'fr', DATE_TIME)}</p>
+                  <div className="a-stack" role="region" aria-labelledby="h-proposition" style={{ gap: 10, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
+                    <h3 id="h-proposition" className="a-eyebrow" style={{ margin: 0, color: 'var(--amber-text)' }}>Proposition d’amélioration · {proposal.model} · {fmtDate(proposal.created_at, 'fr', DATE_TIME)}</h3>
                     {proposal.note && <p style={{ margin: 0 }}><strong>Ce qui change :</strong> {proposal.note}</p>}
                     <div>
                       <p className="a-label" style={{ margin: '0 0 4px' }}>Titres</p>
                       <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
-                        {proposal.titles.map((t, k) => <li key={k}><span style={{ marginRight: 8 }}>{t}</span><UseInField target="subject-title" value={t}>Utiliser ce titre</UseInField></li>)}
+                        {proposal.titles.map((t, k) => <li key={k}><span style={{ marginRight: 8 }}>{t}</span><UseInField target="subject-title" value={t} label={`Utiliser le titre : ${t}`}>Utiliser ce titre</UseInField></li>)}
                       </ul>
                     </div>
                     <div>

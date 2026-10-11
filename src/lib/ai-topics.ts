@@ -329,9 +329,13 @@ export async function suggestTitles(i: AiInput, client?: AiClient, timeoutMs = T
 
 function titlesFrom(raw: RawCall, i: AiInput, formats: TrackFormat[]): AiResult {
   if (!raw.ok) return raw;
-  const titles = parseSuggestions(raw.text, i.refs, i.existingTitles, formats);
-  if (!titles.length) return { ok: false, reason: 'empty' };
-  return { ok: true, titles, domain: singleDomain(i), model: raw.model, inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
+  try { // never throws: an answer of an unexpected shape is a failure shown to the coach, not a 500
+    const titles = parseSuggestions(raw.text, i.refs, i.existingTitles, formats);
+    if (!titles.length) return { ok: false, reason: 'empty' };
+    return { ok: true, titles, domain: singleDomain(i), model: raw.model, inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
+  } catch {
+    return { ok: false, reason: 'failed', detail: 'parse' };
+  }
 }
 
 /** The model gives no domain per title: only a candidate who chose exactly one can have it written on every suggestion. */

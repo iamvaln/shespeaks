@@ -94,3 +94,9 @@ test('both providers: same prompt and schema, the proposal or a failure reason',
   const empty = { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }] }) } };
   assert.deepEqual(await improveSubject(base, 'claude', { client: empty }), { ok: false, reason: 'empty' });
 });
+
+test('an answer of an unexpected shape never throws out of the AI path: it is a failure', async () => {
+  const weird = { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ titles: [{ toString: null }], abstract: 1, plan: null, note: {} }) }] }) } };
+  const r = await improveSubject(base, 'claude', { client: weird });
+  assert.equal(r.ok, false);
+});
