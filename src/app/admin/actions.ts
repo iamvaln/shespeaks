@@ -115,6 +115,8 @@ export async function suggestTracksAction(f: FormData) {
   const id = num(f, 'cid');
   const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
   const name = provider === 'openai' ? 'OpenAI' : 'Claude';
+  // « Précisions pour l'IA »: kept on the fiche (every next request reuses them), saved before the call so a failure keeps them too
+  if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
   const r = await suggestTracksFor(id, coach.id, undefined, provider);
   if (!r.ok) return back(cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
   return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);

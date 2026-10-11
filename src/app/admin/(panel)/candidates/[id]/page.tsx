@@ -170,18 +170,23 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {c.completed_at && ([
-                        ['claude', 'Claude', aiConfigured()],
-                        ['openai', 'OpenAI', openaiConfigured()],
-                      ] as const).filter(([, , on]) => on).map(([provider, name]) => (
-                        <form key={provider} action={suggestTracksAction}>
+                      {c.completed_at && (aiConfigured() || openaiConfigured()) && (
+                        <form action={suggestTracksAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', flexBasis: '100%' }}>
                           <input type="hidden" name="cid" value={id} />
-                          <input type="hidden" name="provider" value={provider} />
-                          <PendingButton className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
-                            <Icon name="spark" size={16} />Suggérer avec {name}
-                          </PendingButton>
+                          <label className="a-label" style={{ flex: '1 1 320px' }}>
+                            Précisions pour l’IA (facultatif, gardées sur la fiche)
+                            <AutoGrowTextarea className="a-input" name="ai_brief" defaultValue={c.ai_brief ?? ''} maxLength={800} placeholder="Ex. : elle vient du support et veut raconter sa reconversion vers le DevOps ; éviter le mobile." />
+                          </label>
+                          {([
+                            ['claude', 'Claude', aiConfigured()],
+                            ['openai', 'OpenAI', openaiConfigured()],
+                          ] as const).filter(([, , on]) => on).map(([provider, name]) => (
+                            <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé, tes précisions et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
+                              <Icon name="spark" size={16} />Suggérer avec {name}
+                            </PendingButton>
+                          ))}
                         </form>
-                      ))}
+                      )}
                       <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
                     </div>
                   </div>
