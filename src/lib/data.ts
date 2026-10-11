@@ -42,6 +42,7 @@ export interface Track {
   origin: string;
   state: string;
   position: number;
+  model?: string | null; // the AI model that wrote it (origin 'ia')
 }
 export interface Subject {
   candidate_id: number;

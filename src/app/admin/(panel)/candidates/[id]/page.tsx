@@ -14,7 +14,7 @@ import { RoadmapView } from '@/components/RoadmapView';
 import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
-import { aiConfigured } from '@/lib/ai-topics';
+import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
@@ -165,19 +165,23 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <p className="a-muted" style={{ margin: '2px 0 0' }}>
                         Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
-                        {!aiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper.'}
+                        {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
                         {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate (une suggestion de l’IA seulement une fois retenue ou choisie).' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {aiConfigured() && c.completed_at && (
-                        <form action={suggestTracksAction}>
+                      {c.completed_at && ([
+                        ['claude', 'Claude', aiConfigured()],
+                        ['openai', 'OpenAI', openaiConfigured()],
+                      ] as const).filter(([, , on]) => on).map(([provider, name]) => (
+                        <form key={provider} action={suggestTracksAction}>
                           <input type="hidden" name="cid" value={id} />
-                          <PendingButton className="a-btn is-sm" pendingLabel="L’IA réfléchit…" confirmText="Envoyer au fournisseur d’IA les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de l’IA non retenues sont remplacées.">
-                            <Icon name="spark" size={16} />Suggérer avec l’IA
+                          <input type="hidden" name="provider" value={provider} />
+                          <PendingButton className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
+                            <Icon name="spark" size={16} />Suggérer avec {name}
                           </PendingButton>
                         </form>
-                      )}
+                      ))}
                       <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
                     </div>
                   </div>
@@ -192,7 +196,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <AutoGrowTextarea className="a-track-title" name="title" defaultValue={t.title} aria-label={`Titre de la piste ${i + 1}`} />
                               <span className="a-track-meta">
                                 <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
-                                <span>{ORIGIN[t.origin] ?? t.origin}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
+                                <span>{ORIGIN[t.origin] ?? t.origin}{t.origin === 'ia' ? ` · ${t.model ?? 'Claude'}` : ''}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
                                 <select className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
                                   <option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option>
                                 </select>
