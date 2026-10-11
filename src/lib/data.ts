@@ -169,6 +169,8 @@ export async function setStatus(id: number, newStatus: string, author: string) {
 // ---- events / calendar -------------------------------------------------------
 export type EventRow = DevfestEvent & { id: number };
 export const listEvents = () => all<EventRow>('SELECT * FROM devfest_events ORDER BY event_date IS NULL, event_date, name');
+/** A comma-separated list column (accepted_formats, themes) as ids; empty means « not stated ». */
+export const csvList = (s: string | null | undefined): string[] => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 /** Public name of an event: "DevFest Douala 2026" (falls back to the place name). */
 export const eventName = (e: { title?: string | null; name: string }) => e.title?.trim() || e.name;
 

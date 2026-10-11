@@ -281,3 +281,30 @@ test('a storage error becomes « failed » for the coach and leaves the fiche as
   assert.ok(logged.some((a) => String(a[0]).includes('could not store')), 'logged');
   assert.ok(!JSON.stringify(logged).includes('Un titre suggéré'), 'no title in the log');
 });
+
+test('the model is told about her event: theme, description, accepted formats (also enforced in the schema), expected themes', { skip }, async () => {
+  await raw`insert into devfest_events (city, name, title, event_date, theme, description, accepted_formats, themes)
+    values ('evt-ai', 'Douala', 'DevFest Test 2026', '2026-11-28', 'Stand Alone Complex', 'Exposés basés sur l’expérience.', 'talk,atelier', 'mobile,cloud')`;
+  const id = await candidate();
+  await raw`update candidates set city = 'evt-ai' where id = ${id}`;
+  const m = model(2);
+  assert.deepEqual(await ai.suggestTracksFor(id, 1, m.client), { ok: true, added: 2 });
+  const p = m.sent.at(-1);
+  const user = p.messages[0].content;
+  assert.match(p.system, /au DevFest Test 2026 \(28 novembre 2026\)/);
+  for (const wanted of ['Stand Alone Complex', 'Exposés basés sur l’expérience.', 'Talk, Atelier', 'Mobile, Cloud & DevOps']) assert.ok(user.includes(wanted), wanted);
+  assert.deepEqual(p.output_config.format.schema.properties.suggestions.items.properties.format.enum, ['talk', 'atelier']);
+});
+
+test('an event she typed herself is named without details; no event leaves the generic framing', { skip }, async () => {
+  const typed = await candidate();
+  await raw`update candidates set city = 'autre', city_other = 'Women Techmakers Kribi' where id = ${typed}`;
+  const m = model(1);
+  await ai.suggestTracksFor(typed, 1, m.client);
+  assert.match(m.sent.at(-1).messages[0].content, /Women Techmakers Kribi/);
+  assert.match(m.sent.at(-1).messages[0].content, /aucun détail/);
+  const none = await candidate();
+  const n = model(1);
+  await ai.suggestTracksFor(none, 1, n.client);
+  assert.match(n.sent.at(-1).system, /dans un événement tech/);
+});

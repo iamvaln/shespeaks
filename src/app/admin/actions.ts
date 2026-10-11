@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
+import { getRefs, getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { removeObject } from '@/lib/storage';
@@ -210,19 +210,38 @@ export async function saveEventAction(f: FormData) {
   const posterRaw = str(f, 'poster_url');
   if (badDate(nz('cfp_close_date')) || badDate(nz('event_date'))) return back('/admin/events', 'Date non valide : choisis-la dans le calendrier (ou écris-la sous la forme 2026-11-15)', true);
   if (posterRaw && !safePoster(posterRaw)) return back('/admin/events', 'L’affiche doit être un chemin du site (/events/mon-affiche.jpg) ou une adresse https://', true);
+  const ctx = await eventContext(f);
   if (id) {
     await run(
-      'UPDATE devfest_events SET title=?, name=?, poster_url=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=? WHERE id=?',
-      title || place, place, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'), id,
+      'UPDATE devfest_events SET title=?, name=?, poster_url=?, cfp_close_date=?, cfp_close_note=?, event_date=?, venue=?, submission_url=?, submission_label=?, theme=?, description=?, accepted_formats=?, themes=? WHERE id=?',
+      title || place, place, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'),
+      ctx.theme, ctx.description, ctx.accepted_formats, ctx.themes, id,
     );
     return back('/admin/events', 'Événement mis à jour');
   }
   if (!title) return back('/admin/events', 'Le nom de l’événement est requis', true);
   const slug = (title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!slug || (await get('SELECT 1 FROM devfest_events WHERE city=?', slug))) return back('/admin/events', 'Un événement portant ce nom existe déjà', true);
-  await run('INSERT INTO devfest_events (city,name,title,poster_url,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    slug, place || title, title, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'));
+  await run('INSERT INTO devfest_events (city,name,title,poster_url,cfp_close_date,cfp_close_note,event_date,venue,submission_url,submission_label,theme,description,accepted_formats,themes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    slug, place || title, title, posterRaw || null, nz('cfp_close_date'), nz('cfp_close_note'), nz('event_date'), nz('venue'), nz('submission_url'), nz('submission_label'),
+    ctx.theme, ctx.description, ctx.accepted_formats, ctx.themes);
   return back('/admin/events', 'Événement ajouté');
+}
+
+/** Theme, description, accepted formats and expected themes of an event: lists keep known ids only, in a stable order. */
+async function eventContext(f: FormData) {
+  const pick = (key: string, known: readonly string[]) => {
+    const chosen = new Set(f.getAll(key).map(String));
+    const ids = known.filter((v) => chosen.has(v));
+    return ids.length ? ids.join(',') : null;
+  };
+  const domains = (await getRefs()).domains.map((d) => d.value);
+  return {
+    theme: str(f, 'theme').slice(0, 200) || null,
+    description: str(f, 'description').slice(0, 3000) || null,
+    accepted_formats: pick('accepted_formats', ['talk', 'lightning', 'atelier']),
+    themes: pick('themes', domains),
+  };
 }
 
 // ---- coaches -----------------------------------------------------------------------
