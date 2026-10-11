@@ -18,9 +18,7 @@ let mailer: ProposalMailer | null = null;
 export const setProposalMailer = (m: ProposalMailer) => { mailer = m; };
 async function getMailer(): Promise<ProposalMailer> {
   if (!mailer) {
-    // the module path sits in a variable so typecheck passes before proposals-mailer.ts exists
-    const path = './proposals-mailer.ts';
-    try { mailer = ((await import(path)) as { realMailer: ProposalMailer }).realMailer; } catch (e) { console.error('[proposals] could not load the mailer: emails are not sent', e); mailer = { toCandidate: async () => {}, toCoaches: async () => {} }; }
+    try { mailer = ((await import('./proposals-mailer.ts')) as { realMailer: ProposalMailer }).realMailer; } catch (e) { console.error('[proposals] could not load the mailer: emails are not sent', e); mailer = { toCandidate: async () => {}, toCoaches: async () => {} }; }
   }
   return mailer;
 }

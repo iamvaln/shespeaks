@@ -1,7 +1,7 @@
 // Email sending via Resend (https://resend.com), or logged-only when RESEND_API_KEY is not set, + bilingual templates.
 import { logText } from './maillog.ts';
 import crypto from 'node:crypto';
-import { after } from 'next/server';
+import { after } from 'next/server.js';
 import { run } from './db.ts';
 import { resolveAppUrl } from './env.ts';
 import { typoFr } from './text.ts';
@@ -213,6 +213,53 @@ export function candidateReminder(c: { name: string }, resumeUrl: string, loc: L
         ],
         cta: { label: 'Pick up where I left off', url: resumeUrl },
       });
+}
+
+export function candidateChoiceSent(name: string, url: string, loc: Locale): Built {
+  return loc === 'fr'
+    ? build('Ta coach te propose des sujets', { heading: `${first(name)}, choisis ton sujet`, paragraphs: ['Ta coach SheSpeaks a préparé des sujets pour toi, avec pour chacun la raison pour laquelle il te correspond.', 'Choisis celui que tu préfères, ou dis-nous si aucun ne te convient : on t’en proposera d’autres.'], cta: { label: 'Voir les sujets', url } })
+    : build('Your coach suggests topics for you', { heading: `${first(name)}, pick your topic`, paragraphs: ['Your SheSpeaks coach has prepared topics for you, each with why it suits you.', 'Pick your favourite, or tell us if none fits: we will suggest others.'], cta: { label: 'See the topics', url } });
+}
+export function candidateSubjectSent(name: string, url: string, loc: Locale): Built {
+  return loc === 'fr'
+    ? build('Ton sujet ajusté est prêt : dis-nous s’il te convient', { heading: `${first(name)}, ton sujet a été ajusté`, paragraphs: ['Ta coach a retravaillé ton sujet : titre, résumé, ce qui a changé et pourquoi, et des conseils pour l’aborder sur scène.', 'Approuve-le, ou demande des changements en expliquant ce que tu souhaites.'], cta: { label: 'Voir mon sujet', url } })
+    : build('Your adjusted topic is ready: tell us if it works for you', { heading: `${first(name)}, your topic has been adjusted`, paragraphs: ['Your coach reworked your topic: title, abstract, what changed and why, and tips to approach it on stage.', 'Approve it, or ask for changes and explain what you would like.'], cta: { label: 'See my topic', url } });
+}
+export function candidatePhotoRequested(name: string, url: string, loc: Locale, comment: string): Built {
+  return loc === 'fr'
+    ? build('Une nouvelle photo, s’il te plaît', { heading: `${first(name)}, encore une photo`, paragraphs: ['Ta coach te demande une nouvelle photo de speaker :', comment], cta: { label: 'Ajouter une photo', url } })
+    : build('A new photo, please', { heading: `${first(name)}, one more photo`, paragraphs: ['Your coach asks for a new speaker photo:', comment], cta: { label: 'Add a photo', url } });
+}
+export function candidateReadyToSubmit(name: string, url: string, loc: Locale, i: { title: string; abstract: string; cfpUrl: string | null; cfpLabel: string | null; deadline: string | null }): Built {
+  const facts: [string, string][] = loc === 'fr'
+    ? [['Titre', i.title], ['Résumé', i.abstract], ...(i.deadline ? [['Date limite', i.deadline]] as [string, string][] : []), ...(i.cfpUrl ? [['Où soumettre', i.cfpLabel || i.cfpUrl]] as [string, string][] : [])]
+    : [['Title', i.title], ['Abstract', i.abstract], ...(i.deadline ? [['Deadline', i.deadline]] as [string, string][] : []), ...(i.cfpUrl ? [['Where to submit', i.cfpLabel || i.cfpUrl]] as [string, string][] : [])];
+  return loc === 'fr'
+    ? build('Tout est prêt : tu peux soumettre ta candidature', { heading: `${first(name)}, à toi de jouer`, paragraphs: ['Ton sujet est approuvé et ta photo validée. Soumets ta candidature à l’appel à speakers, puis confirme-le dans ton espace.'], facts, cta: { label: 'Ouvrir mon espace', url } })
+    : build('All set: you can submit your application', { heading: `${first(name)}, over to you`, paragraphs: ['Your topic is approved and your photo validated. Submit your application to the call for speakers, then confirm it in your space.'], facts, cta: { label: 'Open my space', url } });
+}
+export function candidateProposalReminder(name: string, url: string, loc: Locale): Built {
+  return loc === 'fr'
+    ? build('Ta coach attend ta réponse', { heading: `${first(name)}, un petit rappel`, paragraphs: ['Ta coach t’a envoyé une proposition il y a deux jours. Réponds-lui depuis ton espace pour avancer vers ta candidature.'], cta: { label: 'Voir la proposition', url } })
+    : build('Your coach is waiting for your answer', { heading: `${first(name)}, a quick reminder`, paragraphs: ['Your coach sent you a proposal two days ago. Answer from your space to move towards your application.'], cta: { label: 'See the proposal', url } });
+}
+export function candidateAccessLinks(entries: { event: string; date: string; url: string }[], loc: Locale): Built {
+  const lines = entries.map((e) => (loc === 'fr' ? `${e.event} (commencé le ${e.date}) : ${e.url}` : `${e.event} (started on ${e.date}): ${e.url}`));
+  return loc === 'fr'
+    ? build('Ton lien pour retrouver ton espace', { heading: 'Retrouve ton espace SheSpeaks', paragraphs: ['Voici ton lien personnel. Ne le partage pas : il ouvre ton espace sans mot de passe.', ...lines], cta: { label: 'Ouvrir mon espace', url: entries[0].url } })
+    : build('Your link to get back to your space', { heading: 'Get back to your SheSpeaks space', paragraphs: ['Here is your personal link. Don’t share it: it opens your space without a password.', ...lines], cta: { label: 'Open my space', url: entries[0].url } });
+}
+const ANSWER_LABEL: Record<string, string> = {
+  choisie: 'a choisi un sujet', aucune: 'ne retient aucun des sujets proposés', approuvee: 'approuve son sujet', changements: 'demande des changements sur son sujet',
+  photo_deposee: 'a déposé une nouvelle photo', soumise: 'a soumis sa candidature',
+};
+export function coachCandidateAnswered(c: { name: string }, what: string, comment: string | null, ficheUrl: string): Built {
+  return build(`${c.name} ${ANSWER_LABEL[what] ?? 'a répondu'}`, {
+    heading: `${c.name} ${ANSWER_LABEL[what] ?? 'a répondu'}`,
+    paragraphs: comment ? ['Son commentaire :', comment] : ['Ouvre sa fiche pour la suite.'],
+    cta: { label: 'Ouvrir la fiche', url: ficheUrl },
+    footer: 'SheSpeaks · espace coach',
+  });
 }
 
 // ---------------------------------------------------------------------------
