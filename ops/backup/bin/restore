@@ -1,0 +1,101 @@
+#!/bin/bash
+# Restore a backup from R2 into the configured PGDATABASE. Designed to be
+# run INTERACTIVELY (the confirm prompt is the last line of defence against
+# clobbering prod data):
+#
+#   docker compose run --rm backup restore latest
+#   docker compose run --rm backup restore shespeaks-20260604T030001Z.sql.gz
+#
+# Pass --no-confirm to skip the prompt — only do this in scripted disaster
+# recovery, never in casual ops.
+set -euo pipefail
+
+: "${PGHOST:?PGHOST is required}"
+: "${PGUSER:?PGUSER is required}"
+: "${PGPASSWORD:?PGPASSWORD is required}"
+: "${PGDATABASE:?PGDATABASE is required}"
+: "${BACKUP_R2_ACCOUNT_ID:?BACKUP_R2_ACCOUNT_ID is required}"
+: "${BACKUP_R2_BUCKET:?BACKUP_R2_BUCKET is required}"
+
+PREFIX=${BACKUP_R2_PREFIX:-backups}
+
+confirm=1
+target=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-confirm) confirm=0 ;;
+    -h|--help|"")
+      cat <<USAGE
+Usage: restore <backup-name|latest> [--no-confirm]
+
+Examples:
+  restore latest
+  restore shespeaks-20260604T030001Z.sql.gz
+  restore latest --no-confirm   # scripted DR only
+USAGE
+      exit 0
+      ;;
+    *) target="$arg" ;;
+  esac
+done
+
+if [ -z "$target" ]; then
+  echo "restore: no backup name given. Try 'restore latest' or 'list'." >&2
+  exit 2
+fi
+
+if [ "$target" = "latest" ]; then
+  # `s3 ls` returns oldest-first when sorted lexicographically by date
+  # column; the trailing field is the filename. Filter to our naming scheme
+  # so co-tenant files in the bucket can't poison the pick.
+  target=$(
+    aws s3 ls "s3://${BACKUP_R2_BUCKET}/${PREFIX}/" --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+      | awk '{print $NF}' \
+      | grep -E '^shespeaks-[0-9]{8}T[0-9]{6}Z\.sql\.gz$' \
+      | sort \
+      | tail -1
+  )
+  if [ -z "$target" ]; then
+    echo "restore: no backups found in s3://${BACKUP_R2_BUCKET}/${PREFIX}/" >&2
+    exit 1
+  fi
+  echo "[restore] resolved 'latest' → ${target}"
+fi
+
+TMP="/tmp/${target}"
+echo "[restore] downloading s3://${BACKUP_R2_BUCKET}/${PREFIX}/${target}"
+aws s3 cp "s3://${BACKUP_R2_BUCKET}/${PREFIX}/${target}" "${TMP}" \
+  --endpoint-url "https://${BACKUP_R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+  --no-progress
+
+if [ "$confirm" -eq 1 ]; then
+  cat <<WARN
+
+  ⚠  About to RESTORE into ${PGDATABASE}@${PGHOST}.
+     The dump uses --clean --if-exists, so existing tables WILL BE DROPPED
+     and recreated from the backup. Any data written since the backup
+     timestamp will be LOST.
+
+WARN
+  printf "Type the database name (%s) to confirm: " "${PGDATABASE}"
+  read -r answer
+  if [ "$answer" != "${PGDATABASE}" ]; then
+    echo "[restore] aborted"
+    rm -f "${TMP}"
+    exit 1
+  fi
+fi
+
+echo "[restore] restoring → ${PGDATABASE}@${PGHOST}"
+# `-v ON_ERROR_STOP=1`: a single failing statement aborts the whole restore
+# so we don't end up with a half-applied schema.
+gunzip -c "${TMP}" \
+  | psql \
+      --host="${PGHOST}" \
+      --username="${PGUSER}" \
+      --dbname="${PGDATABASE}" \
+      --quiet \
+      -v ON_ERROR_STOP=1
+
+rm -f "${TMP}"
+echo "[restore] done"

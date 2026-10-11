@@ -1,0 +1,142 @@
+# SheSpeaks on the shared VPS. One project per environment, named by STACK (shespeaks | shespeaks-preprod):
+#   docker compose --env-file .env.production --profile prod up -d      (prod: + cron + backup)
+#   docker compose --env-file .env.preprod up -d                        (preprod)
+name: ${STACK:?STACK must be set (shespeaks or shespeaks-preprod)}
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DEPLOY_ENV: ${DEPLOY_ENV:?DEPLOY_ENV must be production or preprod}
+  DATABASE_URL: postgresql://shespeaks:${POSTGRES_PASSWORD:?}@db:5432/shespeaks?sslmode=disable
+  DATA_DIR: /data
+  APP_URL: ${APP_URL:?}
+  SESSION_SECRET: ${SESSION_SECRET:?}
+  CRON_SECRET: ${CRON_SECRET:?}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+  ADMIN_NAME: ${ADMIN_NAME:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  MAIL_FROM: ${MAIL_FROM:-}
+  MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  STRICT_CONTACT_CHECKS: ${STRICT_CONTACT_CHECKS:-}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shespeaks
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: shespeaks
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shespeaks -d shespeaks"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 256m
+    logging: *logging
+
+  migrate:
+    image: ${REGISTRY:-ghcr.io/iamvaln}/shespeaks:${IMAGE_TAG:-latest}
+    environment: *app-env
+    command: ["sh", "-c", "node --experimental-strip-types --no-warnings scripts/check-env.mjs --strict && node --experimental-strip-types --no-warnings scripts/db.mjs setup"]
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+    restart: "no"
+    logging: *logging
+
+  app:
+    image: ${REGISTRY:-ghcr.io/iamvaln}/shespeaks:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *app-env
+    volumes: [uploads:/data/uploads]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    networks: [internal, web]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    mem_limit: 512m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.${STACK}-app.rule=Host(`${APP_DOMAIN:?}`)
+      - traefik.http.routers.${STACK}-app.entrypoints=websecure
+      - traefik.http.routers.${STACK}-app.tls.certresolver=${CERT_RESOLVER:-le}
+      - traefik.http.routers.${STACK}-app.priority=100
+      - traefik.http.services.${STACK}-app.loadbalancer.server.port=3000
+    logging: *logging
+
+  # Answers on the same domain with a lower priority: Traefik only routes here while `app` is stopped or unhealthy.
+  maintenance:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./ops/maintenance/index.html:/usr/share/nginx/html/index.html:ro
+      - ./ops/maintenance/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [web]
+    mem_limit: 32m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.${STACK}-maint.rule=Host(`${APP_DOMAIN:?}`)
+      - traefik.http.routers.${STACK}-maint.entrypoints=websecure
+      - traefik.http.routers.${STACK}-maint.tls.certresolver=${CERT_RESOLVER:-le}
+      - traefik.http.routers.${STACK}-maint.priority=1
+      - traefik.http.services.${STACK}-maint.loadbalancer.server.port=80
+    logging: *logging
+
+  cron:
+    image: curlimages/curl:8.10.1
+    profiles: [prod]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/ops/cron-loop.sh"]
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?}
+      CRON_HOUR_UTC: ${CRON_HOUR_UTC:-7}
+    volumes: [./ops/cron/cron-loop.sh:/ops/cron-loop.sh:ro]
+    networks: [internal]
+    mem_limit: 32m
+    logging: *logging
+
+  backup:
+    image: ${REGISTRY:-ghcr.io/iamvaln}/shespeaks-backup:${IMAGE_TAG:-latest}
+    profiles: [prod]
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: shespeaks
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: shespeaks
+      UPLOADS_DIR: /uploads
+      BACKUP_SCHEDULE_HOUR_UTC: ${BACKUP_SCHEDULE_HOUR_UTC:-2}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_R2_ACCOUNT_ID: ${BACKUP_R2_ACCOUNT_ID:-}
+      BACKUP_R2_BUCKET: ${BACKUP_R2_BUCKET:-}
+      BACKUP_R2_PREFIX: ${BACKUP_R2_PREFIX:-backups}
+      AWS_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes: [uploads:/uploads]
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 128m
+    logging: *logging
+
+volumes:
+  pgdata:
+  uploads:
+
+networks:
+  internal:
+  web:
+    external: true

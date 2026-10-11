@@ -14,7 +14,6 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs migrate",
     "check:env": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs --strict",
-    "prebuild": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/check-env.mjs && npm run db:deploy",
     "db:seed": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs seed",
     "db:setup": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs setup",
     "db:status": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/db.mjs status",

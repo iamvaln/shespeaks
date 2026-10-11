@@ -4,12 +4,12 @@ import { promises as dns } from 'node:dns';
 import { domainToASCII } from 'node:url';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 
-/** On for the production deployment (Vercel sets VERCEL_ENV). STRICT_CONTACT_CHECKS=1 or 0 forces it on or off. */
+/** On for production: the Vercel production deployment (VERCEL_ENV) or the VPS production stack (DEPLOY_ENV). STRICT_CONTACT_CHECKS=1 or 0 forces it on or off. */
 export function strictContactChecks(env: Record<string, string | undefined> = process.env): boolean {
   const v = env.STRICT_CONTACT_CHECKS?.trim().toLowerCase();
   if (v === '1' || v === 'true') return true;
   if (v === '0' || v === 'false') return false;
-  return env.VERCEL_ENV === 'production';
+  return env.VERCEL_ENV === 'production' || env.DEPLOY_ENV === 'production';
 }
 
 // A WhatsApp number is a mobile line: landlines, toll-free, premium and the like cannot be used.

@@ -301,5 +301,12 @@ else {
   ok((await member.save('profile', profile('Limite Membre'))).json?.ok === true, 'creation limit: she can still save from an address that is over the limit (her cookie matches a candidate)');
 }
 
+// health: what the container healthcheck and the cutover script ask
+{
+  const r = await fetch(BASE + '/api/health');
+  const body = await r.json().catch(() => null);
+  ok(r.status === 200 && body?.ok === true && r.headers.get('cache-control')?.includes('no-store'), 'health: the database answers and the answer is not cached');
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');
 process.exit(failures ? 1 : 0);

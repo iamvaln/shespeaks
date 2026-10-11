@@ -13,6 +13,10 @@ export interface DevfestEvent {
   venue: string | null;
   submission_url: string | null;
   submission_label: string | null;
+  theme?: string | null; // theme of the edition, e.g. « Stand Alone Complex »
+  description?: string | null;
+  accepted_formats?: string | null; // comma-separated: talk, lightning, atelier (empty = not stated)
+  themes?: string | null; // comma-separated ids of the domains referential (empty = not stated)
 }
 
 export interface RoadmapAction {
