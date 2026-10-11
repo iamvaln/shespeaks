@@ -42,6 +42,7 @@ export interface Track {
   origin: string;
   state: string;
   position: number;
+  provider?: string | null; // claude | openai (origin 'ia')
   model?: string | null; // the AI model that wrote it (origin 'ia')
 }
 export interface Subject {

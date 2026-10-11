@@ -371,6 +371,9 @@ test('OpenAI failures map to the same reasons as Claude: refusal, cut, HTTP erro
   const denied = await suggestTitlesOpenAI(base, openai({ status: 401, body: { error: { type: 'invalid_request_error', message: 'Incorrect API key sk-proj-…' } }, headers: { 'x-request-id': 'req_123' } }).fetchFn, 5000, env);
   assert.deepEqual(denied, { ok: false, reason: 'failed', detail: 'status=401 type=invalid_request_error request_id=req_123' });
   assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: okBody([]) }).fetchFn, 5000, env), { ok: false, reason: 'empty' });
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: { status: 'failed', error: { code: 'server_error' }, output: [] } }).fetchFn, 5000, env), { ok: false, reason: 'failed', detail: 'status=failed' });
+  const filtered = { status: 'incomplete', incomplete_details: { reason: 'content_filter' }, output: [] };
+  assert.deepEqual(await suggestTitlesOpenAI(base, openai({ body: filtered }).fetchFn, 5000, env), { ok: false, reason: 'refused' });
   assert.deepEqual(await suggestTitlesOpenAI(base, undefined, 5000, {}), { ok: false, reason: 'disabled' });
   assert.equal(openaiConfigured({ OPENAI_API_KEY: 'change-me' }), false);
   assert.equal(openaiConfigured(env), true);

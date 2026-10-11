@@ -58,23 +58,19 @@ export async function aiEventFor(c: Pick<Candidate, 'city' | 'city_other'>): Pro
   return typed ? { name: typed, known: false } : null;
 }
 
-/** Claude's models are named claude-…; a suggestion stored before the model was recorded was written by Claude. */
-const OWN_SUGGESTIONS: Record<AiProvider, string> = {
-  claude: `COALESCE(model, 'claude') LIKE 'claude%'`,
-  openai: `COALESCE(model, 'claude') NOT LIKE 'claude%'`,
-};
 
 async function store(candidateId: number, res: Extract<AiResult, { ok: true }>, provider: AiProvider): Promise<number> {
   return tx(async () => {
     await get('SELECT pg_advisory_xact_lock(hashtext(?))', `ai-tracks:${candidateId}`); // two coaches at once: one after the other
     // a provider replaces its own untouched suggestions only: asking OpenAI never removes what Claude proposed, and the reverse
-    await run(`DELETE FROM tracks WHERE candidate_id=? AND origin='ia' AND state='generee' AND ${OWN_SUGGESTIONS[provider]}`, candidateId);
+    // a suggestion stored before the provider was recorded was written by Claude
+    await run(`DELETE FROM tracks WHERE candidate_id=? AND origin='ia' AND state='generee' AND COALESCE(provider, 'claude')=?`, candidateId, provider);
     const top = await get<{ p: number }>('SELECT COALESCE(MAX(position), -1) AS p FROM tracks WHERE candidate_id=?', candidateId);
     let position = (top?.p ?? -1) + 1;
     for (const t of res.titles) {
       await run(
-        `INSERT INTO tracks (candidate_id,title,angle,format,domain,hook,origin,model,position) VALUES (?,?,?,?,?,?,'ia',?,?)`,
-        candidateId, t.title, t.angle, t.format, res.domain, t.hook || null, res.model, position++,
+        `INSERT INTO tracks (candidate_id,title,angle,format,domain,hook,origin,provider,model,position) VALUES (?,?,?,?,?,?,'ia',?,?,?)`,
+        candidateId, t.title, t.angle, t.format, res.domain, t.hook || null, provider, res.model, position++,
       );
     }
     return res.titles.length;

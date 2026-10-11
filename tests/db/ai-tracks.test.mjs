@@ -331,8 +331,8 @@ test('each provider stores its model and replaces only its own untouched suggest
     const o = openaiModel(3);
     assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai', o.fetchFn), { ok: true, added: 3 });
     assert.equal(o.sent[0].model, 'gpt-5.5');
-    let t = await raw`select model from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
-    assert.deepEqual(t.map((x) => x.model), ['claude-sonnet-5-5', 'claude-sonnet-5-5', 'gpt-5.5', 'gpt-5.5', 'gpt-5.5']);
+    let t = await raw`select provider || ':' || model as m from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => x.m), ['claude:claude-sonnet-5-5', 'claude:claude-sonnet-5-5', 'openai:gpt-5.5', 'openai:gpt-5.5', 'openai:gpt-5.5']);
     // OpenAI again: its 3 are replaced by 2 new ones, Claude's 2 stay
     assert.deepEqual(await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(2).fetchFn), { ok: true, added: 2 });
     t = await raw`select model from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
@@ -344,6 +344,23 @@ test('each provider stores its model and replaces only its own untouched suggest
     assert.deepEqual(t.map((x) => x.m), ['gpt-5.5', 'gpt-5.5', 'claude-sonnet-5-5']);
   } finally {
     delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('the split follows the provider, not the model name: an OpenAI model named « claude… » is still OpenAI\'s; retained suggestions stay', { skip }, async () => {
+  process.env.OPENAI_API_KEY = 'sk-proj-test';
+  process.env.OPENAI_MODEL = 'claude-lookalike';
+  try {
+    const id = await candidate();
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(2).fetchFn);
+    await raw`update tracks set state = 'retenue_coach' where id = (select min(id) from tracks where candidate_id = ${id} and origin = 'ia')`;
+    await ai.suggestTracksFor(id, 1, model(1).client); // Claude: must not touch OpenAI's
+    await ai.suggestTracksFor(id, 1, undefined, 'openai', openaiModel(1).fetchFn); // OpenAI: replaces its untouched one, keeps the retained one
+    const t = await raw`select provider, state from tracks where candidate_id = ${id} and origin = 'ia' order by id`;
+    assert.deepEqual(t.map((x) => `${x.provider}/${x.state}`), ['openai/retenue_coach', 'claude/generee', 'openai/generee']);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_MODEL;
   }
 });
 

@@ -370,6 +370,7 @@ export async function suggestTitlesOpenAI(i: AiInput, fetchFn?: FetchLike, timeo
     }
     const d = (await res.json()) as OpenAiResponse;
     if (d.status === 'incomplete') return { ok: false, reason: d.incomplete_details?.reason === 'content_filter' ? 'refused' : 'truncated' };
+    if (d.status && d.status !== 'completed') return { ok: false, reason: 'failed', detail: `status=${/^[a-z_]{1,20}$/.test(d.status) ? d.status : 'unknown'}` }; // failed, cancelled: an outage, refunded
     const parts = (d.output ?? []).filter((o) => o.type === 'message').flatMap((o) => o.content ?? []);
     if (parts.some((c) => c.type === 'refusal')) return { ok: false, reason: 'refused' };
     const text = parts.filter((c) => c.type === 'output_text').map((c) => c.text ?? '').join('');
