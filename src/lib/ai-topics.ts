@@ -130,18 +130,23 @@ export function facts(i: AiInput): string[] {
   return lines.filter(([, v]) => v).map(([q, v]) => `- ${defang(q)} : ${defang(v)}`);
 }
 
+/** What she typed as her event (« Autre »): one line, contacts masked, capped. It only ever goes inside the event block. */
+/** One line of plain text: control characters (a NUL would be refused by the database) and bidirectional overrides are dropped. */
+const oneLine = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+const typedEventName = (s: string): string => defang(truncate(maskContacts(oneLine(s)), 80));
+
 /** The event block: only what is stated (no empty lines), in the coaches' words, defanged like any other text. */
 export function eventLines(i: AiInput): string[] {
   const e = i.event;
   if (!e) return [];
-  if (!e.known) return [`- Événement indiqué par la personne : ${defang(e.name)} (aucun détail connu sur cet événement)`];
+  if (!e.known) return [`- Événement indiqué par la personne : ${typedEventName(e.name)} (aucun détail connu sur cet événement)`];
   const lines: string[] = [];
   const one = (s: string | null | undefined) => defang((s ?? '').replace(/\s+/g, ' ').trim());
   if (one(e.theme)) lines.push(`- Thème de l’édition : ${one(e.theme)}`);
   if (one(e.description)) lines.push(`- Description : ${one(e.description)}`);
   const formats = (e.formats ?? []).filter((x) => FORMATS.includes(x));
   if (formats.length) lines.push(`- Formats acceptés : ${formats.map((x) => FORMAT_LABEL[x]).join(', ')}`);
-  const themes = (e.themes ?? []).map((id) => i.refs.domains.find((d) => d.value === id)?.label.fr.replace(/\s*\(.*?\)/g, '').trim()).filter(Boolean);
+  const themes = (e.themes ?? []).map((id) => one(i.refs.domains.find((d) => d.value === id)?.label.fr.replace(/\s*\(.*?\)/g, ''))).filter(Boolean);
   if (themes.length) lines.push(`- Thèmes attendus : ${themes.join(', ')}`);
   return lines;
 }
@@ -151,11 +156,16 @@ export function buildPrompt(i: AiInput): { system: string; user: string; titleLo
   const language = titleLocale === 'fr' ? 'en français' : 'en anglais';
   const angles = i.refs.angles.map((x) => `${x.value} (${x.label.fr})`).join(' ; ');
   const e = i.event;
-  const where = e ? `au ${defang(e.name)}${e.known && e.when ? ` (${defang(e.when)})` : ''}` : 'dans un événement tech (les DevFest, au Cameroun)';
+  // only a calendar event (coach-entered) is named here; a name she typed stays inside the fenced event block
+  const where = e?.known ? `au ${defang(oneLine(e.name))}${e.when ? ` (${defang(oneLine(e.when))})` : ''}`
+    : e ? 'dans un événement tech qu’elle a indiqué elle-même (voir le bloc événement)' : 'dans un événement tech (les DevFest, au Cameroun)';
   const formats = allowedFormats(e?.known ? e.formats : undefined);
-  const formatLine = formats.length < FORMATS.length
-    ? `- format : un des formats acceptés par l’événement : ${formats.join(', ')} (durées : voir sa description). Varie les formats quand c’est pertinent.`
-    : '- format : talk (20 à 30 minutes), lightning (5 à 10 minutes) ou atelier (pratique, codelab). Varie les formats quand c’est pertinent.';
+  const durations = e?.known && e.description?.trim() ? ' (durées : voir sa description)' : '';
+  const formatLine = formats.length === 1
+    ? `- format : ${formats[0]}, le seul format accepté par l’événement${durations}.`
+    : formats.length < FORMATS.length
+      ? `- format : un des formats acceptés par l’événement : ${formats.join(', ')}${durations}. Varie les formats quand c’est pertinent.`
+      : '- format : talk (20 à 30 minutes), lightning (5 à 10 minutes) ou atelier (pratique, codelab). Varie les formats quand c’est pertinent.';
   const hasTheme = !!(e?.known && e.theme?.trim());
   const hasThemes = !!(e?.known && e.themes?.length);
   const system = [
@@ -169,9 +179,9 @@ export function buildPrompt(i: AiInput): { system: string; user: string; titleLo
     '',
     'Règles :',
     '- Appuie-toi sur ce qu’elle a réellement écrit (ce qu’elle fait, domaine, technos, expérience, questions qu’on lui pose). N’invente aucun fait sur elle : ni employeur, ni chiffre, ni projet qu’elle n’a pas cité.',
-    ...(hasTheme ? ['- Le thème de l’édition est le fil rouge : chaque sujet doit pouvoir s’y rattacher, et au moins 3 des 5 s’y inscrivent clairement.'] : []),
+    ...(hasTheme ? ['- Le thème de l’édition est le fil rouge : au moins 3 des 5 titres s’y inscrivent clairement ; les autres peuvent s’en écarter si le sujet est très fort pour elle (dis-le dans le hook).'] : []),
     ...(hasThemes ? ['- Privilégie le recoupement entre les thèmes attendus par l’événement et ce qui l’attire ; un sujet hors de ces thèmes seulement s’il est très fort pour elle, et dis-le dans le hook.'] : []),
-    '- Calibre l’ambition sur son expérience de la prise de parole : pour une première fois, un sujet concret qu’elle maîtrise déjà.',
+    '- Calibre l’ambition sur son expérience de la prise de parole : si elle n’a jamais parlé en public, un sujet concret qu’elle maîtrise déjà.',
     '- Les titres doivent être différents entre eux par l’angle et par l’idée, pas seulement par la formulation.',
     '- Pense à un public de débutant·es et d’étudiant·es d’un événement tech en Afrique francophone, sauf si le niveau visé ou l’événement dit autre chose.',
     '- Ne répète aucun titre de la liste « déjà proposés ».',
@@ -218,8 +228,6 @@ export function outputSchema(refs: Refs, formats: TrackFormat[] = []) {
 
 // ---- what comes back --------------------------------------------------------------------------------------------------
 
-/** One line of plain text: control characters (a NUL would be refused by the database) and bidirectional overrides are dropped. */
-const oneLine = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
  * The model's text -> clean suggestions. The schema keeps the shape; what a schema cannot say is checked here: length, word count,

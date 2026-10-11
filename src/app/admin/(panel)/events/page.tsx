@@ -38,13 +38,15 @@ function EventFields({ e, domains }: { e?: Awaited<ReturnType<typeof listEvents>
         <span className="a-sub" style={{ fontWeight: 400, whiteSpace: 'normal' }}>Transmise à l’IA avec le thème, les formats et les thèmes ci-dessous quand une coach demande des suggestions de titres.</span>
       </label>
       <fieldset className="a-label a-span" style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend style={{ padding: 0, marginBottom: 6 }}>Formats acceptés <span className="a-muted" style={{ fontWeight: 400 }}>(aucune case : non précisé, tous les formats)</span></legend>
+        <legend style={{ padding: 0, marginBottom: 2 }}>Formats acceptés</legend>
+        <span className="a-muted" style={{ fontWeight: 400, display: 'block', marginBottom: 6 }}>Aucune case : non précisé, tous les formats.</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
           {FORMATS.map(([v, label]) => <label key={v} className="a-check" style={{ fontWeight: 400 }}><input type="checkbox" name="accepted_formats" value={v} defaultChecked={formats.includes(v)} /><span>{label}</span></label>)}
         </div>
       </fieldset>
       <fieldset className="a-label a-span" style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend style={{ padding: 0, marginBottom: 6 }}>Thèmes attendus <span className="a-muted" style={{ fontWeight: 400 }}>(liste des domaines des Paramètres ; aucune case : non précisé)</span></legend>
+        <legend style={{ padding: 0, marginBottom: 2 }}>Thèmes attendus</legend>
+        <span className="a-muted" style={{ fontWeight: 400, display: 'block', marginBottom: 6 }}>Liste des domaines des Paramètres. Aucune case : non précisé.</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
           {domains.map((d) => <label key={d.value} className="a-check" style={{ fontWeight: 400 }}><input type="checkbox" name="themes" value={d.value} defaultChecked={themes.includes(d.value)} /><span>{d.label.fr}</span></label>)}
         </div>

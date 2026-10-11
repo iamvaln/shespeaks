@@ -38,7 +38,11 @@ export async function suggestTracksFor(candidateId: number, coachId: number, cli
   return { ok: true, added };
 }
 
-/** The event she aims at, as the model sees it: the calendar entry when there is one, else the name she typed (« Autre »). */
+/**
+ * The event she aims at, as the model sees it: the calendar entry when there is one, else the name she typed (« Autre »). A typed name
+ * that matches a calendar event (eventFor compares it with the slug, place and title, so « Douala » finds DevFest Douala) gets that
+ * event's details, as everywhere else in the app.
+ */
 export async function aiEventFor(c: Pick<Candidate, 'city' | 'city_other'>): Promise<AiEvent | null> {
   const e = await eventFor(c);
   if (e) {

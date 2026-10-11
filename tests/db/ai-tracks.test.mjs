@@ -301,7 +301,7 @@ test('an event she typed herself is named without details; no event leaves the g
   await raw`update candidates set city = 'autre', city_other = 'Women Techmakers Kribi' where id = ${typed}`;
   const m = model(1);
   await ai.suggestTracksFor(typed, 1, m.client);
-  assert.match(m.sent.at(-1).system, /au Women Techmakers Kribi/);
+  assert.match(m.sent.at(-1).messages[0].content, /Women Techmakers Kribi/);
   assert.match(m.sent.at(-1).messages[0].content, /aucun détail/);
   const none = await candidate();
   const n = model(1);
