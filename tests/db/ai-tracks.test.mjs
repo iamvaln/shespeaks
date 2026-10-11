@@ -292,6 +292,7 @@ test('the model is told about her event: theme, description, accepted formats (a
   const p = m.sent.at(-1);
   const user = p.messages[0].content;
   assert.match(p.system, /au DevFest Test 2026 \(28 novembre 2026\)/);
+  assert.match(p.system, /Orientation de l’équipe SheSpeaks pour tous les événements.*agents IA et à l’automatisation/, 'the default team orientation reaches the model');
   for (const wanted of ['Stand Alone Complex', 'Exposés basés sur l’expérience.', 'Talk, Atelier', 'Mobile, Cloud & DevOps']) assert.ok(user.includes(wanted), wanted);
   assert.deepEqual(p.output_config.format.schema.properties.suggestions.items.properties.format.enum, ['talk', 'atelier']);
 });

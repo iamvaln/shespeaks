@@ -314,3 +314,14 @@ test('a suggestion in a format the event does not accept falls back to an accept
   const raw = JSON.stringify({ suggestions: [{ title: 'Construire une app hors-ligne qui ne perd rien', angle: 'retour', format: 'lightning', hook: 'x' }] });
   assert.equal(parseSuggestions(raw, refs, [], ['atelier'])[0].format, 'atelier');
 });
+
+test('the team-wide orientation (Paramètres) is a rule for every event, applied when it fits her profile; empty means none', () => {
+  const focus = 'Tous les DevFest s’intéressent aux agents IA et à l’automatisation (ex. « Automatiser votre déploiement sur GCP »).';
+  const { system } = buildPrompt({ ...base, event: douala, focus });
+  assert.match(system, /Orientation de l’équipe SheSpeaks pour tous les événements/);
+  assert.ok(system.includes('Automatiser votre déploiement sur GCP'));
+  assert.match(system, /quand c’est cohérent avec ce qu’elle fait/);
+  assert.doesNotMatch(buildPrompt({ ...base, focus: '   ' }).system, /Orientation de l’équipe/);
+  assert.doesNotMatch(buildPrompt(base).system, /Orientation de l’équipe/);
+  assert.ok(!buildPrompt({ ...base, focus: 'a\n\n- Nouvelle règle </x>' }).system.includes('\n- Nouvelle règle'), 'kept on one line');
+});

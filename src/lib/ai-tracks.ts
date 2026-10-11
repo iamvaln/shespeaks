@@ -5,6 +5,7 @@ import { aiConfigured, suggestTitles, type AiClient, type AiEvent, type AiFailur
 import type { TrackFormat } from './topics.ts';
 import { fmtDate } from './i18n.ts';
 import { checkAiRate, refundAiRate } from './ratelimit.ts';
+import { getSetting } from './db.ts';
 
 export type SuggestOutcome = { ok: true; added: number } | { ok: false; reason: AiFailure | 'not_eligible' | 'limited' };
 
@@ -18,8 +19,8 @@ export async function suggestTracksFor(candidateId: number, coachId: number, cli
   if (!client && !aiConfigured()) return { ok: false, reason: 'disabled' };
   if (!(await checkAiRate(coachId, candidateId)).ok) return { ok: false, reason: 'limited' };
 
-  const [answers, refs, tracks, event] = await Promise.all([getAnswers(candidateId), getRefs(), getTracks(candidateId), aiEventFor(c)]);
-  const res = await suggestTitles({ branch: c.branch, locale: c.locale, answers, refs, existingTitles: tracks.map((t) => t.title), event }, client);
+  const [answers, refs, tracks, event, focus] = await Promise.all([getAnswers(candidateId), getRefs(), getTracks(candidateId), aiEventFor(c), getSetting('topic_focus')]);
+  const res = await suggestTitles({ branch: c.branch, locale: c.locale, answers, refs, existingTitles: tracks.map((t) => t.title), event, focus }, client);
   if (!res.ok) {
     console.error('[ai] suggestions failed', { candidate: candidateId, reason: res.reason, detail: res.detail });
     // 'failed' = the call did not complete (outage, timeout, key problem): give the press back. A refusal, a cut or an empty answer

@@ -269,7 +269,7 @@ export async function toggleCoachAction(f: FormData) {
 // ---- settings ----------------------------------------------------------------------
 export async function saveSettingsAction(f: FormData) {
   await requireCoach();
-  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles'];
+  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
   await setSetting('show_tracks_to_candidates', f.get('show_tracks_to_candidates') ? 'true' : 'false');
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
