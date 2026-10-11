@@ -317,5 +317,15 @@ else {
   ok((await fetch(BASE + '/acces')).status === 200, 'access: the page answers');
 }
 
+// the candidate's answers need her session, and refuse a proposal that is not hers
+{
+  const r = await fetch(BASE + '/api/espace/repondre', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ proposalId: 1, response: 'approuvee' }) });
+  ok(r.status === 401, 'space: answering needs a session');
+  const c = new Client();
+  await c.save('profile', profile('Espace Test'));
+  const x = await fetch(BASE + '/api/espace/repondre', { method: 'POST', headers: { 'content-type': 'application/json', cookie: c.cookie() }, body: JSON.stringify({ proposalId: 999999, response: 'approuvee' }) });
+  ok(x.status === 409, 'space: a proposal that is not hers is refused');
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll smoke checks passed');
 process.exit(failures ? 1 : 0);

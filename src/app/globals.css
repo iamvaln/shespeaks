@@ -318,3 +318,7 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 html:has(.admin-root), body:has(.admin-root) { background: #F4F3F7; }
 .admin-root { background: var(--surface); color: var(--ink); min-height: 100vh; }
+.journey-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.journey-steps li { padding: 6px 12px; border-radius: 999px; background: var(--surface-sunken, #f1eee9); font-size: 14px; }
+.journey-steps li[data-state="done"] { opacity: .7; }
+.journey-steps li[data-state="current"] { background: #F5A524; color: #111528; font-weight: 700; }

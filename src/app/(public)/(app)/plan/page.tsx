@@ -1,14 +1,15 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
-import { eventLabelFor, eventFor, getAnswers, getPhotos, getSubject, getTracks } from '@/lib/data';
+import { eventLabelFor, eventFor, getAnswers, getPhotos, getSubject } from '@/lib/data';
 import { buildRoadmap } from '@/lib/roadmap';
 import { RoadmapView } from '@/components/RoadmapView';
 import { PlanPhotos } from '@/components/PlanPhotos';
 import { getSetting } from '@/lib/db';
-import { t } from '@/lib/i18n';
+import { t, fmtDate } from '@/lib/i18n';
+import { journeyOf, listProposals } from '@/lib/proposals';
+import { JourneyPanel } from '@/components/JourneyPanel';
 import { appUrl } from '@/lib/mail';
-import { tracksForCandidate } from '@/lib/topics';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
@@ -22,13 +23,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   if (!c) redirect('/acces');
   if (!c.completed_at || !c.branch) redirect('/interet');
   const d = t(locale).plan;
-  const [answers, sub, photos] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id)]);
+  const [answers, sub, photos, ev, j, proposals] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id), eventFor(c), journeyOf(c.id), listProposals(c.id)]);
   const rm = buildRoadmap({
     answers, branch: c.branch, locale,
-    subjectTitle: sub?.title, event: await eventFor(c), eventName: await eventLabelFor(c, locale),
+    subjectTitle: sub?.title, event: ev, eventName: await eventLabelFor(c, locale),
   });
-  const show = (await getSetting('show_tracks_to_candidates')) === 'true';
-  const tracks = tracksForCandidate(await getTracks(c.id), show);
+  const validated = photos.find((p) => p.id === c.selected_photo_id);
   const photo = photos.find((p) => p.id === c.selected_photo_id) ?? photos[0];
 
   return (
@@ -47,13 +47,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
         <RoadmapView rm={rm} locale={locale} photoUrl={photo ? `/api/photos/${photo.id}` : null} internalDeadline={await getSetting('internal_deadline')} />
 
-        {tracks.length > 0 && (
-          <section className="card card-lg stack-sm">
-            <h2 className="title" style={{ fontSize: 22 }}>{d.tracksTitle}</h2>
-            <p className="muted">{d.tracksIntro}</p>
-            <ol>{tracks.map((x) => <li key={x.id}>{x.title}</li>)}</ol>
-          </section>
-        )}
+        {j && <JourneyPanel j={j} proposals={proposals} locale={locale} d={t(locale).journey} submit={{
+          title: sub?.title ?? '', abstract: sub?.abstract ?? '', photoUrl: validated ? `/api/photos/${validated.id}` : null,
+          cfpUrl: ev?.submission_url ?? null, cfpLabel: ev?.submission_label ?? null, deadline: ev?.cfp_close_date ? fmtDate(ev.cfp_close_date, locale) : null,
+        }} />}
 
         <PlanPhotos initial={photos.map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }))} consent={!!c.consent_photo} locale={locale} />
 

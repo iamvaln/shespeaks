@@ -3,6 +3,7 @@ import { getCandidateFromCookie } from '@/lib/locale';
 import { addPhoto, deletePhoto, photosOf } from '@/lib/photos';
 import { touchCandidate } from '@/lib/data';
 import { storageMode } from '@/lib/storage';
+import { photoUploaded } from '@/lib/proposals';
 
 export const dynamic = 'force-dynamic';
 const list = async (id: number) => (await photosOf(id)).map((p) => ({ id: p.id, width: p.width, height: p.height, size: p.size }));
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   const r = await addPhoto(c.id, Buffer.from(await file.arrayBuffer()));
   if (r.error) return NextResponse.json({ error: r.error }, { status: r.error === 'too_big' ? 413 : 422 });
   await touchCandidate(c.id);
+  await photoUploaded(c.id);
   return NextResponse.json({ photos: await list(c.id) });
 }
 
