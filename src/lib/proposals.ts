@@ -31,17 +31,35 @@ export async function listProposals(candidateId: number): Promise<Proposal[]> {
   return (await all<Row>('SELECT * FROM proposals WHERE candidate_id=? ORDER BY id', candidateId)).map(toProposal);
 }
 
+const rank = (s: string) => STATUSES.findIndex((x) => x.id === s);
+/**
+ * She counts as submitted when she confirmed it here, when she answered « already submitted / already accepted » in the form, or when the
+ * coach moved her status to « candidature soumise » or beyond (« non retenue » sits outside the forward path). Computed, never stored.
+ */
+export function countsAsSubmitted(c: { submitted_at?: string | null; status: string }, applicationState: string | null | undefined): boolean {
+  return !!c.submitted_at || applicationState === 'soumise' || applicationState === 'retenue'
+    || (c.status !== 'non_retenue' && rank(c.status) >= rank('candidature_soumise'));
+}
+const applicationStateOf = async (candidateId: number) =>
+  (await get<{ application_state: string | null }>('SELECT application_state FROM subjects WHERE candidate_id=?', candidateId))?.application_state ?? null;
+
 export async function journeyOf(candidateId: number): Promise<Journey | null> {
   const c = await getCandidate(candidateId);
   if (!c) return null;
-  return journey({ branch: c.branch, photoValidatedAt: c.photo_validated_at ?? null, submittedAt: c.submitted_at ?? null, proposals: await listProposals(candidateId) });
+  const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
+  return journey({ branch: c.branch, photoValidatedAt: c.photo_validated_at ?? null, submitted: countsAsSubmitted(c, state), proposals });
 }
 
-/** One pending proposal per kind: a new one replaces it; sending also closes the coach's « à traiter » on earlier answers. */
+/**
+ * One pending proposal per kind: a new one replaces it. Choice and subject are two sides of the same question (which topic), so either
+ * one also replaces a pending one of the other: the proposal she was last emailed is always the one /plan lets her answer.
+ * Sending also closes the coach's « à traiter » on earlier answers.
+ */
 async function send(candidateId: number, coachId: number, kind: ProposalKind, payload: unknown): Promise<void> {
+  const replaced = kind === 'photo' ? `kind='photo'` : `kind IN ('choix','sujet')`; // a fixed fragment, never user input
   await tx(async () => {
     await get('SELECT pg_advisory_xact_lock(hashtext(?))', `proposals:${candidateId}`);
-    await run(`UPDATE proposals SET state='remplacee' WHERE candidate_id=? AND kind=? AND state='envoyee'`, candidateId, kind);
+    await run(`UPDATE proposals SET state='remplacee' WHERE candidate_id=? AND ${replaced} AND state='envoyee'`, candidateId);
     await run(`UPDATE proposals SET handled_at=(now() at time zone 'utc') WHERE candidate_id=? AND state='repondue' AND handled_at IS NULL`, candidateId);
     await run('INSERT INTO proposals (candidate_id,kind,payload,coach_id) VALUES (?,?,?,?)', candidateId, kind, JSON.stringify(payload), coachId);
   });
@@ -52,9 +70,13 @@ const validId = (n: unknown): n is number => Number.isInteger(n) && (n as number
 const NO_CANDIDATE: Outcome = { ok: false, error: 'Candidate introuvable' };
 /** An unknown candidate is answered with a message, never a foreign-key error. */
 const candidateExists = async (id: unknown): Promise<boolean> => validId(id) && !!(await get('SELECT 1 FROM candidates WHERE id=?', id));
+const ALREADY_SUBMITTED: Outcome = { ok: false, error: 'La candidature est déjà soumise.' };
+/** Nothing more is sent once she counts as submitted: it could never be answered. */
+const isSubmitted = async (id: number): Promise<boolean> => (await journeyOf(id))?.step === 'soumise';
 
 export async function sendChoice(candidateId: number, coachId: number): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  if (await isSubmitted(candidateId)) return ALREADY_SUBMITTED;
   const tracks = await all<Track>(`SELECT * FROM tracks WHERE candidate_id=? AND state='retenue_coach' ORDER BY position, id`, candidateId);
   const items: ChoiceItem[] = tracks.map((t) => ({ title: t.title.trim(), format: t.format ?? 'talk', pitch: (t.pitch ?? '').trim() }));
   const error = validateChoice(items);
@@ -66,6 +88,7 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
 
 export async function sendSubject(candidateId: number, coachId: number): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  if (await isSubmitted(candidateId)) return ALREADY_SUBMITTED;
   const s = await get<{ title: string | null; abstract: string | null; why: string | null; plan: string | null }>('SELECT title,abstract,why,plan FROM subjects WHERE candidate_id=?', candidateId);
   const payload: SubjectPayload = { title: (s?.title ?? '').trim(), abstract: (s?.abstract ?? '').trim(), why: (s?.why ?? '').trim(), plan: planLines(s?.plan ?? '') };
   const error = validateSubject(payload);
@@ -77,6 +100,7 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
 
 export async function requestPhoto(candidateId: number, coachId: number, comment: string): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  if (await isSubmitted(candidateId)) return ALREADY_SUBMITTED;
   const c = comment.trim().slice(0, COMMENT_MAX);
   if (!c) return { ok: false, error: 'Un commentaire est nécessaire pour demander une autre photo.' };
   await run('UPDATE candidates SET photo_validated_at=NULL WHERE id=?', candidateId);
@@ -104,7 +128,6 @@ const NEEDS_COMMENT: ProposalResponse[] = ['aucune', 'changements'];
 /** Never moves a status backwards (the order of STATUSES). */
 async function advance(candidateId: number, target: string, author: string) {
   const c = await getCandidate(candidateId);
-  const rank = (s: string) => STATUSES.findIndex((x) => x.id === s);
   if (c && rank(c.status) < rank(target)) await setStatus(candidateId, target, author);
 }
 
@@ -150,7 +173,9 @@ export async function photoUploaded(candidateId: number): Promise<void> {
 }
 
 export async function confirmSubmission(candidateId: number): Promise<Outcome> {
-  if ((await journeyOf(candidateId))?.step !== 'soumission') return { ok: false, error: 'La soumission n’est pas encore ouverte.' };
+  const step = (await journeyOf(candidateId))?.step;
+  if (step === 'soumise') return { ok: false, error: 'Ta soumission est déjà confirmée.' };
+  if (step !== 'soumission') return { ok: false, error: 'La soumission n’est pas encore ouverte.' };
   const done = await tx(async () => {
     const row = await get<{ id: number }>(`UPDATE candidates SET submitted_at=(now() at time zone 'utc') WHERE id=? AND submitted_at IS NULL RETURNING id`, candidateId);
     if (!row) return false;

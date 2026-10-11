@@ -68,6 +68,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const retained = tracks.filter((t) => t.state === 'retenue_coach');
   // the button needs 2 or 3 retained tracks, each with a SAVED sentence (the hook shown as a starting point is not sent)
   const choiceReady = retained.length >= 2 && retained.length <= 3 && retained.every((t) => (t.pitch ?? '').trim());
+  // once she counts as submitted (her confirmation, « déjà soumise » in the form, or a status moved forward) nothing more is sent
+  const submitted = journeyNow?.step === 'soumise';
+  const SUBMITTED_NOTE = 'La candidature est déjà soumise : plus rien n’est envoyé à la candidate.';
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -289,11 +292,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
                     <button className="a-btn is-ghost">Ajouter</button>
                   </form>
-                  <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
-                    <input type="hidden" name="cid" value={id} />
-                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
-                    <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase enregistrée.</span>
-                  </form>
+                  {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', padding: '12px 16px', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                    <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
+                      <input type="hidden" name="cid" value={id} />
+                      <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                      <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase enregistrée.</span>
+                    </form>
+                  )}
                 </section>
               )}
 
@@ -358,10 +363,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   </div>
                   <div><button className="a-btn">Enregistrer le sujet</button></div>
                 </form>
-                <form action={sendSubjectAction}>
-                  <input type="hidden" name="cid" value={id} />
-                  <PendingButton className="a-btn" pendingLabel="Envoi…" confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant.">Envoyer à la candidate pour validation</PendingButton>
-                </form>
+                {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                  <form action={sendSubjectAction}>
+                    <input type="hidden" name="cid" value={id} />
+                    <PendingButton className="a-btn" pendingLabel="Envoi…" confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant.">Envoyer à la candidate pour validation</PendingButton>
+                  </form>
+                )}
               </section>
 
               {c.branch === 'D' && (
@@ -469,13 +476,15 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   </div>
                 </>
               )}
-              <form action={requestPhotoAction} className="a-stack" style={{ gap: 8 }}>
-                <input type="hidden" name="cid" value={id} />
-                <label className="a-label">Demander une autre photo (dis-lui ce qu’il faut changer)
-                  <textarea className="a-textarea" name="comment" required maxLength={1000} />
-                </label>
-                <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
-              </form>
+              {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
+                <form action={requestPhotoAction} className="a-stack" style={{ gap: 8 }}>
+                  <input type="hidden" name="cid" value={id} />
+                  <label className="a-label">Demander une autre photo (dis-lui ce qu’il faut changer)
+                    <textarea className="a-textarea" name="comment" required maxLength={1000} />
+                  </label>
+                  <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
+                </form>
+              )}
             </section>
           )}
 

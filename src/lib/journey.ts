@@ -1,5 +1,5 @@
 // Where a candidate stands in the exchanges with her coach (spec 2026-10-11 « parcours de propositions »). Pure: the step is always
-// computed from the proposals log and two dates, never stored, so it cannot drift.
+// computed from the proposals log, the photo validation and a « submitted » marker, never stored, so it cannot drift.
 import type { Branch } from './questions.ts';
 
 export type ProposalKind = 'choix' | 'sujet' | 'photo';
@@ -35,23 +35,32 @@ export function journeySteps(branch: Branch | null): Step[] {
   return branch === 'A' || branch === 'B' ? ['choix', 'sujet', 'photo', 'soumission', 'soumise'] : ['sujet', 'photo', 'soumission', 'soumise'];
 }
 
-/** The latest proposal of a kind that was not replaced (the log is ordered by id). */
-const latest = (ps: Proposal[], kind: ProposalKind) => [...ps].filter((x) => x.kind === kind && x.state !== 'remplacee').sort((a, b) => a.id - b.id).at(-1) ?? null;
+/** The latest proposal of the given kinds that was not replaced (the log is ordered by id). */
+const latest = (ps: Proposal[], ...kinds: ProposalKind[]) =>
+  [...ps].filter((x) => kinds.includes(x.kind) && x.state !== 'remplacee').sort((a, b) => a.id - b.id).at(-1) ?? null;
 
-export function journey(i: { branch: Branch | null; photoValidatedAt: string | null; submittedAt: string | null; proposals: Proposal[] }): Journey {
+/**
+ * `submitted` is true as soon as she counts as submitted, whatever the reason (her confirmation, « already submitted » in the form, or a
+ * status the coach moved forward): nothing is pending then.
+ */
+export function journey(i: { branch: Branch | null; photoValidatedAt: string | null; submitted: boolean; proposals: Proposal[] }): Journey {
   const steps = journeySteps(i.branch);
   const at = (step: Step, last: Proposal | null): Journey => {
     const pending = last?.state === 'envoyee' ? last : null;
     return { step, steps, waiting: pending ? 'candidate' : 'coach', pending };
   };
-  if (i.submittedAt) return { step: 'soumise', steps, waiting: 'none', pending: null };
+  if (i.submitted) return { step: 'soumise', steps, waiting: 'none', pending: null };
+  // A and B: whichever of choice and subject was sent last decides, so the proposal she was emailed is the one she can answer
+  if (steps[0] === 'choix') {
+    const last = latest(i.proposals, 'choix', 'sujet');
+    if (!last) return at('choix', null);
+    if (last.kind === 'choix') return last.response === 'choisie' ? at('sujet', null) : at('choix', last);
+  }
   const subject = latest(i.proposals, 'sujet');
   if (subject?.response === 'approuvee') {
     if (i.photoValidatedAt) return { step: 'soumission', steps, waiting: 'candidate', pending: null };
     return at('photo', latest(i.proposals, 'photo'));
   }
-  const choice = latest(i.proposals, 'choix');
-  if (steps[0] === 'choix' && !subject && choice?.response !== 'choisie') return at('choix', choice);
   return at('sujet', subject);
 }
 

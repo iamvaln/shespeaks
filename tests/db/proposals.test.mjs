@@ -211,3 +211,75 @@ test('proposal reminders skip what is not due or not open, and parallel runs sen
   for (const id of [early, replaced, answered, aside]) assert.equal(await reminderMails(id), 0);
   assert.equal(await reminderMails(due), 1, 'two parallel runs send exactly one email');
 });
+
+// ---- final fix wave ---------------------------------------------------------------
+async function subjectFor(id, title = 'T', abstract = 'A') {
+  await raw`insert into subjects (candidate_id, title, abstract) values (${id}, ${title}, ${abstract})
+    on conflict (candidate_id) do update set title = excluded.title, abstract = excluded.abstract`;
+}
+
+test('I1: one pending proposal across choice and subject, and the last one sent is the one she can answer', { skip }, async () => {
+  const id = await candidate('A');
+  await retained(id, 2);
+  await P.sendChoice(id, 1);
+  const choice = (await state(id)).pending.id;
+  await subjectFor(id);
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  assert.equal((await raw`select state from proposals where id = ${choice}`)[0].state, 'remplacee', 'a subject replaces a pending choice');
+  let j = await state(id);
+  assert.deepEqual([j.step, j.pending.kind], ['sujet', 'sujet']);
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'changements', null, 'Pas tout à fait'), { ok: true });
+  // the coach goes back to a choice of topics: that choice is what /plan shows
+  assert.deepEqual(await P.sendChoice(id, 1), { ok: true });
+  j = await state(id);
+  assert.deepEqual([j.step, j.waiting, j.pending.kind], ['choix', 'candidate', 'choix']);
+  const choice2 = j.pending.id;
+  await P.sendSubject(id, 1);
+  assert.equal((await raw`select state from proposals where id = ${choice2}`)[0].state, 'remplacee');
+  const subject = (await state(id)).pending.id;
+  await P.sendChoice(id, 1);
+  assert.equal((await raw`select state from proposals where id = ${subject}`)[0].state, 'remplacee', 'a choice replaces a pending subject');
+  assert.equal((await raw`select count(*)::int as n from proposals where candidate_id = ${id} and state = 'envoyee'`)[0].n, 1);
+});
+
+test('I2: a candidate counts as submitted by submitted_at, by « already submitted / accepted », or by a status at or past « candidature soumise »', { skip }, async () => {
+  const byState = await candidate('D');
+  await raw`insert into subjects (candidate_id, title, abstract, application_state) values (${byState}, 'T', 'A', 'soumise')`;
+  assert.deepEqual([(await state(byState)).step, (await state(byState)).waiting], ['soumise', 'none']);
+  const accepted = await candidate('D');
+  await raw`insert into subjects (candidate_id, title, abstract, application_state) values (${accepted}, 'T', 'A', 'retenue')`;
+  assert.equal((await state(accepted)).step, 'soumise');
+  for (const status of ['candidature_soumise', 'retenue', 'slides_validees', 'repetition_faite', 'jour_j']) {
+    const id = await candidate('C');
+    await raw`update candidates set status = ${status} where id = ${id}`;
+    assert.equal((await state(id)).step, 'soumise', status);
+  }
+  for (const status of ['diagnostic_recu', 'sujet_valide', 'non_retenue']) {
+    const id = await candidate('C');
+    await raw`update candidates set status = ${status} where id = ${id}`;
+    assert.equal((await state(id)).step, 'sujet', status);
+  }
+  const toSubmit = await candidate('D');
+  await raw`insert into subjects (candidate_id, title, abstract, application_state) values (${toSubmit}, 'T', 'A', 'a_soumettre')`;
+  assert.equal((await state(toSubmit)).step, 'sujet');
+});
+
+test('I1/I2: nothing can be sent once she counts as submitted', { skip }, async () => {
+  const done = { ok: false, error: 'La candidature est déjà soumise.' };
+  const id = await candidate('A');
+  await retained(id, 2);
+  await subjectFor(id);
+  await raw`update subjects set application_state = 'soumise' where candidate_id = ${id}`;
+  assert.deepEqual(await P.sendChoice(id, 1), done);
+  assert.deepEqual(await P.sendSubject(id, 1), done);
+  assert.deepEqual(await P.requestPhoto(id, 1, 'Autre'), done);
+  const byStatus = await candidate('C');
+  await subjectFor(byStatus);
+  await raw`update candidates set status = 'retenue' where id = ${byStatus}`;
+  assert.deepEqual(await P.sendSubject(byStatus, 1), done);
+  const confirmed = await candidate('C');
+  await subjectFor(confirmed);
+  await raw`update candidates set submitted_at = now() at time zone 'utc' where id = ${confirmed}`;
+  assert.deepEqual(await P.requestPhoto(confirmed, 1, 'Autre'), done);
+  assert.equal((await raw`select count(*)::int as n from proposals where candidate_id in (${id}, ${byStatus}, ${confirmed})`)[0].n, 0);
+});

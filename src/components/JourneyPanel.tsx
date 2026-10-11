@@ -11,6 +11,8 @@ type Props = {
 
 export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
   const p = j.pending;
+  // a photo request can wait while the topic is still being discussed: it is shown whatever the step
+  const photoAsk = [...proposals].reverse().find((x) => x.kind === 'photo' && x.state === 'envoyee') ?? null;
   const fmtLabel = (v: string) => FORMATS.find((f) => f.value === v)?.label[locale] ?? null;
   return (
     <>
@@ -54,9 +56,15 @@ export function JourneyPanel({ j, proposals, locale, d, submit }: Props) {
               {(p.payload as SubjectPayload).plan.length > 0 && <><h4 style={{ margin: 0 }}>{d.how}</h4><ol>{(p.payload as SubjectPayload).plan.map((s, k) => <li key={k}>{s}</li>)}</ol></>}
               <ProposalAnswer key={p.id} proposalId={p.id} kind="sujet" items={[]} formatLabel="" d={d} />
             </div>)
-          : p?.kind === 'photo' ? <p>{d.photoAsked} {(p.payload as PhotoPayload).comment}</p>
+          : photoAsk ? null
           : j.step === 'photo' ? <p>{d.photoPending}</p>
           : <p>{d.nothing}</p>}
+        {photoAsk && (
+          <div className="stack-sm">
+            <p>{d.photoAsked} {(photoAsk.payload as PhotoPayload).comment}</p>
+            <p><a href="#photo">{d.photoUpload}</a></p>
+          </div>
+        )}
       </section>
 
       {proposals.length > 0 && (
