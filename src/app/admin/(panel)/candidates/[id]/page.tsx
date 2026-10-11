@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { all } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
-import { STATUSES, getSetting, statusLabel } from '@/lib/db';
+import { STATUSES, statusLabel } from '@/lib/db';
 import {
   eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
 } from '@/lib/data';
@@ -61,9 +61,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const id = Number(rawId);
   const c = await getCandidate(id);
   if (!c || !c.name) notFound();
-  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, showTracks, journeyNow, exchanges] = await Promise.all([
+  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, journeyNow, exchanges] = await Promise.all([
     getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
-    getSetting('show_tracks_to_candidates'), journeyOf(id), listProposals(id),
+    journeyOf(id), listProposals(id),
   ]);
   const retained = tracks.filter((t) => t.state === 'retenue_coach');
   // the button needs 2 or 3 retained tracks, each with a SAVED sentence (the hook shown as a starting point is not sent)
@@ -226,7 +226,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
                         {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
-                        {showTracks === 'true' ? ' Les pistes non écartées sont visibles par la candidate (une suggestion de l’IA seulement une fois retenue ou choisie).' : ' Les pistes ne sont pas visibles par la candidate (réglage).'}
+                        {' La candidate ne voit pas ces pistes : seulement ce que tu lui envoies (« Envoyer les pistes retenues »).'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

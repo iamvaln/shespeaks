@@ -71,6 +71,16 @@ export function validateChoice(items: ChoiceItem[]): string | null {
   return null;
 }
 
+/**
+ * The sentence « for the candidate » is written only by « Enregistrer »: the other buttons of a track (Choisir, Retenir, Écarter, Rétablir)
+ * submit the same form, whose field may still hold the AI hook shown as a starting point, never meant to be sent unread.
+ * undefined = leave the stored sentence as it is.
+ */
+export function pitchToSave(op: string, typed: string | null): string | null | undefined {
+  if (op !== 'save' || typed === null) return undefined;
+  return typed.trim().slice(0, 400) || null;
+}
+
 export function validateSubject(p: SubjectPayload): string | null {
   if (!p.title.trim()) return 'Le sujet doit avoir un titre avant l’envoi.';
   if (!p.abstract.trim()) return 'Le sujet doit avoir un résumé avant l’envoi.';

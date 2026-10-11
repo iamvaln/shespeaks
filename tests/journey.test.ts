@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { journey, journeySteps, planLines, validateChoice, validateSubject, type Proposal } from '../src/lib/journey.ts';
+import { journey, journeySteps, pitchToSave, planLines, validateChoice, validateSubject, type Proposal } from '../src/lib/journey.ts';
 
 let n = 0;
 const p = (kind: Proposal['kind'], state: Proposal['state'], response: Proposal['response'] = null): Proposal => ({
@@ -91,4 +91,12 @@ test('submitted (whatever the reason) → done, nothing pending, at any step', (
     assert.deepEqual([done.step, done.waiting, done.pending], ['soumise', 'none', null]);
   }
   assert.equal(j('A', [], null, true).step, 'soumise');
+});
+
+test('the sentence for the candidate is saved only by « Enregistrer », never by the other buttons of the track', () => {
+  for (const op of ['choose', 'shortlist', 'discard', 'restore', 'delete']) assert.equal(pitchToSave(op, 'Le hook de l’IA'), undefined, op);
+  assert.equal(pitchToSave('save', '  Tu le fais déjà au travail. '), 'Tu le fais déjà au travail.');
+  assert.equal(pitchToSave('save', '  '), null);
+  assert.equal(pitchToSave('save', null), undefined, 'a track without the field keeps its sentence');
+  assert.equal(pitchToSave('save', 'x'.repeat(500))?.length, 400);
 });

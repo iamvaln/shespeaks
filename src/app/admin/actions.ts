@@ -15,6 +15,7 @@ import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
 import { markHandled, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -166,8 +167,9 @@ export async function trackAction(f: FormData) {
     await run('UPDATE tracks SET title=?, format=? WHERE id=?', title, format, tid);
     if (track.state === 'choisie') await run('UPDATE subjects SET title=?, format=? WHERE candidate_id=?', title, format, id);
   }
-  // the sentence « for the candidate » travels in the same form as the title (only retained tracks have the field)
-  if (op !== 'delete' && f.has('pitch')) await run('UPDATE tracks SET pitch=? WHERE id=?', str(f, 'pitch').slice(0, 400) || null, tid);
+  // the sentence « for the candidate » travels in the same form as the title (only retained tracks have the field); only « Enregistrer » keeps it
+  const pitch = pitchToSave(op, f.has('pitch') ? str(f, 'pitch') : null);
+  if (pitch !== undefined) await run('UPDATE tracks SET pitch=? WHERE id=?', pitch, tid);
   let done: string;
   if (op === 'save') {
     done = 'Piste enregistrée';
@@ -298,7 +300,7 @@ export async function saveSettingsAction(f: FormData) {
   await requireCoach();
   const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
-  await setSetting('show_tracks_to_candidates', f.get('show_tracks_to_candidates') ? 'true' : 'false');
+  // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
 }
