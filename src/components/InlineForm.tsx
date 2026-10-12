@@ -21,7 +21,7 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
   const [reply, setReply] = useState<Reply | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
-  const scope = useContext(EditScopeContext);
+  const report = useContext(EditScopeContext)?.setDirty; // stable for the life of the scope (the scope object itself changes with every edit)
   const formId = useId();
   const [dirty, setDirty] = useState(false);
   const check = useCallback(() => {
@@ -29,11 +29,11 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
     if (!watchEdits || !form) return;
     const now = isEdited(form);
     setDirty(now);
-    scope?.setDirty(formId, now);
-  }, [watchEdits, scope, formId]);
+    report?.(formId, now);
+  }, [watchEdits, report, formId]);
   // after every render: a refresh after « Enregistrer » renders the saved values as the new defaults, and the edits are gone
   useEffect(() => { check(); });
-  useEffect(() => () => scope?.setDirty(formId, false), [scope, formId]);
+  useEffect(() => () => report?.(formId, false), [report, formId]); // gone (the track was removed, or became locked): it no longer holds edits
   return (
     <InlinePending.Provider value={{ pending, data }}>
       <FormEditContext.Provider value={watchEdits ? { dirty } : null}>

@@ -52,7 +52,7 @@ export function isEdited(form: HTMLFormElement): boolean {
  * A button of a fiche form that can be greyed. It stays focusable (`aria-disabled`, not `disabled`: pressing « Enregistrer » would otherwise
  * drop the focus the moment it goes grey) and does nothing when pressed; `title` says why.
  * - kind « save »: lit only while its own form holds unsaved edits (or `unsaved`: something to store without any edit, as the sentence
- *   of a retained track that is still the AI hook shown as a starting point);
+ *   of a retained track that is still the AI hook shown as a starting point; but not while another form is being edited);
  * - kind « other »: greyed while any form of the scope is being edited;
  * - `locked` (with `lockedReason`): greyed whatever the edits, as « Choisir » before she has chosen.
  */
@@ -64,7 +64,7 @@ export function EditButton({ kind, locked, lockedReason, unsaved, litClassName, 
   const form = useContext(FormEditContext);
   const editing = useEditing();
   const reason = locked ? lockedReason ?? 'Indisponible pour le moment.'
-    : kind === 'save' ? (form && !form.dirty && !unsaved ? NOTHING_TO_SAVE_REASON : undefined)
+    : kind === 'save' ? (!form || form.dirty || (unsaved && !editing) ? undefined : editing ? EDITING_REASON : NOTHING_TO_SAVE_REASON)
     : editing ? EDITING_REASON : undefined;
   return (
     <button
