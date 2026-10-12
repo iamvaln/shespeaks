@@ -4,7 +4,7 @@ import { all } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
 import { STATUSES, statusLabel } from '@/lib/db';
 import {
-  eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
+  eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches, TRACKS_AFTER_FORM,
 } from '@/lib/data';
 import {
   APPLICATION_STATES, AUDIENCES, FORMATS, SCREENS, SELF_CHECKS, flowFor, labelOf, resolveOptions, resumeScreen, visibleQuestions, type Answer, type Question,
@@ -246,6 +246,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
                         {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
+                        {!c.completed_at && ' Son formulaire n’est pas terminé : « Régénérer » et « Ajouter » seront possibles quand elle l’aura envoyé (les pistes sont générées à partir de ses réponses).'}
                         {' La candidate ne voit pas ces pistes : seulement ce que tu lui envoies (« Envoyer les pistes retenues »).'}
                       </p>
                     </div>
@@ -267,7 +268,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                           ))}
                         </InlineForm>
                       )}
-                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={TRACKS_AFTER_FORM}><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
@@ -341,7 +342,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
                       <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
                       <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
-                      <EditButton kind="other" className="a-btn is-ghost">Ajouter</EditButton>
+                      <EditButton kind="other" className="a-btn is-ghost" locked={!c.completed_at} lockedReason={TRACKS_AFTER_FORM}>Ajouter</EditButton>
                     </InlineForm>
                   )}
                   {!lock && (

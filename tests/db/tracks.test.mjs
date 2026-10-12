@@ -102,3 +102,11 @@ test('suggestions made by the AI are not touched by the template regeneration', 
   assert.ok(t.some((x) => x.origin === 'ia' && x.title === 'Une idée de l’IA' && x.state === 'generee'));
   assert.equal(t.filter((x) => x.origin !== 'ia').length, 5, 'and the five templates are still there');
 });
+
+test('no tracks are regenerated or added before her form is sent: the refusal the greyed buttons stand for', { skip }, async () => {
+  const unfinished = (await raw`insert into candidates (token, name, branch, status, current_screen) values (${crypto.randomBytes(8).toString('hex')}, 'Pas finie', 'A', 'en_cours', 'p1') returning id`)[0].id;
+  assert.equal(await data.tracksRefusal(unfinished), data.TRACKS_AFTER_FORM);
+  assert.match(await data.tracksRefusal(unfinished), /formulaire sera terminé/);
+  assert.equal(await data.tracksRefusal(await candidate()), null, 'a finished form: allowed');
+  assert.equal(await data.tracksRefusal(2000000000), data.TRACKS_AFTER_FORM, 'unknown candidate: nothing to regenerate');
+});
