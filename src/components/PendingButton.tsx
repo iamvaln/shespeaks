@@ -1,6 +1,7 @@
 'use client';
 import { useFormStatus } from 'react-dom';
-import type { ComponentProps, ReactNode } from 'react';
+import { useContext, type ComponentProps, type ReactNode } from 'react';
+import { InlinePending } from './InlineForm';
 
 /**
  * A submit button for a slow server action. While it runs it stays focusable (`aria-disabled`, not `disabled`: focus would be lost) but
@@ -8,7 +9,10 @@ import type { ComponentProps, ReactNode } from 'react';
  * anything is sent.
  */
 export function PendingButton({ children, pendingLabel, confirmText, onClick, ...props }: { children: ReactNode; pendingLabel: string; confirmText?: string } & ComponentProps<'button'>) {
-  const { pending: formPending, data } = useFormStatus();
+  const status = useFormStatus();
+  const inline = useContext(InlinePending); // inside an InlineForm, its own state (the form is not submitted through `action`)
+  const formPending = inline ? inline.pending : status.pending;
+  const data = inline ? inline.data : status.data;
   // several submit buttons in one form (name + value): only the one that was pressed is relabelled; the others are only inert
   const mine = !props.name || props.value === undefined || data?.get(String(props.name)) === String(props.value);
   const pending = formPending && mine;
