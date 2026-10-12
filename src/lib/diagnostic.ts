@@ -187,8 +187,11 @@ export async function completeDiagnostic(id: number) {
     await setStatus(id, 'diagnostic_recu', 'système');
     const fmt = a['D4'] && a['D4'] !== 'ouverte' ? String(a['D4']) : null;
     if (c.branch === 'A' || c.branch === 'B') {
+      // template proposals made from part of her answers (a « Régénérer » before she finished) are made again from all of them;
+      // anything a coach touched or added stays, and the new ones come after it
+      await run(`DELETE FROM tracks WHERE candidate_id=? AND state='generee' AND origin IN ('personnelle','croisement')`, id);
       const tracks = generateTracks(a, c.branch, c.locale, refs);
-      let i = 0;
+      let i = (await get<{ n: number }>('SELECT COALESCE(MAX(position) + 1, 0)::int AS n FROM tracks WHERE candidate_id=?', id))?.n ?? 0;
       for (const t of tracks) {
         await run('INSERT INTO tracks (candidate_id,title,angle,format,domain,hook,origin,position) VALUES (?,?,?,?,?,?,?,?)', id, t.title, t.angle, t.format, t.domain, t.hook ?? null, t.origin, i++);
       }
