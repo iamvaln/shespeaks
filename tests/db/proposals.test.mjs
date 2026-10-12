@@ -384,3 +384,22 @@ test('I4 and M2: « tout est prêt » carries the approved frozen copy; the coac
   assert.ok(ready.body_text.includes('Titre approuvé') && ready.body_text.includes('Résumé approuvé'), ready.body_text);
   assert.ok(!ready.body_text.includes('retouché'));
 });
+
+test('A and B: the subject is sent only once she has chosen one of the tracks sent', { skip }, async () => {
+  const needs = { ok: false, error: 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.' };
+  const id = await candidate('B');
+  await retained(id, 2);
+  await subjectFor(id);
+  assert.deepEqual(await P.sendSubject(id, 1), needs);
+  await P.sendChoice(id, 1);
+  let j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'aucune', null, 'Aucune ne me parle');
+  assert.deepEqual(await P.sendSubject(id, 1), needs, '« aucune »: still no chosen track');
+  await P.sendChoice(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 1, '');
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  const cd = await candidate('C');
+  await subjectFor(cd);
+  assert.deepEqual(await P.sendSubject(cd, 1), { ok: true }, 'C and D send their subject directly');
+});

@@ -74,6 +74,10 @@ export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
   const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
   return lockOf(c, state, proposals);
 }
+/** Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. */
+export const needsChoice = (branch: string | null, proposals: Proposal[]): boolean =>
+  (branch === 'A' || branch === 'B') && !proposals.some((p) => p.kind === 'choix' && p.response === 'choisie');
+export const NEEDS_CHOICE = 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.';
 /** What the coach reads when the topic is locked. */
 export const LOCK_MESSAGE: Record<Exclude<ExchangeLock, null>, string> = {
   attente: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.',
@@ -125,6 +129,8 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
   const lock = await exchangeLock(candidateId);
   if (lock === 'soumise') return ALREADY_SUBMITTED;
   if (lock) return { ok: false, error: LOCK_MESSAGE[lock] };
+  const c = await getCandidate(candidateId);
+  if (needsChoice(c?.branch ?? null, await listProposals(candidateId))) return { ok: false, error: NEEDS_CHOICE };
   const s = await get<{ title: string | null; abstract: string | null; why: string | null; plan: string | null }>('SELECT title,abstract,why,plan FROM subjects WHERE candidate_id=?', candidateId);
   const payload: SubjectPayload = { title: (s?.title ?? '').trim(), abstract: (s?.abstract ?? '').trim(), why: (s?.why ?? '').trim(), plan: planLines(s?.plan ?? '') };
   const error = validateSubject(payload);

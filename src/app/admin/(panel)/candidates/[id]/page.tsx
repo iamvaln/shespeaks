@@ -26,7 +26,7 @@ import { getSubjectProposal } from '@/lib/ai-subject-store';
 import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
-import { journeyOf, listProposals, lockOf, LOCK_MESSAGE } from '@/lib/proposals';
+import { journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
 import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
@@ -79,6 +79,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
     : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
+  const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: greyed until she has chosen one of the tracks sent
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -412,8 +413,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 {!lock && (
                   <InlineForm action={sendSubjectAction} className="a-stack" style={{ gap: 6 }}>
                     <input type="hidden" name="cid" value={id} />
-                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" disabled={!subjectReady} confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant. Pistes et sujet resteront verrouillés jusqu’à sa réponse.">Envoyer à la candidate pour validation</PendingButton></div>
-                    {!subjectReady && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Enregistre d’abord un titre et un résumé (bouton « Enregistrer le sujet »).</span>}
+                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" disabled={!subjectReady || waitsForChoice} confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant. Pistes et sujet resteront verrouillés jusqu’à sa réponse.">Envoyer à la candidate pour validation</PendingButton></div>
+                    {waitsForChoice ? <span className="a-sub" style={{ whiteSpace: 'normal' }}>{NEEDS_CHOICE} Ce bouton s’active quand elle aura choisi.</span>
+                      : !subjectReady && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Enregistre d’abord un titre et un résumé (bouton « Enregistrer le sujet »).</span>}
                   </InlineForm>
                 )}
               </section>
