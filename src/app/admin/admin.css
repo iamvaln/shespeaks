@@ -390,3 +390,19 @@
 .a-inline-msg.is-err { color: #7A1D10; }
 /* why tracks and subject cannot be touched right now (a proposal waits, her subject is approved, or she submitted) */
 .a-lock-note { padding: 12px 16px; border-radius: 12px; background: var(--amber-soft, #FDF1DC); color: var(--amber-text, #7A4B00); font-weight: 500; }
+
+/* foldable tracks: the summary line names the track; retained and chosen ones start open */
+.a-fold-all { display: flex; gap: 16px; justify-content: flex-end; padding: 8px 24px; }
+.a-track-summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.a-track-summary::-webkit-details-marker { display: none; }
+.a-track-summary::after { content: '▾'; margin-left: auto; color: var(--ink-soft); transition: transform .15s; }
+.a-track-fold:not([open]) > .a-track-summary::after { transform: rotate(-90deg); }
+.a-track-summary-title { font-weight: 600; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.a-track-fold[open] > .a-track-summary { margin-bottom: 8px; }
+/* open: the editable title and format are right below, so the summary keeps only the number, the state and the chevron */
+.a-track-fold[open] > .a-track-summary .a-track-summary-title { visibility: hidden; }
+.a-track-fold[open] > .a-track-summary > .a-sub { display: none; }
+.a-track-fold .a-track-form > .a-num, .a-track-fold .a-track-meta > .a-pill { display: none; }
+.a-track-fold .a-track-form { grid-template-columns: minmax(0, 1fr); }
+.a-track-fold .a-track-actions { grid-column: 1; }
+@container (min-width: 760px) { .a-track-fold .a-track-form { grid-template-columns: minmax(0, 1fr) auto; } .a-track-fold .a-track-actions { grid-column: auto; } }

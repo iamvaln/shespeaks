@@ -15,6 +15,7 @@ import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
 import { InlineForm } from '@/components/InlineForm';
+import { FoldAll } from '@/components/FoldAll';
 import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
@@ -268,9 +269,19 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
+                    <>
+                    <FoldAll selector="details.a-track-fold" />
                     <ul className="a-tracks">
                       {tracks.map((t, i) => (
                         <li key={t.id} className={`a-track${t.state === 'choisie' ? ' is-chosen' : ''}${t.state === 'retenue_coach' ? ' is-kept' : ''}${t.state === 'ecartee' ? ' is-out' : ''}`}>
+                          {/* the tracks she works on (retained, chosen) stay open; the others fold so the page stays short */}
+                          <details className="a-track-fold" open={t.state === 'retenue_coach' || t.state === 'choisie'}>
+                          <summary className="a-track-summary">
+                            <span className="a-num" aria-hidden="true">{i + 1}</span>
+                            <span className="a-track-summary-title">{t.title}</span>
+                            <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
+                            <span className="a-sub">{FORMATS.find((o) => o.value === t.format)?.label.fr ?? t.format ?? 'Talk'}</span>
+                          </summary>
                           {lock ? (
                           <div className="a-track-form">
                             <span className="a-num" aria-hidden="true">{i + 1}</span>
@@ -315,9 +326,11 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             </div>
                           </InlineForm>
                           )}
+                          </details>
                         </li>
                       ))}
                     </ul>
+                    </>
                   )}
                   {!lock && (
                     <InlineForm action={trackAction} className="a-add-track" resetOnSuccess>
