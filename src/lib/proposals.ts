@@ -78,6 +78,14 @@ export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
 export const needsChoice = (branch: string | null, proposals: Proposal[]): boolean =>
   (branch === 'A' || branch === 'B') && !proposals.some((p) => p.kind === 'choix' && p.response === 'choisie');
 export const NEEDS_CHOICE = 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.';
+/** A and B: the coach keeps, edits and sends tracks; the one that becomes the subject is the one the candidate chooses. */
+export const CHOOSE_AFTER_HER = 'La candidate choisit elle-même parmi les pistes que tu lui envoies : retiens-en 2 ou 3, adapte-les, puis envoie-les. « Choisir » s’active quand elle aura répondu.';
+/** The server side of the greyed « Choisir » button: nobody may make a track her subject before she has chosen (A and B). */
+export async function mayChooseTrack(candidateId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  const c = await getCandidate(candidateId);
+  return needsChoice(c?.branch ?? null, await listProposals(candidateId)) ? { ok: false, error: CHOOSE_AFTER_HER } : { ok: true };
+}
 /** What the coach reads when the topic is locked. */
 export const LOCK_MESSAGE: Record<Exclude<ExchangeLock, null>, string> = {
   attente: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.',

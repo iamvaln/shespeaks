@@ -14,7 +14,7 @@ import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
-import { exchangeLock, LOCK_MESSAGE, markHandled, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
@@ -183,6 +183,11 @@ export async function trackAction(f: FormData) {
     return reply(f, cpath(id), 'Pistes régénérées');
   }
   if (!track) return reply(f, cpath(id), 'Piste introuvable', true);
+  // A and B: the track that becomes her subject is the one she chooses among those sent (the button is greyed until then; refused here too, before anything is saved)
+  if (op === 'choose') {
+    const may = await mayChooseTrack(id);
+    if (!may.ok) return reply(f, cpath(id), may.error, true);
+  }
   // whichever button she pressed, what she typed in the title and the format of this track is kept (and the subject follows a chosen track)
   const title = oneLine(str(f, 'title')) || track.title;
   const format = str(f, 'format') || track.format;

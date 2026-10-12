@@ -64,6 +64,30 @@ export function journey(i: { branch: Branch | null; photoValidatedAt: string | n
   return at('sujet', subject);
 }
 
+/**
+ * What a coach reads about a candidate, in the list and on her fiche alike: where the exchanges stand and who has the hand. The coach's own
+ * status (« Intérêt reçu », « Sujet validé »…) says nothing about what was already sent to her: « Intérêt reçu » covers a candidate nobody
+ * has written to yet as well as one who was sent her tracks, or her subject.
+ */
+export type JourneyState = { label: string; waiting: Journey['waiting'] };
+export function journeyState(j: Journey, proposals: Proposal[]): JourneyState {
+  const { waiting } = j;
+  switch (j.step) {
+    case 'soumise': return { label: 'Candidature soumise', waiting };
+    case 'soumission': return { label: 'Attend sa soumission', waiting };
+    case 'photo': return { label: j.pending ? 'Photo demandée' : 'Sujet approuvé · photo à traiter', waiting };
+    case 'choix':
+      if (j.pending) return { label: 'Pistes proposées', waiting };
+      return { label: latest(proposals, 'choix')?.response === 'aucune' ? 'Aucune piste ne lui convient' : 'Rien envoyé', waiting };
+    case 'sujet':
+      if (j.pending) return { label: 'Sujet proposé', waiting };
+      if (latest(proposals, 'sujet')?.response === 'changements') return { label: 'Changements demandés sur le sujet', waiting };
+      return { label: j.steps[0] === 'choix' ? 'A choisi · sujet à proposer' : 'Rien envoyé', waiting };
+  }
+}
+/** Said aloud for screen readers (the colour of the line says it for the eye). */
+export const WAITING_SR: Record<Journey['waiting'], string> = { coach: 'à traiter', candidate: 'en attente de sa réponse', none: 'terminé' };
+
 export function validateChoice(items: ChoiceItem[]): string | null {
   if (items.length < 2 || items.length > 3) return 'Il faut 2 ou 3 pistes retenues pour envoyer un choix.';
   if (items.some((x) => !x.title.trim() || x.title.length > 140)) return 'Chaque piste retenue doit avoir un titre (140 caractères au plus).';

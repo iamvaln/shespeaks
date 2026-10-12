@@ -406,3 +406,28 @@
 .a-track-fold .a-track-form { grid-template-columns: minmax(0, 1fr); }
 .a-track-fold .a-track-actions { grid-column: 1; }
 @container (min-width: 760px) { .a-track-fold .a-track-form { grid-template-columns: minmax(0, 1fr) auto; } .a-track-fold .a-track-actions { grid-column: auto; } }
+
+/* greyed because it does not apply right now (before she has chosen, or while a field is being edited): focusable, says why in its title */
+.a-btn[aria-disabled='true']:not([aria-busy='true']) { cursor: not-allowed; }
+.a-link-btn[aria-disabled='true'] { opacity: .45; cursor: not-allowed; text-decoration: none; }
+.a-link-btn[aria-disabled='true']:hover { color: var(--ink-muted); }
+
+/* every block of the fiche folds: the heading is the summary, the chevron says if it is open */
+.a-fold > .a-fold-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
+.a-fold > .a-fold-summary::-webkit-details-marker { display: none; }
+.a-fold > .a-fold-summary::after { content: '▾'; flex: none; color: var(--ink-soft); transition: transform .15s; }
+.a-fold:not([open]) > .a-fold-summary::after { transform: rotate(-90deg); }
+.a-fold > .a-fold-summary > .a-h2 { flex: 1 1 auto; min-width: 0; }
+.a-fold[open] > .a-fold-summary { margin-bottom: 14px; }
+.a-fold.is-flush > .a-fold-summary { padding: 18px 24px; margin-bottom: 0; }
+.a-fold.is-flush[open] > .a-fold-summary { border-bottom: 1px solid var(--line); }
+@media (max-width: 760px) { .a-fold.is-flush > .a-fold-summary { padding-inline: 16px; } }
+.a-fold-page { display: flex; justify-content: flex-end; }
+.a-fold-page .a-fold-all { padding: 0; }
+.a-btn.is-ghost.is-lit { background: #111528; border-color: #111528; color: #fff; }
+
+/* where the exchanges with her stand, under the coach's status in the lists (colour: amber = to deal with, grey = she has the hand, green = done) */
+.a-journey { display: block; margin-top: 4px; font-size: 13px; line-height: 18px; font-weight: 600; white-space: normal; }
+.a-journey.is-coach { color: var(--amber-text, #7A4B00); }
+.a-journey.is-candidate { color: var(--ink-muted); }
+.a-journey.is-none { color: #11512D; }
