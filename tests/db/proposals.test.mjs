@@ -117,9 +117,9 @@ test('another candidate\'s proposal is refused; a choice needs 2 or 3 retained t
 test('« à traiter » counts unanswered-by-coach answers until the coach sends the next proposal or marks them handled', { skip }, async () => {
   const admin = await import('../../src/lib/admin-data.ts');
   const id = await candidate('C');
-  await raw`update candidates set status = 'sujet_valide' where id = ${id}`; // out of the « intérêt reçu » count
   await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`;
   await P.sendSubject(id, 1);
+  await raw`update candidates set status = 'sujet_valide' where id = ${id}`; // out of the « intérêt reçu » count (set after the send: sending a subject takes an approved status back)
   const before = await admin.countToProcess();
   await P.answerProposal(id, (await state(id)).pending.id, 'changements', null, 'Non');
   assert.equal(await admin.countToProcess(), before + 1);
@@ -324,6 +324,67 @@ test('« Rouvrir les échanges »: the coach can send again after her confirmati
   assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'retenue', 'her status does not move back');
   await raw`update candidates set submitted_at = now() at time zone 'utc' where id = ${id}`;
   assert.equal((await state(id)).step, 'soumise', 'her new confirmation closes them again');
+});
+
+test('the statuses the exchanges drive follow them back: reopening, a new subject over an approved one; « retenue » is never touched', { skip }, async () => {
+  const hist = async (id) => (await raw`select old_status, new_status, author from status_history where candidate_id = ${id} order by id`).map((h) => `${h.old_status}>${h.new_status} (${h.author})`);
+  const id = await candidate('C');
+  await subjectFor(id);
+  await P.sendSubject(id, 1);
+  await P.answerProposal(id, (await state(id)).pending.id, 'approuvee', null, '');
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'sujet_valide');
+  assert.deepEqual(await P.reopenExchanges(id, 'Coach'), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'sujet_valide', 'the approval still stands after reopening');
+  // a new subject sent over the approved one: not validated while it waits for her
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'diagnostic_recu');
+  assert.deepEqual(await hist(id), ['diagnostic_recu>sujet_valide (la candidate)', 'sujet_valide>diagnostic_recu (Coach)']);
+  // she answers: forward again
+  await P.answerProposal(id, (await state(id)).pending.id, 'approuvee', null, '');
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'sujet_valide');
+  // submitted, then reopened: back to what the exchanges stand for (the approved subject, the photo to come)
+  await raw`update candidates set submitted_at = now() at time zone 'utc', status = 'candidature_soumise' where id = ${id}`;
+  assert.deepEqual(await P.reopenExchanges(id, 'Coach'), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${id}`)[0].status, 'sujet_valide');
+  // what happened at the event is not the exchanges' to undo
+  const won = await candidate('C');
+  await raw`update candidates set submitted_at = now() at time zone 'utc', status = 'slides_validees' where id = ${won}`;
+  assert.deepEqual(await P.reopenExchanges(won, 'Coach'), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${won}`)[0].status, 'slides_validees');
+  // A: a choice sent over an approved subject takes the status back to the start
+  const a = await candidate('A');
+  await retained(a, 2);
+  await P.sendChoice(a, 1);
+  await P.answerProposal(a, (await state(a)).pending.id, 'choisie', 0, '');
+  await subjectFor(a);
+  await P.sendSubject(a, 1);
+  await P.answerProposal(a, (await state(a)).pending.id, 'approuvee', null, '');
+  assert.equal((await raw`select status from candidates where id = ${a}`)[0].status, 'sujet_valide');
+  assert.deepEqual(await P.reopenExchanges(a, 'Coach'), { ok: true });
+  assert.deepEqual(await P.sendChoice(a, 1), { ok: true });
+  assert.equal((await raw`select status from candidates where id = ${a}`)[0].status, 'diagnostic_recu');
+});
+
+test('« Suivi »: a status that is passed is refused (against the database), the ones ahead are accepted, « non retenue » can be taken back', { skip }, async () => {
+  const S = await import('../../src/lib/status.ts');
+  const id = await candidate('C');
+  assert.equal(await S.statusRefusal(id, 'diagnostic_recu'), null, 'the status it already has');
+  assert.equal(await S.statusRefusal(id, 'jour_j'), null, 'ahead');
+  assert.equal(await S.statusRefusal(id, 'non_retenue'), null, 'the exit');
+  assert.match(await S.statusRefusal(id, 'en_cours'), /dépassé/);
+  assert.match(await S.statusRefusal(id, 'sujet_valide'), /titre et le résumé/, 'no subject to validate');
+  await subjectFor(id);
+  assert.equal(await S.statusRefusal(id, 'sujet_valide'), null, 'with a title and an abstract');
+  await raw`update candidates set status = 'retenue' where id = ${id}`;
+  for (const behind of ['en_cours', 'diagnostic_recu', 'sujet_valide', 'candidature_soumise']) assert.match(await S.statusRefusal(id, behind), /Rouvrir les échanges/, behind);
+  assert.equal(await S.statusRefusal(id, 'slides_validees'), null);
+  await raw`update candidates set status = 'non_retenue' where id = ${id}`;
+  assert.equal(await S.statusRefusal(id, 'diagnostic_recu'), null, 'taken back to « Intérêt reçu »');
+  assert.match(await S.statusRefusal(id, 'retenue'), /seul « Intérêt reçu »/);
+  const unfinished = (await raw`insert into candidates (token, name, branch, status, current_screen) values (${crypto.randomBytes(8).toString('hex')}, 'Pas finie', 'A', 'en_cours', 'p1') returning id`)[0].id;
+  assert.match(await S.statusRefusal(unfinished, 'diagnostic_recu'), /formulaire n’est pas terminé/);
+  assert.equal(await S.statusRefusal(unfinished, 'non_retenue'), null);
+  assert.equal(await S.statusRefusal(999999999, 'jour_j'), 'Candidate introuvable');
 });
 
 test('her first photo at the photo step tells the coach even when no photo was asked; not before the subject is approved', { skip }, async () => {

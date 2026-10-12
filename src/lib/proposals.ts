@@ -5,7 +5,7 @@ import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
 import {
   COMMENT_MAX, journey, planLines, validateChoice, validateSubject,
-  type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
+  type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type Step, type SubjectPayload,
 } from './journey.ts';
 
 export type Outcome = { ok: true } | { ok: false; error: string };
@@ -132,6 +132,7 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
   const error = validateChoice(items);
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'choix', { items }))) return WAITING;
+  await stepBack(candidateId, await coachName(coachId));
   mail((m) => m.toCandidate(candidateId, 'choix'));
   return { ok: true };
 }
@@ -148,6 +149,7 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
   const error = validateSubject(payload);
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'sujet', payload))) return WAITING;
+  await stepBack(candidateId, await coachName(coachId));
   mail((m) => m.toCandidate(candidateId, 'sujet'));
   return { ok: true };
 }
@@ -184,6 +186,20 @@ async function advance(candidateId: number, target: string, author: string) {
   const c = await getCandidate(candidateId);
   if (c && rank(c.status) < rank(target)) await setStatus(candidateId, target, author);
 }
+
+/** The status each step of the exchanges stands for: the three statuses the exchanges drive. */
+const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', sujet: 'diagnostic_recu', photo: 'sujet_valide', soumission: 'sujet_valide', soumise: 'candidature_soumise' };
+/**
+ * The exchanges go back (reopened, or a new proposal sent over an approved subject): « Sujet validé » and « Candidature soumise » follow them
+ * back, as they followed them forward (advance). « Retenue » and what comes after say what happened at the event: never touched here.
+ */
+async function stepBack(candidateId: number, author: string) {
+  const [c, j] = await Promise.all([getCandidate(candidateId), journeyOf(candidateId)]);
+  if (!c || !j || (c.status !== 'sujet_valide' && c.status !== 'candidature_soumise')) return;
+  const target = STATUS_OF_STEP[j.step];
+  if (rank(target) < rank(c.status)) await setStatus(candidateId, target, author);
+}
+const coachName = async (coachId: number): Promise<string> => (await get<{ name: string }>('SELECT name FROM coaches WHERE id=?', coachId))?.name ?? 'coach';
 
 export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string): Promise<Outcome> {
   if (!validId(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
@@ -244,12 +260,13 @@ export async function confirmSubmission(candidateId: number): Promise<Outcome> {
 }
 
 /** « Rouvrir les échanges »: the coach can send again; her space shows the step the proposals lead to, and she confirms her submission again at the end. */
-export async function reopenExchanges(candidateId: number): Promise<Outcome> {
+export async function reopenExchanges(candidateId: number, author = 'système'): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const lock = await exchangeLock(candidateId);
   if (lock === 'attente') return WAITING;
   if (!lock) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
   await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
+  await stepBack(candidateId, author);
   return { ok: true };
 }
 

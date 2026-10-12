@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getRefs, getSubject, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
+import { getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
@@ -14,6 +14,7 @@ import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
+import { statusRefusal } from '@/lib/status';
 import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
 
@@ -80,11 +81,9 @@ export async function followUpAction(f: FormData) {
   if (!changed.status && !changed.coach && !changed.date) return back(cpath(id, tab), 'Rien n’a changé');
   let refused = '';
   if (changed.status) {
-    if (status === 'sujet_valide') {
-      const s = await getSubject(id);
-      if (!s?.title?.trim() || !s?.abstract?.trim()) refused = 'Le statut n’a pas changé : pour valider le sujet, renseigne d’abord le titre et le résumé dans l’onglet « Sujet et pistes ».';
-    }
-    if (!refused) await setStatus(id, status, coach.name);
+    const why = await statusRefusal(id, status); // against the status in the database: a page left open may be behind
+    if (why) refused = `Le statut n’a pas changé : ${why}`;
+    else await setStatus(id, status, coach.name);
   }
   if (changed.coach) await run('UPDATE candidates SET coach_id=? WHERE id=?', coachId ? num(f, 'coach_id') : null, id);
   if (changed.date) await run('UPDATE candidates SET next_point_date=? WHERE id=?', date || null, id);
@@ -367,10 +366,10 @@ export async function validatePhotoAction(f: FormData) {
   return r.ok ? reply(f, cpath(id, 'photos'), 'Photo validée') : fail(f, id, r.error, 'photos');
 }
 export async function reopenExchangesAction(f: FormData) {
-  await requireCoach();
+  const coach = await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
-  const r = await reopenExchanges(id);
+  const r = await reopenExchanges(id, coach.name);
   return r.ok ? reply(f, cpath(id), 'Échanges rouverts : tu peux de nouveau lui envoyer une proposition') : reply(f, cpath(id), r.error, true);
 }
 export async function markHandledAction(f: FormData) {
