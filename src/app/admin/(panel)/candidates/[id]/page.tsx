@@ -18,7 +18,7 @@ import { InlineForm } from '@/components/InlineForm';
 import { FoldAll } from '@/components/FoldAll';
 import { Fold } from '@/components/Fold';
 import { OpenOnHash } from '@/components/OpenOnHash';
-import { statusChoices } from '@/lib/status';
+import { statusChoices, statusHint } from '@/lib/status';
 import { EditButton, EditCancel, EditScope } from '@/components/EditScope';
 import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
@@ -32,7 +32,7 @@ import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
 import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
-import { journeyState, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
+import { journeyState, STATUS_OF_STEP, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
@@ -85,7 +85,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
   const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
-  const statusOptions = statusChoices(c.status, !!c.completed_at); // what « Suivi » offers: the current status and the ones ahead
+  const statusOptions = statusChoices(c.status, !!c.completed_at, journeyNow ? STATUS_OF_STEP[journeyNow.step] : null); // what « Suivi » offers: the current status, the ones ahead, and the one the exchanges stand for if the status is ahead of them
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -199,7 +199,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <InlineForm action={reopenExchangesAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />
                     <span className="a-muted">Besoin de modifier son sujet ou de lui envoyer autre chose ?</span>
-                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Pistes et sujet redeviennent modifiables et tu pourras de nouveau lui envoyer des propositions. Si elle avait confirmé sa soumission, elle la confirmera à nouveau à la fin. Son statut ne change pas.">Rouvrir les échanges</PendingButton>
+                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Pistes et sujet redeviennent modifiables et tu pourras de nouveau lui envoyer des propositions. Si elle avait confirmé sa soumission, elle la confirmera à nouveau à la fin. Son statut revient à ce que les échanges justifient (« Candidature soumise » redevient « Sujet validé » ou « Intérêt reçu » ; « Retenue » et les statuts suivants ne bougent pas).">Rouvrir les échanges</PendingButton>
                   </InlineForm>
                 )}
                 {toHandle && (
@@ -576,12 +576,15 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           </Fold>
 
           <Fold id="h-suivi" anchor="suivi" title="Suivi" bodyClassName="">
-            <form action={followUpAction} className="a-stack">
+            <form key={`${c.status}|${c.coach_id ?? ''}|${c.next_point_date ?? ''}`} action={followUpAction} className="a-stack">
               <input type="hidden" name="id" value={id} /><input type="hidden" name="tab" value={tab === 'sujet' ? '' : tab} />
               {/* what the page showed: only a field she changes is saved, so a page left open never overwrites what a colleague did meanwhile */}
               <input type="hidden" name="was_status" value={c.status} /><input type="hidden" name="was_coach" value={c.coach_id ?? ''} /><input type="hidden" name="was_date" value={c.next_point_date ?? ''} />
-              <label className="a-label">Statut<select className="a-select-f" name="status" defaultValue={c.status}>{STATUSES.filter((s) => statusOptions.includes(s.id)).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
-                <span className="a-sub" style={{ whiteSpace: 'normal' }}>Seuls le statut actuel et ceux qui suivent sont proposés. « Sujet validé » et « Candidature soumise » se mettent à jour quand elle répond ; pour reprendre les échanges, « Rouvrir les échanges ».</span></label>
+              <div className="a-stack" style={{ gap: 6 }}>
+                <label className="a-label" htmlFor="suivi-status">Statut</label>
+                <select id="suivi-status" className="a-select-f" name="status" defaultValue={c.status} aria-describedby="suivi-status-hint">{STATUSES.filter((s) => statusOptions.includes(s.id)).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+                <span id="suivi-status-hint" className="a-sub" style={{ whiteSpace: 'normal', fontWeight: 400 }}>{statusHint(c.status, !!c.completed_at)}</span>
+              </div>
               <label className="a-label">Coach assignée {coach && !coach.active ? '(accès désactivé)' : ''}<select className="a-select-f" name="coach_id" defaultValue={c.coach_id ?? ''}><option value="">— aucune —</option>{coaches.map((x) => <option key={x.id} value={x.id}>{x.name}{x.id === me.id ? ' (toi)' : ''}</option>)}</select></label>
               <label className="a-label">Prochain point<input className="a-input" type="date" name="next_point_date" defaultValue={c.next_point_date ?? ''} /></label>
               <button className="a-btn">Enregistrer le suivi</button>

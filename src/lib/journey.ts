@@ -27,6 +27,9 @@ export interface Proposal {
 export type Step = 'choix' | 'sujet' | 'photo' | 'soumission' | 'soumise';
 export type Journey = { step: Step; steps: Step[]; waiting: 'coach' | 'candidate' | 'none'; pending: Proposal | null };
 
+/** The status each step of the exchanges stands for: the statuses the exchanges drive (« Intérêt reçu », « Sujet validé », « Candidature soumise »). */
+export const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', sujet: 'diagnostic_recu', photo: 'sujet_valide', soumission: 'sujet_valide', soumise: 'candidature_soumise' };
+
 export const COMMENT_MAX = 1000;
 const PLAN_MAX = 8;
 const STEP_MAX = 300;

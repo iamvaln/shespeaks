@@ -4,8 +4,8 @@ import { all, get, run, tx } from './db.ts';
 import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
 import {
-  COMMENT_MAX, journey, planLines, validateChoice, validateSubject,
-  type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type Step, type SubjectPayload,
+  COMMENT_MAX, journey, planLines, STATUS_OF_STEP, validateChoice, validateSubject,
+  type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
 } from './journey.ts';
 
 export type Outcome = { ok: true } | { ok: false; error: string };
@@ -55,15 +55,16 @@ export async function journeyOf(candidateId: number): Promise<Journey | null> {
 
 /**
  * Why the coach cannot touch the topic (tracks, subject, AI, deletions) right now, or null:
+ * - « soumise »: she counts as submitted (first: a status set by hand over a proposal still waiting leaves the way back open);
  * - « attente »: a choice or a subject was sent and waits for her answer;
- * - « soumise »: she counts as submitted;
  * - « approuve »: the last subject sent was approved (and the exchanges were not reopened since).
  * After « changements » or « aucune », the coach has the hand again. « Rouvrir les échanges » lifts « approuve » and « soumise ».
  */
 export type ExchangeLock = 'attente' | 'approuve' | 'soumise' | null;
 export function lockOf(c: { submitted_at?: string | null; reopened_at?: string | null; status: string }, applicationState: string | null | undefined, proposals: Proposal[]): ExchangeLock {
-  if (proposals.some((p) => p.kind !== 'photo' && p.state === 'envoyee')) return 'attente';
+  // submitted comes first: a status set by hand over a proposal still waiting must leave « Rouvrir les échanges » (the way back) available
   if (countsAsSubmitted(c, applicationState)) return 'soumise';
+  if (proposals.some((p) => p.kind !== 'photo' && p.state === 'envoyee')) return 'attente';
   const last = [...proposals].reverse().find((p) => p.kind !== 'photo' && p.state !== 'remplacee');
   if (last?.kind === 'sujet' && last.response === 'approuvee' && (!c.reopened_at || (last.answered_at ?? '') > c.reopened_at)) return 'approuve';
   return null;
@@ -132,8 +133,8 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
   const error = validateChoice(items);
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'choix', { items }))) return WAITING;
-  await stepBack(candidateId, await coachName(coachId));
   mail((m) => m.toCandidate(candidateId, 'choix'));
+  await stepBackQuietly(candidateId, () => coachName(coachId));
   return { ok: true };
 }
 
@@ -149,8 +150,8 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
   const error = validateSubject(payload);
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'sujet', payload))) return WAITING;
-  await stepBack(candidateId, await coachName(coachId));
   mail((m) => m.toCandidate(candidateId, 'sujet'));
+  await stepBackQuietly(candidateId, () => coachName(coachId));
   return { ok: true };
 }
 
@@ -187,8 +188,6 @@ async function advance(candidateId: number, target: string, author: string) {
   if (c && rank(c.status) < rank(target)) await setStatus(candidateId, target, author);
 }
 
-/** The status each step of the exchanges stands for: the three statuses the exchanges drive. */
-const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', sujet: 'diagnostic_recu', photo: 'sujet_valide', soumission: 'sujet_valide', soumise: 'candidature_soumise' };
 /**
  * The exchanges go back (reopened, or a new proposal sent over an approved subject): « Sujet validé » and « Candidature soumise » follow them
  * back, as they followed them forward (advance). « Retenue » and what comes after say what happened at the event: never touched here.
@@ -198,6 +197,10 @@ async function stepBack(candidateId: number, author: string) {
   if (!c || !j || (c.status !== 'sujet_valide' && c.status !== 'candidature_soumise')) return;
   const target = STATUS_OF_STEP[j.step];
   if (rank(target) < rank(c.status)) await setStatus(candidateId, target, author);
+}
+/** After the proposal is stored and the mail queued: a failure here must neither lose the mail nor turn a stored proposal into an error page. */
+async function stepBackQuietly(candidateId: number, author: () => Promise<string> | string) {
+  try { await stepBack(candidateId, await author()); } catch (e) { console.error('[proposals] status step-back failed', { candidateId, error: e instanceof Error ? e.message : String(e) }); }
 }
 const coachName = async (coachId: number): Promise<string> => (await get<{ name: string }>('SELECT name FROM coaches WHERE id=?', coachId))?.name ?? 'coach';
 
@@ -266,7 +269,7 @@ export async function reopenExchanges(candidateId: number, author = 'système'):
   if (lock === 'attente') return WAITING;
   if (!lock) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
   await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
-  await stepBack(candidateId, author);
+  await stepBackQuietly(candidateId, () => author);
   return { ok: true };
 }
 
