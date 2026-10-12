@@ -16,6 +16,9 @@ import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
 import { InlineForm } from '@/components/InlineForm';
 import { FoldAll } from '@/components/FoldAll';
+import { Fold } from '@/components/Fold';
+import { OpenOnHash } from '@/components/OpenOnHash';
+import { EditButton, EditCancel, EditScope } from '@/components/EditScope';
 import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
@@ -27,8 +30,8 @@ import { getSubjectProposal } from '@/lib/ai-subject-store';
 import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
-import { journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
-import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
+import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
+import { journeyState, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
@@ -43,7 +46,6 @@ const TRACK_TONE: Record<string, string> = { generee: 'neutral', retenue_coach: 
 const ORIGIN: Record<string, string> = { personnelle: 'Réponse personnelle', croisement: 'Croisement domaine × angle', coach: 'Ajoutée par la coach', ia: 'Suggestion IA' };
 /** The path of a candidate who goes all the way, in order. « En cours » and « Non retenue » sit outside it. */
 const STAGES = ['diagnostic_recu', 'sujet_valide', 'candidature_soumise', 'retenue', 'slides_validees', 'repetition_faite', 'jour_j'];
-const STEP_LABEL: Record<string, string> = { choix: 'Choix du sujet', sujet: 'Sujet à valider', photo: 'Photo', soumission: 'En attente de sa soumission', soumise: 'Candidature soumise' };
 const WAITING_LABEL: Record<string, string> = { coach: 'À toi', candidate: 'En attente de la candidate', none: 'Terminé' };
 const KIND_LABEL: Record<string, string> = { choix: 'Choix de sujet', sujet: 'Sujet à valider', photo: 'Demande de photo' };
 const RESPONSE_LABEL: Record<string, string> = { choisie: 'A choisi un sujet', aucune: 'Aucun ne lui convient', approuvee: 'A approuvé le sujet', changements: 'Demande des changements', photo_deposee: 'A déposé une photo' };
@@ -80,7 +82,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
     : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
-  const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: greyed until she has chosen one of the tracks sent
+  const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
+  const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -146,7 +149,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
       {/* where she is on the way */}
       {stage >= 0 && (
-        <section className="a-card" aria-label="Étape du parcours">
+        <Fold id="h-parcours" title={`Parcours : étape ${stage + 1} sur ${STAGES.length}`} bodyClassName="">
           <ol className="a-steps">
             {STAGES.map((s, i) => (
               <li key={s} className={`a-step${i < stage ? ' is-done' : i === stage ? ' is-current' : ''}`} aria-current={i === stage ? 'step' : undefined}>
@@ -158,14 +161,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             <div className="a-row-between"><strong>Étape {stage + 1} sur {STAGES.length} · {stageLabel(c.status)}</strong>{stage + 1 < STAGES.length && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Ensuite : {stageLabel(STAGES[stage + 1])}</span>}</div>
             <div className="a-segs" aria-hidden="true">{STAGES.map((s, i) => <i key={s} className={i < stage ? 'is-done' : i === stage ? 'is-current' : undefined} />)}</div>
           </div>
-        </section>
+        </Fold>
       )}
       {c.status === 'en_cours' && progress && (
-        <section className="a-card a-stack" aria-label="Parcours en cours" style={{ gap: 10 }}>
-          <div className="a-row-between"><strong>Parcours en cours · écran {progress.done} sur {progress.total}</strong><span className="a-pill is-soft">En cours</span></div>
+        <Fold id="h-parcours-ec" title={`Parcours en cours · écran ${progress.done} sur ${progress.total}`} aside={<span className="a-pill is-soft">En cours</span>} bodyClassName="a-stack">
           <div className="a-bar" role="img" aria-label={`Écran ${progress.done} sur ${progress.total}`}><i style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} /></div>
           <span className="a-sub" style={{ whiteSpace: 'normal' }}>S’est arrêtée à « {progress.label} » · inactive depuis {elapsed(c.last_activity_at, now)} · {c.reminders_sent} relance{c.reminders_sent > 1 ? 's' : ''} automatique{c.reminders_sent > 1 ? 's' : ''}</span>
-        </section>
+        </Fold>
       )}
       {c.status === 'en_cours' && !progress && (
         <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Formulaire terminé · statut remis à « En cours »</strong><span className="a-pill is-soft">En cours</span></div></section>
@@ -174,6 +176,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Candidature non retenue</strong><span className="a-pill is-red">Non retenue</span></div></section>
       )}
 
+      <OpenOnHash />
       <div className="a-split">
         <div className="a-main a-stack" style={{ gap: 20 }}>
           <CurrentIntoView className="a-tabbar" aria-label="Sections de la fiche">
@@ -183,15 +186,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               </Link>
             ))}
           </CurrentIntoView>
+          <div className="a-fold-page"><FoldAll selector="details.a-fold" what="Blocs de la page" /></div>
 
           {tab === 'sujet' && (
             <>
-              <section className="a-card a-stack" aria-labelledby="h-echanges">
-                <div className="a-row-between" style={{ flexWrap: 'wrap' }}>
-                  <h2 id="h-echanges" className="a-h2">Échanges avec la candidate</h2>
-                  {journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}
-                </div>
-                {journeyNow && <p style={{ margin: 0 }}><strong>Étape : {STEP_LABEL[journeyNow.step]}</strong></p>}
+              <Fold id="h-echanges" title="Échanges avec la candidate" aside={journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}>
+                {jstate && <p style={{ margin: 0 }}><strong>État : {jstate.label}</strong><span className="sr-only"> ({WAITING_SR[jstate.waiting]})</span></p>}
                 {lock && <div className="a-lock-note" role="note">{LOCK_MESSAGE[lock]}</div>}
                 {(lock === 'approuve' || lock === 'soumise') && (
                   <InlineForm action={reopenExchangesAction} className="a-actions">
@@ -225,23 +225,23 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     ))}
                   </ul>
                 )}
-              </section>
+              </Fold>
               {c.branch && (
-                <section className="a-card" aria-labelledby="h-repondu">
-                  <h2 id="h-repondu" className="a-h2">Ce qu’elle a répondu</h2>
-                  <p className="a-muted" style={{ margin: '2px 0 8px' }}>
+                <Fold id="h-repondu" title="Ce qu’elle a répondu" bodyClassName="">
+                  <p className="a-muted" style={{ margin: '0 0 8px' }}>
                     Ses réponses utiles pour le sujet, à lire avant les pistes. Tout le formulaire : onglet <Link href={tabHref('reponses')}>Réponses</Link>.
                   </p>
                   <dl className="a-qa">{topicSummary(c.branch, a).map((q) => (<div key={q.code}><dt>{q.label.fr}</dt><dd style={{ whiteSpace: 'pre-line' }}>{fmtVal(q, a[q.code])}</dd></div>))}</dl>
-                </section>
+                </Fold>
               )}
               {(c.branch === 'A' || c.branch === 'B') && (
-                <section className="a-card is-flush" aria-labelledby="h-pistes">
+                <Fold id="h-pistes" title="Pistes de sujet" flush bodyClassName="">
+                <EditScope>
                   <div className="a-card-head" style={{ flexWrap: 'wrap' }}>
                     <div>
-                      <h2 id="h-pistes" className="a-h2">Pistes de sujet</h2>
-                      <p className="a-muted" style={{ margin: '2px 0 0' }}>
-                        Générées à partir de ses réponses. « Choisir » fait de la piste le sujet de la candidate. « Régénérer » refait les propositions-modèles
+                      <p className="a-muted" style={{ margin: 0 }}>
+                        Générées à partir de ses réponses. Retiens 2 ou 3 pistes (« Retenir »), adapte-les, puis envoie-les : c’est la candidate qui choisit, « Choisir » ne s’active qu’une fois qu’elle a répondu.
+                        « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
                         {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
                         {' La candidate ne voit pas ces pistes : seulement ce que tu lui envoies (« Envoyer les pistes retenues »).'}
@@ -259,13 +259,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             ['claude', 'Claude', aiConfigured()],
                             ['openai', 'OpenAI', openaiConfigured()],
                           ] as const).filter(([, , on]) => on).map(([provider, name]) => (
-                            <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé, tes précisions et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
+                            <PendingButton key={provider} lockWhenEditing name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} les réponses de cette candidate sur son sujet, son poste ou ses études, son ancienneté, le format souhaité, l’événement visé, tes précisions et les titres déjà sur sa fiche pour obtenir des titres ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). Les suggestions de ${name} non retenues sont remplacées.`}>
                               <Icon name="spark" size={16} />Suggérer avec {name}
                             </PendingButton>
                           ))}
                         </InlineForm>
                       )}
-                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></InlineForm>}
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
@@ -297,7 +297,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             </div>
                           </div>
                           ) : (
-                          <InlineForm action={trackAction} className="a-track-form">
+                          <InlineForm action={trackAction} className="a-track-form" watchEdits>
                             <input type="hidden" name="cid" value={id} /><input type="hidden" name="track_id" value={t.id} />
                             <span className="a-num" aria-hidden="true">{i + 1}</span>
                             <div className="a-track-main">
@@ -305,7 +305,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <span className="a-track-meta">
                                 <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
                                 <span>{ORIGIN[t.origin] ?? t.origin}{t.origin === 'ia' ? ` · ${t.model ?? 'Claude'}` : ''}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
-                                <select className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
+                                <select key={t.format ?? 'talk'} className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
                                   <option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option>
                                 </select>
                               </span>
@@ -318,11 +318,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               {t.state === 'retenue_coach' && !(t.pitch ?? '').trim() && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Phrase pas encore enregistrée : relis-la, adapte-la pour elle, puis Enregistrer.</span>}
                             </div>
                             <div className="a-track-actions">
-                              {t.state !== 'choisie' && <button name="op" value="choose" className="a-btn is-sm" aria-label={`Choisir la piste ${i + 1}`}>Choisir</button>}
-                              {t.state === 'generee' && <button name="op" value="shortlist" className="a-btn is-ghost is-sm" aria-label={`Retenir la piste ${i + 1}`}>Retenir</button>}
-                              {t.state === 'ecartee' ? <button name="op" value="restore" className="a-btn is-ghost is-sm" aria-label={`Rétablir la piste ${i + 1}`}>Rétablir</button> : t.state !== 'choisie' && <button name="op" value="discard" className="a-link-btn" aria-label={`Écarter la piste ${i + 1}`}>Écarter</button>}
-                              <button name="op" value="save" className="a-link-btn" aria-label={`Enregistrer la piste ${i + 1}`}>Enregistrer</button>
-                              {t.origin === 'coach' && <button name="op" value="delete" className="a-link-btn is-danger" aria-label={`Supprimer la piste ${i + 1}`}>Supprimer</button>}
+                              {/* A and B: « Choisir » waits for her choice; while a field of a track is being edited only its « Enregistrer » is lit */}
+                              {t.state !== 'choisie' && <EditButton kind="other" name="op" value="choose" className="a-btn is-sm" locked={waitsForChoice} lockedReason={CHOOSE_AFTER_HER} aria-label={`Choisir la piste ${i + 1}`}>Choisir</EditButton>}
+                              {t.state === 'generee' && <EditButton kind="other" name="op" value="shortlist" className="a-btn is-ghost is-sm" aria-label={`Retenir la piste ${i + 1}`}>Retenir</EditButton>}
+                              {t.state === 'ecartee' ? <EditButton kind="other" name="op" value="restore" className="a-btn is-ghost is-sm" aria-label={`Rétablir la piste ${i + 1}`}>Rétablir</EditButton> : t.state !== 'choisie' && <EditButton kind="other" name="op" value="discard" className="a-link-btn" aria-label={`Écarter la piste ${i + 1}`}>Écarter</EditButton>}
+                              <EditButton kind="save" name="op" value="save" className="a-btn is-ghost is-sm" litClassName="is-lit" unsaved={t.state === 'retenue_coach' && !(t.pitch ?? '').trim()} aria-label={`Enregistrer la piste ${i + 1}`}>Enregistrer</EditButton>
+                              <EditCancel />
+                              {t.origin === 'coach' && <EditButton kind="other" name="op" value="delete" className="a-link-btn is-danger" aria-label={`Supprimer la piste ${i + 1}`}>Supprimer</EditButton>}
                             </div>
                           </InlineForm>
                           )}
@@ -337,21 +339,23 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
                       <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
                       <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
-                      <button className="a-btn is-ghost">Ajouter</button>
+                      <EditButton kind="other" className="a-btn is-ghost">Ajouter</EditButton>
                     </InlineForm>
                   )}
                   {!lock && (
                     <InlineForm action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
                       <input type="hidden" name="cid" value={id} />
-                      <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace. Pistes et sujet resteront verrouillés jusqu’à sa réponse.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                      <div><PendingButton lockWhenEditing className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace. Pistes et sujet resteront verrouillés jusqu’à sa réponse.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
                       <span className="a-sub" style={{ whiteSpace: 'normal' }}>{choiceHint}</span>
                     </InlineForm>
                   )}
-                </section>
+                </EditScope>
+                </Fold>
               )}
 
-              <section className="a-card a-stack" aria-labelledby="h-sujet">
-                <div><h2 id="h-sujet" className="a-h2">Sujet retenu et candidature</h2><p className="a-muted" style={{ margin: '2px 0 0' }}>Se remplit tout seul quand tu choisis une piste ; à compléter avant de valider le sujet.</p></div>
+              <Fold id="h-sujet" title="Sujet retenu et candidature">
+                <EditScope>
+                <p className="a-muted" style={{ margin: 0 }}>Se remplit tout seul quand la candidate a choisi une piste ; à compléter avant de valider le sujet.</p>
                 {!lock && c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
                   <InlineForm action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                     <input type="hidden" name="cid" value={id} />
@@ -363,7 +367,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       ['claude', 'Claude', aiConfigured()],
                       ['openai', 'OpenAI', openaiConfigured()],
                     ] as const).filter(([, , on]) => on).map(([provider, name]) => (
-                      <PendingButton key={provider} name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} son sujet actuel (titre, résumé${c.branch === 'C' ? ', idées clés' : ''}), son poste ou ses études, son ancienneté, l’événement visé et tes précisions pour obtenir une proposition d’amélioration ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). La proposition précédente est remplacée.`}>
+                      <PendingButton key={provider} lockWhenEditing name="provider" value={provider} className="a-btn is-sm" pendingLabel={`${name} réfléchit…`} confirmText={`Envoyer à ${name} son sujet actuel (titre, résumé${c.branch === 'C' ? ', idées clés' : ''}), son poste ou ses études, son ancienneté, l’événement visé et tes précisions pour obtenir une proposition d’amélioration ? Son nom et ses coordonnées ne sont pas envoyés (les adresses et numéros écrits dans ses réponses sont masqués ; un nom écrit dans une phrase ne peut pas l’être). La proposition précédente est remplacée.`}>
                         <Icon name="spark" size={16} />Améliorer avec {name}
                       </PendingButton>
                     ))}
@@ -406,7 +410,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <div><dt>État de la candidature</dt><dd>{APPLICATION_STATES.find((o) => o.value === (subject?.application_state ?? 'a_soumettre'))?.label.fr ?? '—'}</dd></div>
                   </dl>
                 ) : (
-                <InlineForm action={saveSubjectAction} className="a-stack">
+                <InlineForm action={saveSubjectAction} className="a-stack" watchEdits>
                   <input type="hidden" name="id" value={id} />
                   <label className="a-label">Titre<input id="subject-title" className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
                   <label className="a-label">Résumé
@@ -416,26 +420,26 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <label className="a-label">Pourquoi ces changements (pour la candidate)<textarea id="subject-why" className="a-textarea" name="why" defaultValue={subject?.why ?? ''} maxLength={1500} /></label>
                   <label className="a-label">Comment t’y prendre (une étape par ligne)<textarea id="subject-plan" className="a-textarea" name="plan" defaultValue={subject?.plan ?? ''} /></label>
                   <div className="a-grid-3">
-                    <label className="a-label">Niveau du public<select className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
-                    <label className="a-label">Format<select className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
-                    <label className="a-label">État de la candidature<select className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">Niveau du public<select key={subject?.audience ?? ''} className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">Format<select key={subject?.format ?? ''} className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">État de la candidature<select key={subject?.application_state ?? 'a_soumettre'} className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                   </div>
-                  <div><button className="a-btn">Enregistrer le sujet</button></div>
+                  <div className="a-actions"><EditButton kind="save" className="a-btn">Enregistrer le sujet</EditButton><EditCancel /></div>
                 </InlineForm>
                 )}
                 {!lock && (
                   <InlineForm action={sendSubjectAction} className="a-stack" style={{ gap: 6 }}>
                     <input type="hidden" name="cid" value={id} />
-                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" disabled={!subjectReady || waitsForChoice} confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant. Pistes et sujet resteront verrouillés jusqu’à sa réponse.">Envoyer à la candidate pour validation</PendingButton></div>
+                    <div><PendingButton lockWhenEditing className="a-btn" pendingLabel="Envoi…" disabled={!subjectReady || waitsForChoice} confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant. Pistes et sujet resteront verrouillés jusqu’à sa réponse.">Envoyer à la candidate pour validation</PendingButton></div>
                     {waitsForChoice ? <span className="a-sub" style={{ whiteSpace: 'normal' }}>{NEEDS_CHOICE} Ce bouton s’active quand elle aura choisi.</span>
                       : !subjectReady && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Enregistre d’abord un titre et un résumé (bouton « Enregistrer le sujet »).</span>}
                   </InlineForm>
                 )}
-              </section>
+                </EditScope>
+              </Fold>
 
               {c.branch === 'D' && (
-                <section className="a-card is-flush" aria-labelledby="h-grille">
-                  <div className="a-card-head"><h2 id="h-grille" className="a-h2">Grille de relecture</h2></div>
+                <Fold id="h-grille" title="Grille de relecture" flush bodyClassName="">
                   {review.length === 0 ? <p className="a-empty">Pas de grille.</p> : (
                     <ul className="a-checks">
                       {['title', 'length', 'audience', 'benefit', ...SELF_CHECKS.map((s) => s.code)].map((k) => {
@@ -452,13 +456,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       })}
                     </ul>
                   )}
-                </section>
+                </Fold>
               )}
             </>
           )}
 
           {tab === 'reponses' && (
-            <section className="a-card" aria-label="Réponses au formulaire">
+            <Fold id="h-reponses" title="Réponses au formulaire" bodyClassName="">
               {screens.map((sid) => {
                 const s = SCREENS[sid];
                 return (
@@ -469,13 +473,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 );
               })}
               {!c.completed_at && <p className="a-muted" style={{ margin: 0 }}>Formulaire non terminé : seules les réponses déjà enregistrées sont affichées.</p>}
-            </section>
+            </Fold>
           )}
 
           {tab === 'notes' && (
             <>
-              <section className="a-card a-stack" aria-labelledby="h-notes">
-                <h2 id="h-notes" className="a-h2">Notes de suivi</h2>
+              <Fold id="h-notes" title="Notes de suivi">
                 <form action={addNoteAction} className="a-stack" style={{ gap: 12 }}>
                   <input type="hidden" name="id" value={id} />
                   <textarea className="a-textarea" name="text" style={{ minHeight: 90 }} placeholder="Ce qui s’est dit, ce qui reste à faire…" aria-label="Nouvelle note" />
@@ -494,9 +497,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     ))}
                   </ul>
                 )}
-              </section>
-              <section className="a-card a-stack" aria-labelledby="h-hist">
-                <h2 id="h-hist" className="a-h2">Historique des statuts</h2>
+              </Fold>
+              <Fold id="h-hist" title="Historique des statuts">
                 {history.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Aucun changement.</p> : (
                   <ul className="a-hist">
                     {history.map((h, i) => (
@@ -504,13 +506,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     ))}
                   </ul>
                 )}
-              </section>
+              </Fold>
             </>
           )}
 
           {tab === 'photos' && (
-            <section className="a-card a-stack" aria-labelledby="h-photos">
-              <h2 id="h-photos" className="a-h2">Photos de speaker</h2>
+            <Fold id="h-photos" title="Photos de speaker">
               {photos.length === 0 ? (
                 <div className="a-emptybox">
                   <span className="a-emptyicon" aria-hidden="true"><Icon name="users" size={26} /></span>
@@ -547,20 +548,19 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
                 </InlineForm>
               )}
-            </section>
+            </Fold>
           )}
 
           {tab === 'plan' && rm && (
-            <section aria-label="Plan de route">
+            <Fold id="h-plan" title="Plan de route" card={false} bodyClassName="">
               <p className="a-muted" style={{ margin: '0 0 12px' }}>Le plan de route tel que la candidate le voit.</p>
               <RoadmapView rm={rm} locale={c.locale} photoUrl={selPhoto ? `/api/photos/${selPhoto.id}` : photos[0] ? `/api/photos/${photos[0].id}` : null} internalDeadline={null} />
-            </section>
+            </Fold>
           )}
         </div>
 
         <aside className="a-side">
-          <section className="a-card a-stack" aria-labelledby="h-contact" style={{ gap: 12 }}>
-            <h2 id="h-contact" className="a-h2">Contact</h2>
+          <Fold id="h-contact" title="Contact">
             <dl className="a-dl">
               <dt>WhatsApp</dt><dd>{wa ? <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer">{c.whatsapp}</a> : '—'}</dd>
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}</dd>
@@ -571,11 +571,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <dt>Inscrite le</dt><dd>{fmtDate(c.created_at, 'fr', DATE_TIME)}</dd>
               <dt>Formulaire</dt><dd>{c.completed_at ? `Terminé le ${fmtDate(c.completed_at, 'fr', DATE_TIME)}` : `Pas terminé : écran « ${SCREENS[resumeScreen(c.branch, c.current_screen)]?.title.fr ?? c.current_screen} »`}</dd>
             </dl>
-          </section>
+          </Fold>
 
-          <section className="a-card" id="suivi" aria-labelledby="h-suivi">
+          <Fold id="h-suivi" anchor="suivi" title="Suivi" bodyClassName="">
             <form action={followUpAction} className="a-stack">
-              <h2 id="h-suivi" className="a-h2">Suivi</h2>
               <input type="hidden" name="id" value={id} /><input type="hidden" name="tab" value={tab === 'sujet' ? '' : tab} />
               {/* what the page showed: only a field she changes is saved, so a page left open never overwrites what a colleague did meanwhile */}
               <input type="hidden" name="was_status" value={c.status} /><input type="hidden" name="was_coach" value={c.coach_id ?? ''} /><input type="hidden" name="was_date" value={c.next_point_date ?? ''} />
@@ -584,7 +583,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <label className="a-label">Prochain point<input className="a-input" type="date" name="next_point_date" defaultValue={c.next_point_date ?? ''} /></label>
               <button className="a-btn">Enregistrer le suivi</button>
             </form>
-          </section>
+          </Fold>
 
           {lock ? <p className="a-sub" style={{ margin: 0, whiteSpace: 'normal' }}>Suppression de la candidate impossible pendant les échanges (proposition en attente, sujet approuvé ou candidature soumise).</p> : (
           <details className="a-card a-danger-zone">
