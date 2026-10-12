@@ -384,3 +384,9 @@
 .a-errbox p { margin: 0; }
 .a-errbox .a-errtitle { margin: 0; font-size: 22px; line-height: 28px; font-weight: 800; font-stretch: 100%; letter-spacing: -.01em; }
 .a-errbox code { padding: 2px 8px; border-radius: 6px; background: var(--surface-sunken); font-size: 13px; }
+
+/* fiche forms that answer in place (InlineForm): the message sits under the form's own buttons */
+.a-inline-msg { flex-basis: 100%; margin: 6px 0 0; font-size: 14px; font-weight: 500; color: #11512D; }
+.a-inline-msg.is-err { color: #7A1D10; }
+/* why tracks and subject cannot be touched right now (a proposal waits, her subject is approved, or she submitted) */
+.a-lock-note { padding: 12px 16px; border-radius: 12px; background: var(--amber-soft, #FDF1DC); color: var(--amber-text, #7A4B00); font-weight: 500; }

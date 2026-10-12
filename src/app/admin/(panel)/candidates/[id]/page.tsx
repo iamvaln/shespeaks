@@ -14,6 +14,7 @@ import { RoadmapView } from '@/components/RoadmapView';
 import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
+import { InlineForm } from '@/components/InlineForm';
 import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
@@ -25,7 +26,7 @@ import { getSubjectProposal } from '@/lib/ai-subject-store';
 import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
-import { journeyOf, listProposals } from '@/lib/proposals';
+import { journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
 import type { ChoicePayload, PhotoPayload, Proposal, SubjectPayload } from '@/lib/journey';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
@@ -71,6 +72,14 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   // once she counts as submitted (her confirmation, « déjà soumise » in the form, or a status moved forward) nothing more is sent
   const submitted = journeyNow?.step === 'soumise';
   const SUBMITTED_NOTE = 'La candidature est déjà soumise : plus rien n’est envoyé à la candidate.';
+  // while a proposal waits for her answer, after she approved her subject, or once submitted: tracks, subject, AI and deletions are locked
+  const lock = lockOf(c, subject?.application_state, exchanges);
+  const choiceHint = retained.length > 3 ? `${retained.length} pistes retenues : il en faut 3 au plus. Écarte celles qui ne partiront pas.`
+    : retained.length < 2 ? `${retained.length === 0 ? 'Aucune piste retenue' : '1 piste retenue'} : retiens-en 2 ou 3 (bouton « Retenir »).`
+    : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
+    : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
+  const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
+  const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: greyed until she has chosen one of the tracks sent
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -182,19 +191,20 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   {journeyNow && <span className={`a-pill is-${journeyNow.waiting === 'coach' ? 'amber' : journeyNow.waiting === 'none' ? 'green' : 'soft'}`}>{WAITING_LABEL[journeyNow.waiting]}</span>}
                 </div>
                 {journeyNow && <p style={{ margin: 0 }}><strong>Étape : {STEP_LABEL[journeyNow.step]}</strong></p>}
-                {submitted && (
-                  <form action={reopenExchangesAction} className="a-actions">
+                {lock && <div className="a-lock-note" role="note">{LOCK_MESSAGE[lock]}</div>}
+                {(lock === 'approuve' || lock === 'soumise') && (
+                  <InlineForm action={reopenExchangesAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />
-                    <span className="a-muted">Besoin de lui envoyer autre chose (une autre photo, un sujet corrigé) ?</span>
-                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Tu pourras de nouveau lui envoyer des propositions ; elle confirmera sa soumission à nouveau à la fin. Son statut ne change pas.">Rouvrir les échanges</PendingButton>
-                  </form>
+                    <span className="a-muted">Besoin de modifier son sujet ou de lui envoyer autre chose ?</span>
+                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Pistes et sujet redeviennent modifiables et tu pourras de nouveau lui envoyer des propositions. Si elle avait confirmé sa soumission, elle la confirmera à nouveau à la fin. Son statut ne change pas.">Rouvrir les échanges</PendingButton>
+                  </InlineForm>
                 )}
                 {toHandle && (
-                  <form action={markHandledAction} className="a-actions">
+                  <InlineForm action={markHandledAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />
                     <span className="a-muted">Elle a répondu : cette réponse compte dans « à traiter ».</span>
                     <button className="a-btn is-sm">Marquer comme traité</button>
-                  </form>
+                  </InlineForm>
                 )}
                 {exchangesNewestFirst.length === 0 ? <p className="a-muted" style={{ margin: 0 }}>Rien n’a encore été envoyé à la candidate.</p> : (
                   <ul className="a-notes">
@@ -237,8 +247,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {c.completed_at && (aiConfigured() || openaiConfigured()) && (
-                        <form action={suggestTracksAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', flexBasis: '100%' }}>
+                      {!lock && c.completed_at && (aiConfigured() || openaiConfigured()) && (
+                        <InlineForm action={suggestTracksAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', flexBasis: '100%' }}>
                           <input type="hidden" name="cid" value={id} />
                           <label className="a-label" style={{ flex: '1 1 320px' }}>
                             Précisions pour l’IA (facultatif, gardées sur la fiche)
@@ -252,16 +262,31 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <Icon name="spark" size={16} />Suggérer avec {name}
                             </PendingButton>
                           ))}
-                        </form>
+                        </InlineForm>
                       )}
-                      <form action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></form>
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><button className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</button></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
                     <ul className="a-tracks">
                       {tracks.map((t, i) => (
                         <li key={t.id} className={`a-track${t.state === 'choisie' ? ' is-chosen' : ''}${t.state === 'retenue_coach' ? ' is-kept' : ''}${t.state === 'ecartee' ? ' is-out' : ''}`}>
-                          <form action={trackAction} className="a-track-form">
+                          {lock ? (
+                          <div className="a-track-form">
+                            <span className="a-num" aria-hidden="true">{i + 1}</span>
+                            <div className="a-track-main">
+                              <p className="a-track-title" style={{ margin: 0 }}>{t.title}</p>
+                              <span className="a-track-meta">
+                                <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
+                                <span>{ORIGIN[t.origin] ?? t.origin}{t.origin === 'ia' ? ` · ${t.model ?? 'Claude'}` : ''}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
+                                <span>{FORMATS.find((o) => o.value === t.format)?.label.fr ?? t.format ?? 'Talk'}</span>
+                              </span>
+                              {t.hook && <span className="a-sub" style={{ whiteSpace: 'normal' }}>{t.hook}</span>}
+                              {t.state === 'retenue_coach' && t.pitch && <span style={{ whiteSpace: 'normal' }}><strong>Pour la candidate :</strong> {t.pitch}</span>}
+                            </div>
+                          </div>
+                          ) : (
+                          <InlineForm action={trackAction} className="a-track-form">
                             <input type="hidden" name="cid" value={id} /><input type="hidden" name="track_id" value={t.id} />
                             <span className="a-num" aria-hidden="true">{i + 1}</span>
                             <div className="a-track-main">
@@ -288,31 +313,34 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <button name="op" value="save" className="a-link-btn" aria-label={`Enregistrer la piste ${i + 1}`}>Enregistrer</button>
                               {t.origin === 'coach' && <button name="op" value="delete" className="a-link-btn is-danger" aria-label={`Supprimer la piste ${i + 1}`}>Supprimer</button>}
                             </div>
-                          </form>
+                          </InlineForm>
+                          )}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <form action={trackAction} className="a-add-track">
-                    <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
-                    <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
-                    <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
-                    <button className="a-btn is-ghost">Ajouter</button>
-                  </form>
-                  {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', padding: '12px 16px', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
-                    <form action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
+                  {!lock && (
+                    <InlineForm action={trackAction} className="a-add-track" resetOnSuccess>
+                      <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
+                      <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
+                      <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
+                      <button className="a-btn is-ghost">Ajouter</button>
+                    </InlineForm>
+                  )}
+                  {!lock && (
+                    <InlineForm action={sendChoiceAction} className="a-stack" style={{ gap: 6, padding: '12px 16px' }}>
                       <input type="hidden" name="cid" value={id} />
-                      <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
-                      <span className="a-sub" style={{ whiteSpace: 'normal' }}>Il faut 2 ou 3 pistes retenues, chacune avec sa phrase enregistrée.</span>
-                    </form>
+                      <div><PendingButton className="a-btn" pendingLabel="Envoi…" confirmText={`Envoyer à la candidate les ${retained.length} pistes retenues, avec leur phrase ? Elle reçoit un email et choisit dans son espace. Pistes et sujet resteront verrouillés jusqu’à sa réponse.`} disabled={!choiceReady}>Envoyer les pistes retenues à la candidate ({retained.length})</PendingButton></div>
+                      <span className="a-sub" style={{ whiteSpace: 'normal' }}>{choiceHint}</span>
+                    </InlineForm>
                   )}
                 </section>
               )}
 
               <section className="a-card a-stack" aria-labelledby="h-sujet">
                 <div><h2 id="h-sujet" className="a-h2">Sujet retenu et candidature</h2><p className="a-muted" style={{ margin: '2px 0 0' }}>Se remplit tout seul quand tu choisis une piste ; à compléter avant de valider le sujet.</p></div>
-                {c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
-                  <form action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                {!lock && c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
+                  <InlineForm action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                     <input type="hidden" name="cid" value={id} />
                     <label className="a-label" style={{ flex: '1 1 320px' }}>
                       Précisions pour l’IA (facultatif, gardées sur la fiche)
@@ -326,9 +354,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         <Icon name="spark" size={16} />Améliorer avec {name}
                       </PendingButton>
                     ))}
-                  </form>
+                  </InlineForm>
                 )}
-                {proposal && (
+                {!lock && proposal && (
                   <div className="a-stack" role="region" aria-labelledby="h-proposition" style={{ gap: 10, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
                     <h3 id="h-proposition" className="a-eyebrow" style={{ margin: 0, color: 'var(--amber-text)' }}>Proposition d’amélioration · {proposal.model} · {fmtDate(proposal.created_at, 'fr', DATE_TIME)}</h3>
                     {proposal.note && <p style={{ margin: 0 }}><strong>Ce qui change :</strong> {proposal.note}</p>}
@@ -354,7 +382,18 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <p className="a-muted" style={{ margin: 0 }}>« Utiliser » remplit le formulaire ci-dessous : rien n’est enregistré avant « Enregistrer le sujet ».</p>
                   </div>
                 )}
-                <form action={saveSubjectAction} className="a-stack">
+                {lock ? (
+                  <dl className="a-qa">
+                    <div><dt>Titre</dt><dd>{subject?.title || '—'}</dd></div>
+                    <div><dt>Résumé</dt><dd style={{ whiteSpace: 'pre-line' }}>{subject?.abstract || '—'}</dd></div>
+                    <div><dt>Pourquoi ces changements</dt><dd style={{ whiteSpace: 'pre-line' }}>{subject?.why || '—'}</dd></div>
+                    <div><dt>Comment t’y prendre</dt><dd style={{ whiteSpace: 'pre-line' }}>{subject?.plan || '—'}</dd></div>
+                    <div><dt>Niveau du public</dt><dd>{AUDIENCES.find((o) => o.value === subject?.audience)?.label.fr ?? '—'}</dd></div>
+                    <div><dt>Format</dt><dd>{FORMATS.find((o) => o.value === subject?.format)?.label.fr ?? '—'}</dd></div>
+                    <div><dt>État de la candidature</dt><dd>{APPLICATION_STATES.find((o) => o.value === (subject?.application_state ?? 'a_soumettre'))?.label.fr ?? '—'}</dd></div>
+                  </dl>
+                ) : (
+                <InlineForm action={saveSubjectAction} className="a-stack">
                   <input type="hidden" name="id" value={id} />
                   <label className="a-label">Titre<input id="subject-title" className="a-input" name="title" defaultValue={subject?.title ?? ''} placeholder="Choisis une piste ou écris le titre" /></label>
                   <label className="a-label">Résumé
@@ -369,12 +408,15 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                     <label className="a-label">État de la candidature<select className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                   </div>
                   <div><button className="a-btn">Enregistrer le sujet</button></div>
-                </form>
-                {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
-                  <form action={sendSubjectAction}>
+                </InlineForm>
+                )}
+                {!lock && (
+                  <InlineForm action={sendSubjectAction} className="a-stack" style={{ gap: 6 }}>
                     <input type="hidden" name="cid" value={id} />
-                    <PendingButton className="a-btn" pendingLabel="Envoi…" confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant.">Envoyer à la candidate pour validation</PendingButton>
-                  </form>
+                    <div><PendingButton className="a-btn" pendingLabel="Envoi…" disabled={!subjectReady || waitsForChoice} confirmText="Envoyer à la candidate le sujet enregistré (titre, résumé, pourquoi, plan) pour validation ? Pense à enregistrer tes dernières modifications avant. Pistes et sujet resteront verrouillés jusqu’à sa réponse.">Envoyer à la candidate pour validation</PendingButton></div>
+                    {waitsForChoice ? <span className="a-sub" style={{ whiteSpace: 'normal' }}>{NEEDS_CHOICE} Ce bouton s’active quand elle aura choisi.</span>
+                      : !subjectReady && <span className="a-sub" style={{ whiteSpace: 'normal' }}>Enregistre d’abord un titre et un résumé (bouton « Enregistrer le sujet »).</span>}
+                  </InlineForm>
                 )}
               </section>
 
@@ -472,25 +514,25 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <figure key={p.id} className={p.id === c.selected_photo_id ? 'sel' : ''}>
                         <a href={`/api/photos/${p.id}`} target="_blank" rel="noopener noreferrer">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={`/api/photos/${p.id}`} alt={`Photo ${p.id}`} /></a>
                         <figcaption className="a-sub">{p.width && p.height ? `${p.width}×${p.height}` : ''} · {Math.max(1, Math.round(p.size / 1024))} Ko</figcaption>
-                        <form action={selectPhotoAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="photo_id" value={p.id === c.selected_photo_id ? 0 : p.id} />
-                          <button className={`a-btn is-sm${p.id === c.selected_photo_id ? '' : ' is-ghost'}`}>{p.id === c.selected_photo_id ? '✓ Retenue' : 'Retenir'}</button></form>
-                        <form action={validatePhotoAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="photo_id" value={p.id} />
+                        <InlineForm action={selectPhotoAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="photo_id" value={p.id === c.selected_photo_id ? 0 : p.id} />
+                          <button className={`a-btn is-sm${p.id === c.selected_photo_id ? '' : ' is-ghost'}`}>{p.id === c.selected_photo_id ? '✓ Retenue' : 'Retenir'}</button></InlineForm>
+                        <InlineForm action={validatePhotoAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="photo_id" value={p.id} />
                           {p.id === c.selected_photo_id && c.photo_validated_at
                             ? <span className="a-pill is-green">✓ Validée</span>
-                            : <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button>}</form>
+                            : <button className="a-btn is-sm is-ghost" aria-label={`Valider la photo ${p.id}`}>Valider cette photo</button>}</InlineForm>
                       </figure>
                     ))}
                   </div>
                 </>
               )}
               {submitted ? <p className="a-sub" style={{ whiteSpace: 'normal', margin: 0 }}>{SUBMITTED_NOTE}</p> : (
-                <form action={requestPhotoAction} className="a-stack" style={{ gap: 8 }}>
+                <InlineForm action={requestPhotoAction} className="a-stack" style={{ gap: 8 }} resetOnSuccess>
                   <input type="hidden" name="cid" value={id} />
                   <label className="a-label">Demander une autre photo (dis-lui ce qu’il faut changer)
                     <textarea className="a-textarea" name="comment" required maxLength={1000} />
                   </label>
                   <div><button className="a-btn is-ghost">Demander une autre photo</button></div>
-                </form>
+                </InlineForm>
               )}
             </section>
           )}
@@ -531,6 +573,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             </form>
           </section>
 
+          {lock ? <p className="a-sub" style={{ margin: 0, whiteSpace: 'normal' }}>Suppression de la candidate impossible pendant les échanges (proposition en attente, sujet approuvé ou candidature soumise).</p> : (
           <details className="a-card a-danger-zone">
             <summary>Supprimer la candidate</summary>
             <form action={deleteCandidateAction} className="a-stack" style={{ marginTop: 12 }}>
@@ -540,6 +583,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <button className="a-btn is-danger">Supprimer la candidate</button>
             </form>
           </details>
+          )}
           <p className="a-sub" style={{ margin: 0 }}>Point de départ : {c.branch ? BRANCH_LABEL[c.branch] : '—'}</p>
         </aside>
       </div>

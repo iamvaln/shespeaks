@@ -90,9 +90,9 @@ test('double answer: the second one is refused; an answer to a replaced proposal
   await raw`insert into subjects (candidate_id, title, abstract) values (${id2}, 'T', 'A')`;
   await P.sendSubject(id2, 1);
   const old = (await state(id2)).pending.id;
-  await P.sendSubject(id2, 1); // replaces it
+  assert.deepEqual(await P.sendSubject(id2, 1), { ok: false, error: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.' }, 'nothing is sent over a proposal waiting for her answer');
+  await raw`update proposals set state = 'remplacee' where id = ${old}`; // a proposal replaced before this rule (or a photo request)
   assert.deepEqual(await P.answerProposal(id2, old, 'approuvee', null, ''), { ok: false, error: 'Cette proposition a été remplacée : recharge la page.' });
-  assert.equal((await raw`select state from proposals where id = ${old}`)[0].state, 'remplacee');
 });
 
 test('another candidate\'s proposal is refused; a choice needs 2 or 3 retained tracks; photo request and upload', { skip }, async () => {
@@ -219,28 +219,52 @@ async function subjectFor(id, title = 'T', abstract = 'A') {
     on conflict (candidate_id) do update set title = excluded.title, abstract = excluded.abstract`;
 }
 
-test('I1: one pending proposal across choice and subject, and the last one sent is the one she can answer', { skip }, async () => {
+test('I1: one pending proposal across choice and subject; nothing else is sent until she answers', { skip }, async () => {
   const id = await candidate('A');
   await retained(id, 2);
-  await P.sendChoice(id, 1);
-  const choice = (await state(id)).pending.id;
   await subjectFor(id);
-  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
-  assert.equal((await raw`select state from proposals where id = ${choice}`)[0].state, 'remplacee', 'a subject replaces a pending choice');
+  const [x, y] = await Promise.all([P.sendChoice(id, 1), P.sendSubject(id, 1)]);
+  assert.deepEqual([x.ok, y.ok].sort(), [false, true], 'two sends at once: only one goes');
+  await raw`delete from proposals where candidate_id = ${id}`;
+  assert.deepEqual(await P.sendChoice(id, 1), { ok: true });
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: false, error: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.' }, 'a subject waits for her answer to the choice');
   let j = await state(id);
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  j = await state(id);
   assert.deepEqual([j.step, j.pending.kind], ['sujet', 'sujet']);
   assert.deepEqual(await P.answerProposal(id, j.pending.id, 'changements', null, 'Pas tout à fait'), { ok: true });
   // the coach goes back to a choice of topics: that choice is what /plan shows
   assert.deepEqual(await P.sendChoice(id, 1), { ok: true });
   j = await state(id);
   assert.deepEqual([j.step, j.waiting, j.pending.kind], ['choix', 'candidate', 'choix']);
-  const choice2 = j.pending.id;
-  await P.sendSubject(id, 1);
-  assert.equal((await raw`select state from proposals where id = ${choice2}`)[0].state, 'remplacee');
-  const subject = (await state(id)).pending.id;
-  await P.sendChoice(id, 1);
-  assert.equal((await raw`select state from proposals where id = ${subject}`)[0].state, 'remplacee', 'a choice replaces a pending subject');
   assert.equal((await raw`select count(*)::int as n from proposals where candidate_id = ${id} and state = 'envoyee'`)[0].n, 1);
+});
+
+test('the topic is locked while a proposal waits, after she approved, once submitted; « Rouvrir » lifts approved and submitted', { skip }, async () => {
+  const id = await candidate('C');
+  await subjectFor(id);
+  assert.equal(await P.exchangeLock(id), null);
+  await P.sendSubject(id, 1);
+  assert.equal(await P.exchangeLock(id), 'attente');
+  assert.deepEqual(await P.reopenExchanges(id), { ok: false, error: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.' });
+  let j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'changements', null, 'Plus court');
+  assert.equal(await P.exchangeLock(id), null, 'changes asked: the coach has the hand again');
+  await P.sendSubject(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'approuvee', null, '');
+  assert.equal(await P.exchangeLock(id), 'approuve');
+  assert.equal((await P.sendSubject(id, 1)).ok, false, 'an approved subject is not sent again before reopening');
+  assert.deepEqual(await P.reopenExchanges(id), { ok: true });
+  assert.equal(await P.exchangeLock(id), null);
+  await new Promise((r) => setTimeout(r, 1100)); // timestamps are kept to the second: her next answer comes after the reopening
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'approuvee', null, '');
+  assert.equal(await P.exchangeLock(id), 'approuve', 'approved again after reopening: locked again');
+  await raw`update candidates set submitted_at = now() at time zone 'utc' where id = ${id}`;
+  assert.equal(await P.exchangeLock(id), 'soumise');
 });
 
 test('I2: a candidate counts as submitted by submitted_at, by « already submitted / accepted », or by a status at or past « candidature soumise »', { skip }, async () => {
@@ -359,4 +383,23 @@ test('I4 and M2: « tout est prêt » carries the approved frozen copy; the coac
   const [ready] = await raw`select body_text from email_log where candidate_id = ${id} and kind = 'candidate_proposal_pret' order by id desc limit 1`;
   assert.ok(ready.body_text.includes('Titre approuvé') && ready.body_text.includes('Résumé approuvé'), ready.body_text);
   assert.ok(!ready.body_text.includes('retouché'));
+});
+
+test('A and B: the subject is sent only once she has chosen one of the tracks sent', { skip }, async () => {
+  const needs = { ok: false, error: 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.' };
+  const id = await candidate('B');
+  await retained(id, 2);
+  await subjectFor(id);
+  assert.deepEqual(await P.sendSubject(id, 1), needs);
+  await P.sendChoice(id, 1);
+  let j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'aucune', null, 'Aucune ne me parle');
+  assert.deepEqual(await P.sendSubject(id, 1), needs, '« aucune »: still no chosen track');
+  await P.sendChoice(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 1, '');
+  assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
+  const cd = await candidate('C');
+  await subjectFor(cd);
+  assert.deepEqual(await P.sendSubject(cd, 1), { ok: true }, 'C and D send their subject directly');
 });

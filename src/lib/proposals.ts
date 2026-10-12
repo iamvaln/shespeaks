@@ -54,19 +54,52 @@ export async function journeyOf(candidateId: number): Promise<Journey | null> {
 }
 
 /**
- * One pending proposal per kind: a new one replaces it. Choice and subject are two sides of the same question (which topic), so either
- * one also replaces a pending one of the other: the proposal she was last emailed is always the one /plan lets her answer.
- * Sending also closes the coach's « à traiter » on earlier answers.
+ * Why the coach cannot touch the topic (tracks, subject, AI, deletions) right now, or null:
+ * - « attente »: a choice or a subject was sent and waits for her answer;
+ * - « soumise »: she counts as submitted;
+ * - « approuve »: the last subject sent was approved (and the exchanges were not reopened since).
+ * After « changements » or « aucune », the coach has the hand again. « Rouvrir les échanges » lifts « approuve » and « soumise ».
  */
-async function send(candidateId: number, coachId: number, kind: ProposalKind, payload: unknown): Promise<void> {
-  const replaced = kind === 'photo' ? `kind='photo'` : `kind IN ('choix','sujet')`; // a fixed fragment, never user input
-  await tx(async () => {
+export type ExchangeLock = 'attente' | 'approuve' | 'soumise' | null;
+export function lockOf(c: { submitted_at?: string | null; reopened_at?: string | null; status: string }, applicationState: string | null | undefined, proposals: Proposal[]): ExchangeLock {
+  if (proposals.some((p) => p.kind !== 'photo' && p.state === 'envoyee')) return 'attente';
+  if (countsAsSubmitted(c, applicationState)) return 'soumise';
+  const last = [...proposals].reverse().find((p) => p.kind !== 'photo' && p.state !== 'remplacee');
+  if (last?.kind === 'sujet' && last.response === 'approuvee' && (!c.reopened_at || (last.answered_at ?? '') > c.reopened_at)) return 'approuve';
+  return null;
+}
+export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
+  const c = await getCandidate(candidateId);
+  if (!c) return null;
+  const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
+  return lockOf(c, state, proposals);
+}
+/** Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. */
+export const needsChoice = (branch: string | null, proposals: Proposal[]): boolean =>
+  (branch === 'A' || branch === 'B') && !proposals.some((p) => p.kind === 'choix' && p.response === 'choisie');
+export const NEEDS_CHOICE = 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.';
+/** What the coach reads when the topic is locked. */
+export const LOCK_MESSAGE: Record<Exclude<ExchangeLock, null>, string> = {
+  attente: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.',
+  approuve: 'Elle a approuvé son sujet : pistes et sujet sont verrouillés. « Rouvrir les échanges » pour les modifier.',
+  soumise: 'La candidature est soumise : pistes et sujet sont verrouillés. « Rouvrir les échanges » pour les modifier.',
+};
+
+/**
+ * One pending photo request at a time: a new one replaces it. A choice or a subject is never sent over one still waiting for her
+ * answer (checked under the lock, so two coaches clicking together cannot both send). Sending also closes « à traiter » on earlier answers.
+ */
+async function send(candidateId: number, coachId: number, kind: ProposalKind, payload: unknown): Promise<boolean> {
+  return tx(async () => {
     await get('SELECT pg_advisory_xact_lock(hashtext(?))', `proposals:${candidateId}`);
-    await run(`UPDATE proposals SET state='remplacee' WHERE candidate_id=? AND ${replaced} AND state='envoyee'`, candidateId);
+    if (kind !== 'photo' && await get(`SELECT 1 FROM proposals WHERE candidate_id=? AND kind IN ('choix','sujet') AND state='envoyee'`, candidateId)) return false;
+    if (kind === 'photo') await run(`UPDATE proposals SET state='remplacee' WHERE candidate_id=? AND kind='photo' AND state='envoyee'`, candidateId);
     await run(`UPDATE proposals SET handled_at=(now() at time zone 'utc') WHERE candidate_id=? AND state='repondue' AND handled_at IS NULL`, candidateId);
     await run('INSERT INTO proposals (candidate_id,kind,payload,coach_id) VALUES (?,?,?,?)', candidateId, kind, JSON.stringify(payload), coachId);
+    return true;
   });
 }
+const WAITING: Outcome = { ok: false, error: LOCK_MESSAGE.attente };
 
 /** Postgres integer ids: anything else would make the query throw instead of answering « not found ». */
 const validId = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 2147483647;
@@ -79,24 +112,30 @@ const isSubmitted = async (id: number): Promise<boolean> => (await journeyOf(id)
 
 export async function sendChoice(candidateId: number, coachId: number): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
-  if (await isSubmitted(candidateId)) return ALREADY_SUBMITTED;
+  const lock = await exchangeLock(candidateId);
+  if (lock === 'soumise') return ALREADY_SUBMITTED;
+  if (lock) return { ok: false, error: LOCK_MESSAGE[lock] };
   const tracks = await all<Track>(`SELECT * FROM tracks WHERE candidate_id=? AND state='retenue_coach' ORDER BY position, id`, candidateId);
   const items: ChoiceItem[] = tracks.map((t) => ({ title: t.title.trim(), format: t.format ?? 'talk', pitch: (t.pitch ?? '').trim() }));
   const error = validateChoice(items);
   if (error) return { ok: false, error };
-  await send(candidateId, coachId, 'choix', { items });
+  if (!(await send(candidateId, coachId, 'choix', { items }))) return WAITING;
   mail((m) => m.toCandidate(candidateId, 'choix'));
   return { ok: true };
 }
 
 export async function sendSubject(candidateId: number, coachId: number): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
-  if (await isSubmitted(candidateId)) return ALREADY_SUBMITTED;
+  const lock = await exchangeLock(candidateId);
+  if (lock === 'soumise') return ALREADY_SUBMITTED;
+  if (lock) return { ok: false, error: LOCK_MESSAGE[lock] };
+  const c = await getCandidate(candidateId);
+  if (needsChoice(c?.branch ?? null, await listProposals(candidateId))) return { ok: false, error: NEEDS_CHOICE };
   const s = await get<{ title: string | null; abstract: string | null; why: string | null; plan: string | null }>('SELECT title,abstract,why,plan FROM subjects WHERE candidate_id=?', candidateId);
   const payload: SubjectPayload = { title: (s?.title ?? '').trim(), abstract: (s?.abstract ?? '').trim(), why: (s?.why ?? '').trim(), plan: planLines(s?.plan ?? '') };
   const error = validateSubject(payload);
   if (error) return { ok: false, error };
-  await send(candidateId, coachId, 'sujet', payload);
+  if (!(await send(candidateId, coachId, 'sujet', payload))) return WAITING;
   mail((m) => m.toCandidate(candidateId, 'sujet'));
   return { ok: true };
 }
@@ -195,7 +234,9 @@ export async function confirmSubmission(candidateId: number): Promise<Outcome> {
 /** « Rouvrir les échanges »: the coach can send again; her space shows the step the proposals lead to, and she confirms her submission again at the end. */
 export async function reopenExchanges(candidateId: number): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
-  if ((await journeyOf(candidateId))?.step !== 'soumise') return { ok: false, error: 'Les échanges sont déjà ouverts.' };
+  const lock = await exchangeLock(candidateId);
+  if (lock === 'attente') return WAITING;
+  if (!lock) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
   await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
   return { ok: true };
 }

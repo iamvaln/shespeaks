@@ -14,7 +14,7 @@ import { selectPhoto } from '@/lib/photos';
 import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
-import { markHandled, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { exchangeLock, LOCK_MESSAGE, markHandled, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
@@ -23,6 +23,21 @@ const num = (f: FormData, k: string) => Number(f.get(k));
 const badDate = (v: string | null) => !!v && !(/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00Z`)));
 const oneLine = (v: string) => v.replace(/\s+/g, ' ').trim(); // a title is typed in a box that grows: no line breaks
 const back = (path: string, msg?: string, err = false): never => redirect(msg ? `${path}${path.includes('?') ? '&' : '?'}${err ? 'err' : 'msg'}=${encodeURIComponent(msg)}` : path);
+export type Reply = { ok: boolean; msg: string };
+/**
+ * The fiche's forms post with `_inline` (InlineForm): they get the message back and the page refreshes in place, so the coach stays
+ * where she was and keeps what she typed in the other fields. Without it (no JavaScript), the usual redirect with a banner.
+ */
+const reply = (f: FormData, path: string, msg: string, err = false): Reply => {
+  if (!f.has('_inline')) back(path, msg, err);
+  revalidatePath(path.split('?')[0]);
+  return { ok: !err, msg };
+};
+/** While a proposal waits for her answer, after she approved her subject or once submitted, the topic is not touched (server side too). */
+async function lockedReply(f: FormData, id: number): Promise<Reply | null> {
+  const lock = await exchangeLock(id);
+  return lock ? reply(f, cpath(id), LOCK_MESSAGE[lock], true) : null;
+}
 
 // ---- auth ----------------------------------------------------------------------
 export async function loginAction(_: unknown, f: FormData): Promise<{ sent: boolean; devLink?: string; retryMinutes?: number; email?: string }> {
@@ -94,6 +109,8 @@ export async function addNoteAction(f: FormData) {
 export async function saveSubjectAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
+  const locked = await lockedReply(f, id);
+  if (locked) return locked;
   await run(
     `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state,why,plan) VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format,
@@ -101,7 +118,7 @@ export async function saveSubjectAction(f: FormData) {
     id, str(f, 'title'), str(f, 'abstract'), str(f, 'audience') || null, str(f, 'format') || null, str(f, 'application_state') || 'a_soumettre',
     str(f, 'why').slice(0, 1500) || null, str(f, 'plan').slice(0, 3000) || null,
   );
-  return back(cpath(id), 'Sujet enregistré');
+  return reply(f, cpath(id), 'Sujet enregistré');
 }
 
 // The candidate id travels as `cid`: a field named `id` shadows form.id, and React then drops the clicked button's `op`.
@@ -119,47 +136,53 @@ const AI_MESSAGE: Record<string, string> = {
 export async function suggestTracksAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
+  const locked = await lockedReply(f, id);
+  if (locked) return locked;
   const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
   const name = provider === 'openai' ? 'OpenAI' : 'Claude';
   // « Précisions pour l'IA »: kept on the fiche (every next request reuses them), saved before the call so a failure keeps them too
   if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
   const r = await suggestTracksFor(id, coach.id, undefined, provider);
-  if (!r.ok) return back(cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
-  return back(cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
+  if (!r.ok) return reply(f, cpath(id), `${name} : ${AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed}`, true);
+  return reply(f, cpath(id), `${r.added} nouvelle${r.added > 1 ? 's' : ''} suggestion${r.added > 1 ? 's' : ''} de ${name} (ses précédentes non retenues sont remplacées) : à relire avant d’en retenir`);
 }
 
 /** « Améliorer avec Claude / OpenAI » in « Sujet retenu »: three titles, an abstract and how to approach the talk, for the coach to read. */
 export async function improveSubjectAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
+  const locked = await lockedReply(f, id);
+  if (locked) return locked;
   const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
   const name = provider === 'openai' ? 'OpenAI' : 'Claude';
   if (f.has('ai_brief')) await run('UPDATE candidates SET ai_brief=? WHERE id=?', str(f, 'ai_brief').slice(0, 800) || null, id);
   const r = await improveSubjectFor(id, coach.id, provider);
   if (!r.ok) {
     const why = r.reason === 'not_eligible' ? 'Il faut un formulaire terminé et un sujet de départ (titre ou résumé).' : AI_MESSAGE[r.reason] ?? AI_MESSAGE.failed;
-    return back(cpath(id), `${name} : ${why}`, true);
+    return reply(f, cpath(id), `${name} : ${why}`, true);
   }
-  return back(cpath(id), `Proposition d’amélioration de ${name} prête, sous le sujet : à relire, puis « Utiliser » ce qui te convient et enregistrer`);
+  return reply(f, cpath(id), `Proposition d’amélioration de ${name} prête, sous le sujet : à relire, puis « Utiliser » ce qui te convient et enregistrer`);
 }
 
 export async function trackAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
+  const locked = await lockedReply(f, id);
+  if (locked) return locked;
   const op = str(f, 'op');
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);
   if (op === 'add') {
     const title = oneLine(str(f, 'title'));
-    if (!title) return back(cpath(id), 'Titre requis', true);
+    if (!title) return reply(f, cpath(id), 'Titre requis', true);
     await run(`INSERT INTO tracks (candidate_id,title,format,origin,position) VALUES (?,?,?,'coach',?)`, id, title, str(f, 'format') || 'talk', (await getTracks(id)).length);
-    return back(cpath(id), 'Piste ajoutée');
+    return reply(f, cpath(id), 'Piste ajoutée');
   }
   if (op === 'regenerate') {
     await regenerateTracks(id);
-    return back(cpath(id), 'Pistes régénérées');
+    return reply(f, cpath(id), 'Pistes régénérées');
   }
-  if (!track) return back(cpath(id), 'Piste introuvable', true);
+  if (!track) return reply(f, cpath(id), 'Piste introuvable', true);
   // whichever button she pressed, what she typed in the title and the format of this track is kept (and the subject follows a chosen track)
   const title = oneLine(str(f, 'title')) || track.title;
   const format = str(f, 'format') || track.format;
@@ -195,8 +218,8 @@ export async function trackAction(f: FormData) {
   } else if (op === 'delete') {
     await run('DELETE FROM tracks WHERE id=?', tid);
     done = 'Piste supprimée';
-  } else return back(cpath(id), 'Action inconnue', true);
-  return back(cpath(id), done);
+  } else return reply(f, cpath(id), 'Action inconnue', true);
+  return reply(f, cpath(id), done);
 }
 
 export async function selectPhotoAction(f: FormData) {
@@ -204,7 +227,7 @@ export async function selectPhotoAction(f: FormData) {
   const id = num(f, 'id');
   const photoId = num(f, 'photo_id') || null;
   await selectPhoto(id, photoId);
-  return back(cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
+  return reply(f, cpath(id, 'photos'), photoId ? 'Photo retenue' : 'Photo non retenue');
 }
 
 export async function remindNowAction(f: FormData) {
@@ -222,6 +245,7 @@ export async function deleteCandidateAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'id');
   if (str(f, 'confirm') !== 'SUPPRIMER') return back(cpath(id), 'Tape SUPPRIMER pour confirmer', true);
+  if (await exchangeLock(id)) return back(cpath(id), 'Suppression impossible pendant les échanges : une proposition attend sa réponse, son sujet est approuvé ou sa candidature soumise.', true);
   for (const p of await all<{ filename: string }>('SELECT filename FROM photos WHERE candidate_id=?', id)) await removeObject(p.filename);
   await run('DELETE FROM candidates WHERE id=?', id);
   return back('/admin/candidates', 'Candidate supprimée');
@@ -307,47 +331,47 @@ export async function saveSettingsAction(f: FormData) {
 
 // ---- exchanges with the candidate (proposals flow) -------------------------------
 /** An unknown candidate has no fiche to come back to: the banner shows on the list. */
-const fail = (id: number, error: string, tab = ''): never => back(error === 'Candidate introuvable' ? '/admin/candidates' : cpath(id, tab), error, true);
+const fail = (f: FormData, id: number, error: string, tab = ''): Reply => (error === 'Candidate introuvable' ? back('/admin/candidates', error, true) : reply(f, cpath(id, tab), error, true));
 const validCid = (n: number) => Number.isInteger(n) && n >= 1 && n <= 2147483647;
 export async function sendChoiceAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await sendChoice(id, coach.id);
-  return r.ok ? back(cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : fail(id, r.error);
+  return r.ok ? reply(f, cpath(id), 'Choix envoyé à la candidate : elle est prévenue par email') : fail(f, id, r.error);
 }
 export async function sendSubjectAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await sendSubject(id, coach.id);
-  return r.ok ? back(cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : fail(id, r.error);
+  return r.ok ? reply(f, cpath(id), 'Sujet envoyé à la candidate pour validation : elle est prévenue par email') : fail(f, id, r.error);
 }
 export async function requestPhotoAction(f: FormData) {
   const coach = await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await requestPhoto(id, coach.id, str(f, 'comment'));
-  return r.ok ? back(cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : fail(id, r.error, 'photos');
+  return r.ok ? reply(f, cpath(id, 'photos'), 'Nouvelle photo demandée à la candidate') : fail(f, id, r.error, 'photos');
 }
 export async function validatePhotoAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await validatePhoto(id, num(f, 'photo_id'));
-  return r.ok ? back(cpath(id, 'photos'), 'Photo validée') : fail(id, r.error, 'photos');
+  return r.ok ? reply(f, cpath(id, 'photos'), 'Photo validée') : fail(f, id, r.error, 'photos');
 }
 export async function reopenExchangesAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   const r = await reopenExchanges(id);
-  return r.ok ? back(cpath(id), 'Échanges rouverts : tu peux de nouveau lui envoyer une proposition') : back(cpath(id), r.error, true);
+  return r.ok ? reply(f, cpath(id), 'Échanges rouverts : tu peux de nouveau lui envoyer une proposition') : reply(f, cpath(id), r.error, true);
 }
 export async function markHandledAction(f: FormData) {
   await requireCoach();
   const id = num(f, 'cid');
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   await markHandled(id);
-  return back(cpath(id), 'Réponse marquée comme traitée');
+  return reply(f, cpath(id), 'Réponse marquée comme traitée');
 }
