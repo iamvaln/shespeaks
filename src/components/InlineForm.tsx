@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { EditScopeContext, FormEditContext, isEdited } from './EditScope';
 
 type Reply = { ok: boolean; msg: string };
+/** What the fields hold, as the form would send it (the submit button apart). */
+const fieldsOf = (form: HTMLFormElement) => JSON.stringify(Array.from(new FormData(form)));
 /** Lets PendingButton know an InlineForm is running (useFormStatus only sees forms submitted through their `action`). */
 export const InlinePending = createContext<{ pending: boolean; data: FormData | null } | null>(null);
 
@@ -21,6 +23,7 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
   const [reply, setReply] = useState<Reply | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
+  const sent = useRef<string | null>(null); // the fields as the last successful save sent them (watched forms only)
   const report = useContext(EditScopeContext)?.setDirty; // stable for the life of the scope (the scope object itself changes with every edit)
   const formId = useId();
   const [dirty, setDirty] = useState(false);
@@ -33,6 +36,18 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
   }, [watchEdits, report, formId]);
   // after every render: a refresh after « Enregistrer » renders the saved values as the new defaults, and the edits are gone
   useEffect(() => { check(); });
+  // saved: the server keeps its own version of what was typed (trimmed, one line, no blank steps, the hook again when the sentence was
+  // emptied), and the refresh renders it as the new defaults. A field the coach has not touched since takes it too, or the form would
+  // read « edited » for good and its block stay greyed.
+  useEffect(() => {
+    const form = formRef.current, saved = sent.current;
+    if (pending || saved === null || !form) return;
+    sent.current = null;
+    if (fieldsOf(form) !== saved) return; // typed again since: those are new edits
+    form.reset();
+    window.dispatchEvent(new Event('resize')); // the growing boxes fit their text again
+    check();
+  }, [pending, check]);
   useEffect(() => () => report?.(formId, false), [report, formId]); // gone (the track was removed, or became locked): it no longer holds edits
   return (
     <InlinePending.Provider value={{ pending, data }}>
@@ -47,6 +62,7 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
           e.preventDefault();
           if (pending) return;
           const form = e.currentTarget;
+          const typed = watchEdits ? fieldsOf(form) : null;
           const fd = new FormData(form, (e.nativeEvent as SubmitEvent).submitter);
           fd.set('_inline', '1');
           setData(fd);
@@ -57,6 +73,7 @@ export function InlineForm({ action, children, resetOnSuccess, watchEdits, ...pr
             if (!r) return;
             setReply(r);
             if (r.ok && resetOnSuccess) form.reset();
+            if (r.ok) sent.current = typed;
             if (r.ok) timer.current = setTimeout(() => setReply(null), 6000);
           });
         }}

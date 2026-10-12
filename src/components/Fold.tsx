@@ -11,7 +11,7 @@ export function Fold({ id, anchor, title, aside, children, flush, card = true, b
   card?: boolean; bodyClassName?: string; defaultOpen?: boolean; className?: string;
 }) {
   return (
-    <details id={anchor} className={`${card ? 'a-card ' : ''}a-fold${flush ? ' is-flush' : ''}${className ? ` ${className}` : ''}`} open={defaultOpen}>
+    <details id={anchor} className={`${card ? 'a-card ' : ''}a-fold${flush ? ' is-flush' : ''}${className ? ` ${className}` : ''}`} open={defaultOpen} aria-labelledby={id}>
       <summary className="a-fold-summary">
         <h2 id={id} className="a-h2">{title}</h2>
         {aside}

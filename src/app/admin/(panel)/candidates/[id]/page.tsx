@@ -17,6 +17,7 @@ import { PendingButton } from '@/components/PendingButton';
 import { InlineForm } from '@/components/InlineForm';
 import { FoldAll } from '@/components/FoldAll';
 import { Fold } from '@/components/Fold';
+import { OpenOnHash } from '@/components/OpenOnHash';
 import { EditButton, EditCancel, EditScope } from '@/components/EditScope';
 import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
@@ -82,7 +83,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
-  const jstate = journeyNow ? journeyState(journeyNow, exchanges) : null; // the same wording as the list
+  const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
   const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
@@ -163,11 +164,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         </Fold>
       )}
       {c.status === 'en_cours' && progress && (
-        <section className="a-card a-stack" aria-label="Parcours en cours" style={{ gap: 10 }}>
-          <div className="a-row-between"><strong>Parcours en cours · écran {progress.done} sur {progress.total}</strong><span className="a-pill is-soft">En cours</span></div>
+        <Fold id="h-parcours-ec" title={`Parcours en cours · écran ${progress.done} sur ${progress.total}`} aside={<span className="a-pill is-soft">En cours</span>} bodyClassName="a-stack">
           <div className="a-bar" role="img" aria-label={`Écran ${progress.done} sur ${progress.total}`}><i style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} /></div>
           <span className="a-sub" style={{ whiteSpace: 'normal' }}>S’est arrêtée à « {progress.label} » · inactive depuis {elapsed(c.last_activity_at, now)} · {c.reminders_sent} relance{c.reminders_sent > 1 ? 's' : ''} automatique{c.reminders_sent > 1 ? 's' : ''}</span>
-        </section>
+        </Fold>
       )}
       {c.status === 'en_cours' && !progress && (
         <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Formulaire terminé · statut remis à « En cours »</strong><span className="a-pill is-soft">En cours</span></div></section>
@@ -176,6 +176,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
         <section className="a-card" aria-label="Statut"><div className="a-row-between"><strong>Candidature non retenue</strong><span className="a-pill is-red">Non retenue</span></div></section>
       )}
 
+      <OpenOnHash />
       <div className="a-split">
         <div className="a-main a-stack" style={{ gap: 20 }}>
           <CurrentIntoView className="a-tabbar" aria-label="Sections de la fiche">
@@ -304,7 +305,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                               <span className="a-track-meta">
                                 <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
                                 <span>{ORIGIN[t.origin] ?? t.origin}{t.origin === 'ia' ? ` · ${t.model ?? 'Claude'}` : ''}{t.domain ? ` · ${t.domain}` : ''}{t.angle ? ` · ${labelOf(refs.angles, t.angle, 'fr')}` : ''}</span>
-                                <select className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
+                                <select key={t.format ?? 'talk'} className="a-mini-select" name="format" defaultValue={t.format ?? 'talk'} aria-label={`Format de la piste ${i + 1}`}>
                                   <option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option>
                                 </select>
                               </span>
@@ -419,9 +420,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <label className="a-label">Pourquoi ces changements (pour la candidate)<textarea id="subject-why" className="a-textarea" name="why" defaultValue={subject?.why ?? ''} maxLength={1500} /></label>
                   <label className="a-label">Comment t’y prendre (une étape par ligne)<textarea id="subject-plan" className="a-textarea" name="plan" defaultValue={subject?.plan ?? ''} /></label>
                   <div className="a-grid-3">
-                    <label className="a-label">Niveau du public<select className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
-                    <label className="a-label">Format<select className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
-                    <label className="a-label">État de la candidature<select className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">Niveau du public<select key={subject?.audience ?? ''} className="a-select-f" name="audience" defaultValue={subject?.audience ?? ''}><option value="">—</option>{AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">Format<select key={subject?.format ?? ''} className="a-select-f" name="format" defaultValue={subject?.format ?? ''}><option value="">—</option>{FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
+                    <label className="a-label">État de la candidature<select key={subject?.application_state ?? 'a_soumettre'} className="a-select-f" name="application_state" defaultValue={subject?.application_state ?? 'a_soumettre'}>{APPLICATION_STATES.map((o) => <option key={o.value} value={o.value}>{o.label.fr}</option>)}</select></label>
                   </div>
                   <div className="a-actions"><EditButton kind="save" className="a-btn">Enregistrer le sujet</EditButton><EditCancel /></div>
                 </InlineForm>

@@ -70,19 +70,25 @@ export function journey(i: { branch: Branch | null; photoValidatedAt: string | n
  * has written to yet as well as one who was sent her tracks, or her subject.
  */
 export type JourneyState = { label: string; waiting: Journey['waiting'] };
-export function journeyState(j: Journey, proposals: Proposal[]): JourneyState {
+export function journeyState(j: Journey, proposals: Proposal[], photoCount = 1): JourneyState {
   const { waiting } = j;
+  // a photo asked for before the photo step (the Photos tab offers it at any time) is no « Rien envoyé »: something was sent to her
+  const photoAsked = latest(proposals, 'photo')?.state === 'envoyee' ? ' · photo demandée' : '';
   switch (j.step) {
     case 'soumise': return { label: 'Candidature soumise', waiting };
     case 'soumission': return { label: 'Attend sa soumission', waiting };
-    case 'photo': return { label: j.pending ? 'Photo demandée' : 'Sujet approuvé · photo à traiter', waiting };
+    // nothing to review while she has sent no photo: the coach has to ask for one
+    case 'photo': return { label: j.pending ? 'Photo demandée' : photoCount > 0 ? 'Sujet approuvé · photo à traiter' : 'Sujet approuvé · photo à demander', waiting };
     case 'choix':
-      if (j.pending) return { label: 'Pistes proposées', waiting };
-      return { label: latest(proposals, 'choix')?.response === 'aucune' ? 'Aucune piste ne lui convient' : 'Rien envoyé', waiting };
-    case 'sujet':
-      if (j.pending) return { label: 'Sujet proposé', waiting };
-      if (latest(proposals, 'sujet')?.response === 'changements') return { label: 'Changements demandés sur le sujet', waiting };
-      return { label: j.steps[0] === 'choix' ? 'A choisi · sujet à proposer' : 'Rien envoyé', waiting };
+      if (j.pending) return { label: `Pistes proposées${photoAsked}`, waiting };
+      return { label: `${latest(proposals, 'choix')?.response === 'aucune' ? 'Aucune piste ne lui convient' : 'Rien envoyé'}${photoAsked}`, waiting };
+    case 'sujet': {
+      if (j.pending) return { label: `Sujet proposé${photoAsked}`, waiting };
+      // « changements » is the latest word only while no newer track was chosen since (a new round of tracks starts over)
+      const subject = latest(proposals, 'sujet'), choice = latest(proposals, 'choix');
+      if (subject?.response === 'changements' && (!choice || subject.id > choice.id)) return { label: `Changements demandés sur le sujet${photoAsked}`, waiting };
+      return { label: `${j.steps[0] === 'choix' ? 'A choisi · sujet à proposer' : 'Rien envoyé'}${photoAsked}`, waiting };
+    }
   }
 }
 /** Said aloud for screen readers (the colour of the line says it for the eye). */

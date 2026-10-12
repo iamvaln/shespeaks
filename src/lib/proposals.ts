@@ -74,9 +74,13 @@ export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
   const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
   return lockOf(c, state, proposals);
 }
-/** Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. */
+/**
+ * Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. It follows the
+ * exchanges as the journey does (the latest choice or subject sent decides): after « aucune » to a second round of tracks she is back
+ * at the choice, whatever she chose in the first.
+ */
 export const needsChoice = (branch: string | null, proposals: Proposal[]): boolean =>
-  (branch === 'A' || branch === 'B') && !proposals.some((p) => p.kind === 'choix' && p.response === 'choisie');
+  (branch === 'A' || branch === 'B') && journey({ branch, photoValidatedAt: null, submitted: false, proposals }).step === 'choix';
 export const NEEDS_CHOICE = 'Envoie d’abord les pistes retenues : le sujet se développe à partir de celle qu’elle choisit.';
 /** A and B: the coach keeps, edits and sends tracks; the one that becomes the subject is the one the candidate chooses. */
 export const CHOOSE_AFTER_HER = 'La candidate choisit elle-même parmi les pistes que tu lui envoies : retiens-en 2 ou 3, adapte-les, puis envoie-les. « Choisir » s’active quand elle aura répondu.';
