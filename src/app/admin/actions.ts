@@ -172,6 +172,9 @@ export async function trackAction(f: FormData) {
   const op = str(f, 'op');
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);
+  if ((op === 'add' || op === 'regenerate') && !(await get<{ ok: number }>('SELECT 1 AS ok FROM candidates WHERE id=? AND completed_at IS NOT NULL', id))) {
+    return reply(f, cpath(id), 'Possible quand son formulaire sera terminé : les pistes partent de ses réponses.', true);
+  }
   if (op === 'add') {
     const title = oneLine(str(f, 'title'));
     if (!title) return reply(f, cpath(id), 'Titre requis', true);
