@@ -403,3 +403,86 @@ test('A and B: the subject is sent only once she has chosen one of the tracks se
   await subjectFor(cd);
   assert.deepEqual(await P.sendSubject(cd, 1), { ok: true }, 'C and D send their subject directly');
 });
+
+test('A and B: « aucune » to a second round of tracks puts the choice back, whatever she chose in the first', { skip }, async () => {
+  const id = await candidate('A');
+  await retained(id, 2);
+  await subjectFor(id);
+  assert.equal((await P.sendChoice(id, 1)).ok, true);
+  let j = await state(id);
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.equal((await P.mayChooseTrack(id)).ok, true, 'she chose');
+  // the coach starts again: new tracks, none of which suits her
+  assert.equal((await P.sendChoice(id, 1)).ok, true);
+  j = await state(id);
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'aucune', null, 'Aucune ne me parle'), { ok: true });
+  assert.equal((await state(id)).step, 'choix');
+  assert.equal((await P.mayChooseTrack(id)).ok, false, 'she is back at the choice: « Choisir » waits for her again');
+  assert.equal((await P.sendSubject(id, 1)).ok, false, 'and so does the send of the subject');
+  assert.equal(P.needsChoice('A', []), true);
+  assert.equal(P.needsChoice('C', []), false);
+  // she chooses in the second round: allowed again
+  assert.equal((await P.sendChoice(id, 1)).ok, true);
+  j = await state(id);
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 1, ''), { ok: true });
+  assert.equal((await P.mayChooseTrack(id)).ok, true);
+  assert.equal((await P.sendSubject(id, 1)).ok, true);
+});
+
+test('« Choisir » is refused until she has chosen (A and B), then allowed; C and D are not concerned', { skip }, async () => {
+  const a = await candidate('A');
+  assert.equal((await P.mayChooseTrack(a)).ok, false, 'nothing sent yet');
+  assert.match((await P.mayChooseTrack(a)).error, /choisit elle-même/);
+  await retained(a, 2);
+  assert.deepEqual(await P.sendChoice(a, 1), { ok: true });
+  assert.equal((await P.mayChooseTrack(a)).ok, false, 'sent, waiting for her answer');
+  let j = await state(a);
+  assert.deepEqual(await P.answerProposal(a, j.pending.id, 'aucune', null, 'Aucun ne me parle'), { ok: true });
+  assert.equal((await P.mayChooseTrack(a)).ok, false, 'none suited her: the coach keeps, edits and sends again');
+  assert.deepEqual(await P.sendChoice(a, 1), { ok: true });
+  j = await state(a);
+  assert.deepEqual(await P.answerProposal(a, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.deepEqual(await P.mayChooseTrack(a), { ok: true });
+  assert.equal((await P.mayChooseTrack(await candidate('C'))).ok, true);
+  assert.equal((await P.mayChooseTrack(999999999)).ok, false, 'unknown candidate');
+});
+
+test('the list shows where the exchanges stand for each candidate, as her fiche does', { skip }, async () => {
+  const A = await import('../../src/lib/admin-data.ts');
+  const fresh = await candidate('A');
+  const sent = await candidate('A'); await retained(sent, 2); await P.sendChoice(sent, 1);
+  const withSubject = await candidate('C'); await raw`insert into subjects (candidate_id, title, abstract) values (${withSubject}, 'T', 'A')`; await P.sendSubject(withSubject, 1);
+  const unfinished = (await raw`insert into candidates (token, name, branch, status, current_screen) values (${crypto.randomBytes(8).toString('hex')}, 'Pas finie', 'A', 'en_cours', 'p1') returning id`)[0].id;
+  const submittedByStatus = await candidate('C'); await raw`update candidates set status = 'candidature_soumise' where id = ${submittedByStatus}`;
+  const declined = await candidate('A'); await raw`update candidates set status = 'non_retenue' where id = ${declined}`;
+  const reopened = await candidate('C'); await raw`update candidates set status = 'candidature_soumise', reopened_at = now() at time zone 'utc' where id = ${reopened}`;
+  // approved subject, no photo yet / a photo uploaded and validated
+  const noPhoto = await candidate('C'); await raw`insert into subjects (candidate_id, title, abstract) values (${noPhoto}, 'T', 'A')`; await P.sendSubject(noPhoto, 1);
+  await P.answerProposal(noPhoto, (await state(noPhoto)).pending.id, 'approuvee', null, '');
+  const validated = await candidate('C'); await raw`insert into subjects (candidate_id, title, abstract) values (${validated}, 'T', 'A')`; await P.sendSubject(validated, 1);
+  await P.answerProposal(validated, (await state(validated)).pending.id, 'approuvee', null, '');
+  const [{ id: photoId }] = await raw`insert into photos (candidate_id, filename, mime, size, width, height) values (${validated}, 'p.jpg', 'image/jpeg', 10, 100, 100) returning id`;
+  await raw`update candidates set selected_photo_id = ${photoId}, photo_validated_at = now() at time zone 'utc' where id = ${validated}`;
+  const photoUp = await candidate('C'); await raw`insert into subjects (candidate_id, title, abstract) values (${photoUp}, 'T', 'A')`; await P.sendSubject(photoUp, 1);
+  await P.answerProposal(photoUp, (await state(photoUp)).pending.id, 'approuvee', null, '');
+  await raw`insert into photos (candidate_id, filename, mime, size, width, height) values (${photoUp}, 'q.jpg', 'image/jpeg', 10, 100, 100)`;
+  const rows = await A.candidateRows();
+  const label = (id) => rows.find((r) => r.id === id)?.journey;
+  assert.deepEqual(label(fresh), { label: 'Rien envoyé', waiting: 'coach' });
+  assert.deepEqual(label(sent), { label: 'Pistes proposées', waiting: 'candidate' });
+  assert.deepEqual(label(withSubject), { label: 'Sujet proposé', waiting: 'candidate' });
+  assert.equal(label(unfinished), null, 'her form is not finished: nothing to show');
+  assert.equal(label(declined), null, 'not retained: nothing to show');
+  assert.deepEqual(label(submittedByStatus), { label: 'Candidature soumise', waiting: 'none' });
+  assert.equal(label(reopened).label, 'Rien envoyé', 'reopened: only her own confirmation counts as submitted again');
+  assert.deepEqual(label(noPhoto), { label: 'Sujet approuvé · photo à demander', waiting: 'coach' });
+  assert.deepEqual(label(photoUp), { label: 'Sujet approuvé · photo à traiter', waiting: 'coach' });
+  assert.deepEqual(label(validated), { label: 'Attend sa soumission', waiting: 'candidate' });
+  // the list and the fiche read the same thing: same wording, same hand
+  const { journeyState } = await import('../../src/lib/journey.ts');
+  const photoCount = async (id) => (await raw`select count(*)::int as n from photos where candidate_id = ${id}`)[0].n;
+  for (const id of [fresh, sent, withSubject, submittedByStatus, reopened, noPhoto, photoUp, validated]) {
+    const j = await P.journeyOf(id);
+    assert.deepEqual(label(id), journeyState(j, await P.listProposals(id), await photoCount(id)), `candidate ${id}`);
+  }
+});

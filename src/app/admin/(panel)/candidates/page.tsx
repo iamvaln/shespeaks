@@ -7,6 +7,7 @@ import { norm, initials } from '@/lib/text';
 import { requireCoach } from '@/lib/auth';
 import { screenProgress } from '@/lib/reminders';
 import { BRANCH_SHORT, elapsed, one, pageList, statusTone } from '@/lib/admin-format';
+import { WAITING_SR } from '@/lib/journey';
 import { AutoSubmitForm } from '@/components/AutoSubmitForm';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { Icon } from '@/components/admin-icons';
@@ -146,6 +147,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
                   <span role="cell" className="c-status">
                     <span className={`a-pill is-${statusTone(r.status)}`}>{statusLabel(r.status)}</span>
                     {p && <span className="a-sub" style={{ marginTop: 4 }}>écran {p.done} sur {p.total}</span>}
+                    {r.journey && <span className={`a-journey is-${r.journey.waiting}`}>{r.journey.label}<span className="sr-only"> ({WAITING_SR[r.journey.waiting]})</span></span>}
                   </span>
                   <span role="cell" className="c-coach">
                     {r.coach_name

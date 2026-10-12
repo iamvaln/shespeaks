@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { accessOutcome } from '../src/lib/access-outcome.ts';
-import { journey, journeySteps, pitchToSave, planLines, validateChoice, validateSubject, type Proposal } from '../src/lib/journey.ts';
+import { journey, journeySteps, journeyState, pitchToSave, planLines, validateChoice, validateSubject, WAITING_SR, type Proposal } from '../src/lib/journey.ts';
 
 let n = 0;
 const p = (kind: Proposal['kind'], state: Proposal['state'], response: Proposal['response'] = null): Proposal => ({
@@ -106,4 +106,58 @@ test('« find my space »: a network failure or a server error asks her to retry
   assert.equal(accessOutcome(200), 'sent');
   assert.equal(accessOutcome(429), 'limited');
   for (const status of [null, 500, 502, 503]) assert.equal(accessOutcome(status), 'retry', String(status));
+});
+
+// what a coach reads in the list and on the fiche: the coach's status says nothing about what was already sent to her
+const st = (branch: 'A' | 'C', proposals: Proposal[], photo: string | null = null, submitted = false, photos = 1) => journeyState(j(branch, proposals, photo, submitted), proposals, photos);
+
+test('journey state, A: « Intérêt reçu » is not the same as pistes proposed, chosen, or a subject proposed', () => {
+  assert.deepEqual(st('A', []), { label: 'Rien envoyé', waiting: 'coach' });
+  assert.deepEqual(st('A', [p('choix', 'envoyee')]), { label: 'Pistes proposées', waiting: 'candidate' });
+  assert.deepEqual(st('A', [p('choix', 'repondue', 'aucune')]), { label: 'Aucune piste ne lui convient', waiting: 'coach' });
+  assert.deepEqual(st('A', [p('choix', 'repondue', 'choisie')]), { label: 'A choisi · sujet à proposer', waiting: 'coach' });
+  assert.deepEqual(st('A', [p('choix', 'repondue', 'choisie'), p('sujet', 'envoyee')]), { label: 'Sujet proposé', waiting: 'candidate' });
+  assert.deepEqual(st('A', [p('choix', 'repondue', 'choisie'), p('sujet', 'repondue', 'changements')]), { label: 'Changements demandés sur le sujet', waiting: 'coach' });
+  assert.deepEqual(st('A', [p('choix', 'remplacee'), p('choix', 'envoyee')]).label, 'Pistes proposées', 'a replaced proposal does not count');
+});
+
+test('journey state, C: nothing sent, subject sent, then the photo, the submission, done', () => {
+  assert.deepEqual(st('C', []), { label: 'Rien envoyé', waiting: 'coach' });
+  assert.deepEqual(st('C', [p('sujet', 'envoyee')]), { label: 'Sujet proposé', waiting: 'candidate' });
+  const approved = p('sujet', 'repondue', 'approuvee');
+  assert.deepEqual(st('C', [approved]), { label: 'Sujet approuvé · photo à traiter', waiting: 'coach' });
+  assert.deepEqual(st('C', [approved, p('photo', 'envoyee')]), { label: 'Photo demandée', waiting: 'candidate' });
+  assert.deepEqual(st('C', [approved], '2026-10-11'), { label: 'Attend sa soumission', waiting: 'candidate' });
+  assert.deepEqual(st('C', [approved], '2026-10-11', true), { label: 'Candidature soumise', waiting: 'none' });
+});
+
+test('journey state: « changements demandés » is the latest word only until she chooses a new track', () => {
+  const choice1 = { ...p('choix', 'repondue', 'choisie'), id: 1 };
+  const changes = { ...p('sujet', 'repondue', 'changements'), id: 2 };
+  assert.equal(st('A', [choice1, changes]).label, 'Changements demandés sur le sujet');
+  // the coach starts again: new tracks, she chooses one: the subject is yet to be proposed
+  assert.deepEqual(st('A', [choice1, changes, { ...p('choix', 'repondue', 'choisie'), id: 3 }]), { label: 'A choisi · sujet à proposer', waiting: 'coach' });
+  assert.equal(st('A', [choice1, changes, { ...p('choix', 'envoyee'), id: 3 }]).label, 'Pistes proposées');
+  assert.equal(st('A', [choice1, changes, { ...p('choix', 'repondue', 'choisie'), id: 3 }, { ...p('sujet', 'repondue', 'changements'), id: 4 }]).label, 'Changements demandés sur le sujet', 'a newer subject answer counts again');
+});
+
+test('journey state: a photo asked for before the photo step is not « Rien envoyé »', () => {
+  const asked = p('photo', 'envoyee');
+  assert.deepEqual(st('A', [asked]), { label: 'Rien envoyé · photo demandée', waiting: 'coach' });
+  assert.deepEqual(st('C', [asked]), { label: 'Rien envoyé · photo demandée', waiting: 'coach' });
+  assert.equal(st('A', [p('choix', 'envoyee'), asked]).label, 'Pistes proposées · photo demandée');
+  assert.equal(st('C', [p('sujet', 'envoyee'), asked]).label, 'Sujet proposé · photo demandée');
+  assert.equal(st('A', [p('choix', 'repondue', 'aucune'), asked]).label, 'Aucune piste ne lui convient · photo demandée');
+  assert.equal(st('C', [{ ...asked, state: 'repondue' }]).label, 'Rien envoyé', 'answered: nothing pending any more');
+});
+
+test('journey state: the photo step says whether there is a photo to review', () => {
+  const approved = p('sujet', 'repondue', 'approuvee');
+  assert.equal(st('C', [approved], null, false, 0).label, 'Sujet approuvé · photo à demander');
+  assert.equal(st('C', [approved], null, false, 2).label, 'Sujet approuvé · photo à traiter');
+  assert.equal(st('C', [approved, p('photo', 'envoyee')], null, false, 0).label, 'Photo demandée', 'asked: her answer is awaited');
+});
+
+test('journey state: every state has a label and a spoken « who has the hand »', () => {
+  for (const w of ['coach', 'candidate', 'none'] as const) assert.ok(WAITING_SR[w]);
 });

@@ -64,6 +64,36 @@ export function journey(i: { branch: Branch | null; photoValidatedAt: string | n
   return at('sujet', subject);
 }
 
+/**
+ * What a coach reads about a candidate, in the list and on her fiche alike: where the exchanges stand and who has the hand. The coach's own
+ * status (« Intérêt reçu », « Sujet validé »…) says nothing about what was already sent to her: « Intérêt reçu » covers a candidate nobody
+ * has written to yet as well as one who was sent her tracks, or her subject.
+ */
+export type JourneyState = { label: string; waiting: Journey['waiting'] };
+export function journeyState(j: Journey, proposals: Proposal[], photoCount = 1): JourneyState {
+  const { waiting } = j;
+  // a photo asked for before the photo step (the Photos tab offers it at any time) is no « Rien envoyé »: something was sent to her
+  const photoAsked = latest(proposals, 'photo')?.state === 'envoyee' ? ' · photo demandée' : '';
+  switch (j.step) {
+    case 'soumise': return { label: 'Candidature soumise', waiting };
+    case 'soumission': return { label: 'Attend sa soumission', waiting };
+    // nothing to review while she has sent no photo: the coach has to ask for one
+    case 'photo': return { label: j.pending ? 'Photo demandée' : photoCount > 0 ? 'Sujet approuvé · photo à traiter' : 'Sujet approuvé · photo à demander', waiting };
+    case 'choix':
+      if (j.pending) return { label: `Pistes proposées${photoAsked}`, waiting };
+      return { label: `${latest(proposals, 'choix')?.response === 'aucune' ? 'Aucune piste ne lui convient' : 'Rien envoyé'}${photoAsked}`, waiting };
+    case 'sujet': {
+      if (j.pending) return { label: `Sujet proposé${photoAsked}`, waiting };
+      // « changements » is the latest word only while no newer track was chosen since (a new round of tracks starts over)
+      const subject = latest(proposals, 'sujet'), choice = latest(proposals, 'choix');
+      if (subject?.response === 'changements' && (!choice || subject.id > choice.id)) return { label: `Changements demandés sur le sujet${photoAsked}`, waiting };
+      return { label: `${j.steps[0] === 'choix' ? 'A choisi · sujet à proposer' : 'Rien envoyé'}${photoAsked}`, waiting };
+    }
+  }
+}
+/** Said aloud for screen readers (the colour of the line says it for the eye). */
+export const WAITING_SR: Record<Journey['waiting'], string> = { coach: 'à traiter', candidate: 'en attente de sa réponse', none: 'terminé' };
+
 export function validateChoice(items: ChoiceItem[]): string | null {
   if (items.length < 2 || items.length > 3) return 'Il faut 2 ou 3 pistes retenues pour envoyer un choix.';
   if (items.some((x) => !x.title.trim() || x.title.length > 140)) return 'Chaque piste retenue doit avoir un titre (140 caractères au plus).';
