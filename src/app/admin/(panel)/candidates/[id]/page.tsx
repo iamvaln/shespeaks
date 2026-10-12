@@ -81,6 +81,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     : retained.length < 2 ? `${retained.length === 0 ? 'Aucune piste retenue' : '1 piste retenue'} : retiens-en 2 ou 3 (bouton « Retenir »).`
     : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
     : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
+  // her form is not finished: the tracks come from her answers, so nothing is generated or added before she sends it (the AI buttons wait too)
+  const FORM_UNFINISHED = 'Possible quand son formulaire sera terminé : les pistes partent de ses réponses.';
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
   const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
@@ -265,7 +267,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                           ))}
                         </InlineForm>
                       )}
-                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm"><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
@@ -339,7 +341,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
                       <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
                       <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
-                      <EditButton kind="other" className="a-btn is-ghost">Ajouter</EditButton>
+                      <EditButton kind="other" className="a-btn is-ghost" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}>Ajouter</EditButton>
                     </InlineForm>
                   )}
                   {!lock && (
