@@ -44,6 +44,7 @@ async function retained(id, n = 3) {
   for (let k = 0; k < n; k++) await raw`insert into tracks (candidate_id, title, format, origin, state, pitch, position) values (${id}, ${'Sujet ' + k}, 'talk', 'ia', 'retenue_coach', ${'Parce que ' + k}, ${k})`;
 }
 const state = async (id) => (await P.journeyOf(id));
+const IDEAS = { approach: ['experience'], other: '', concrete: '', takeaway: '', prepare: '' }; // what she imagines, with her choice
 
 test('A: choice sent (frozen copy), chosen, subject sent, changes asked, sent again, approved, photo, submission', { skip }, async () => {
   mails.length = 0;
@@ -54,7 +55,7 @@ test('A: choice sent (frozen copy), chosen, subject sent, changes asked, sent ag
   let j = await state(id);
   assert.equal(j.waiting, 'candidate');
   assert.equal(j.pending.payload.items[0].title, 'Sujet 0', 'frozen copy');
-  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 1, 'Celui-ci !'), { ok: true });
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 1, 'Celui-ci !', IDEAS), { ok: true });
   j = await state(id);
   assert.deepEqual([j.step, j.waiting], ['sujet', 'coach']);
   await raw`insert into subjects (candidate_id, title, abstract, why, plan) values (${id}, 'T1', 'A1', 'Parce que', ${'Accroche\nDémo'}) on conflict (candidate_id) do update set title = excluded.title, abstract = excluded.abstract, why = excluded.why, plan = excluded.plan`;
@@ -102,7 +103,7 @@ test('another candidate\'s proposal is refused; a choice needs 2 or 3 retained t
   await retained(id, 1);
   assert.deepEqual(await P.sendChoice(id, 1), { ok: true });
   const other = await candidate('A');
-  assert.deepEqual(await P.answerProposal(other, (await state(id)).pending.id, 'choisie', 0, ''), { ok: false, error: 'Proposition introuvable.' });
+  assert.deepEqual(await P.answerProposal(other, (await state(id)).pending.id, 'choisie', 0, '', IDEAS), { ok: false, error: 'Proposition introuvable.' });
   const id3 = await candidate('C');
   await raw`insert into subjects (candidate_id, title, abstract) values (${id3}, 'T', 'A')`;
   await P.sendSubject(id3, 1);
@@ -229,7 +230,7 @@ test('I1: one pending proposal across choice and subject; nothing else is sent u
   assert.deepEqual(await P.sendChoice(id, 1), { ok: true });
   assert.deepEqual(await P.sendSubject(id, 1), { ok: false, error: 'Une proposition attend sa réponse : pistes et sujet restent verrouillés jusqu’à ce qu’elle réponde.' }, 'a subject waits for her answer to the choice');
   let j = await state(id);
-  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS), { ok: true });
   assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
   j = await state(id);
   assert.deepEqual([j.step, j.pending.kind], ['sujet', 'sujet']);
@@ -371,7 +372,7 @@ test('I4 and M2: « tout est prêt » carries the approved frozen copy; the coac
   await raw`update candidates set coach_id = 1 where id = ${id}`;
   await retained(id, 2);
   await P.sendChoice(id, 1);
-  await P.answerProposal(id, (await state(id)).pending.id, 'choisie', 1, '');
+  await P.answerProposal(id, (await state(id)).pending.id, 'choisie', 1, '', IDEAS);
   await realMailer.toCoaches(id, 'choisie', null);
   const [coachMail] = await raw`select subject, body_text from email_log where candidate_id = ${id} and kind = 'coach_answer_choisie' order by id desc limit 1`;
   assert.match(coachMail.subject, /Sujet 1/);
@@ -397,7 +398,7 @@ test('A and B: the subject is sent only once she has chosen one of the tracks se
   assert.deepEqual(await P.sendSubject(id, 1), needs, '« aucune »: still no chosen track');
   await P.sendChoice(id, 1);
   j = await state(id);
-  await P.answerProposal(id, j.pending.id, 'choisie', 1, '');
+  await P.answerProposal(id, j.pending.id, 'choisie', 1, '', IDEAS);
   assert.deepEqual(await P.sendSubject(id, 1), { ok: true });
   const cd = await candidate('C');
   await subjectFor(cd);
@@ -410,7 +411,7 @@ test('A and B: « aucune » to a second round of tracks puts the choice back, wh
   await subjectFor(id);
   assert.equal((await P.sendChoice(id, 1)).ok, true);
   let j = await state(id);
-  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS), { ok: true });
   assert.equal((await P.mayChooseTrack(id)).ok, true, 'she chose');
   // the coach starts again: new tracks, none of which suits her
   assert.equal((await P.sendChoice(id, 1)).ok, true);
@@ -424,7 +425,7 @@ test('A and B: « aucune » to a second round of tracks puts the choice back, wh
   // she chooses in the second round: allowed again
   assert.equal((await P.sendChoice(id, 1)).ok, true);
   j = await state(id);
-  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 1, ''), { ok: true });
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 1, '', IDEAS), { ok: true });
   assert.equal((await P.mayChooseTrack(id)).ok, true);
   assert.equal((await P.sendSubject(id, 1)).ok, true);
 });
@@ -441,7 +442,7 @@ test('« Choisir » is refused until she has chosen (A and B), then allowed; C a
   assert.equal((await P.mayChooseTrack(a)).ok, false, 'none suited her: the coach keeps, edits and sends again');
   assert.deepEqual(await P.sendChoice(a, 1), { ok: true });
   j = await state(a);
-  assert.deepEqual(await P.answerProposal(a, j.pending.id, 'choisie', 0, ''), { ok: true });
+  assert.deepEqual(await P.answerProposal(a, j.pending.id, 'choisie', 0, '', IDEAS), { ok: true });
   assert.deepEqual(await P.mayChooseTrack(a), { ok: true });
   assert.equal((await P.mayChooseTrack(await candidate('C'))).ok, true);
   assert.equal((await P.mayChooseTrack(999999999)).ok, false, 'unknown candidate');
@@ -535,4 +536,26 @@ test('the first screen does not start a second journey for an address that has o
   const other = await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.32', true);
   assert.equal(other.ok, true, 'another event, once all hers are finished, when she asks');
   assert.equal((await raw`select count(*)::int as n from candidates where lower(email) = ${box + '@example.org'}`)[0].n, 2);
+});
+
+test('her choice carries what she imagines: required (one way to approach it), kept, shown to the coach by email', { skip }, async () => {
+  mails.length = 0;
+  const id = await candidate('A');
+  await retained(id, 2);
+  await P.sendChoice(id, 1);
+  const j = await state(id);
+  const need = { ok: false, error: 'Dis-nous comment tu aimerais aborder ce sujet (au moins une case, ou en quelques mots).' };
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, ''), need, 'no ideas');
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, '', { approach: ['nope'], other: '  ' }), need, 'unknown approach only');
+  assert.equal((await P.answerProposal(id, j.pending.id, 'choisie', 0, '', { approach: ['demo'], concrete: 'x'.repeat(601) })).ok, false, 'too long');
+  const ideas = { approach: ['demo', 'erreurs', 'demo'], other: '', concrete: 'Mon app de covoiturage', takeaway: 'Tester tôt', prepare: 'Une démo enregistrée' };
+  assert.deepEqual(await P.answerProposal(id, j.pending.id, 'choisie', 0, 'Merci !', ideas), { ok: true });
+  const kept = (await P.listProposals(id)).find((x) => x.id === j.pending.id).response_data;
+  assert.deepEqual(kept, { approach: ['demo', 'erreurs'], other: '', concrete: 'Mon app de covoiturage', takeaway: 'Tester tôt', prepare: 'Une démo enregistrée' });
+  // a « aucune » answer carries none
+  const id2 = await candidate('B');
+  await retained(id2, 2);
+  await P.sendChoice(id2, 1);
+  await P.answerProposal(id2, (await state(id2)).pending.id, 'aucune', null, 'Aucune', ideas);
+  assert.equal((await P.listProposals(id2))[0].response_data, null);
 });
