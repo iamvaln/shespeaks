@@ -178,7 +178,8 @@ else {
   ok(fiche.status === 200 && /<dt>Ancienneté<\/dt><dd>1 an à moins de 3 ans<\/dd>/.test(fiche.text), 'fiche: seniority shows its label, not the code');
   // a field named "id" hides form.id, and React then drops the clicked button's value: the buttons would silently do nothing
   const forms = fiche.text.split('<form').slice(1).map((f) => f.slice(0, f.indexOf('</form>')));
-  const named = forms.filter((f) => /<button[^>]*name="op"/.test(f));
+  // no track yet (nothing is generated at the end of the form): the « Générer » and « Ajouter » forms are the track forms then
+  const named = forms.filter((f) => /<(button|input)[^>]*name="op"/.test(f));
   ok(named.length > 0 && named.every((f) => !/<input[^>]*name="id"/.test(f) && /<input[^>]*name="cid"/.test(f)), `fiche: the ${named.length} track forms carry the candidate as "cid", not "id"`);
 
   // AI title suggestions: the button when the server has a key, otherwise the note that they are off (CI has no key); never both
@@ -198,8 +199,16 @@ else {
   const once = await racer('Race Single');
   await once.save('b2', { B4: ['retour'] });
   // nothing is generated at the end of the form any more (the coach generates the tracks): the coach's « new interest » email is what must not double
-  const emails = (await admin('/admin/emails')).text;
+  // the email leaves after the response: wait until the single submission's is logged before comparing
+  let emails = '';
   const count = (name) => emails.split(`Nouvel intérêt reçu : ${name}`).length - 1;
+  for (let k = 0; k < 20; k++) {
+    emails = (await admin('/admin/emails')).text;
+    if (count('Race Single') > 0) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  await new Promise((r) => setTimeout(r, 1000)); // a doubled email of the double submission would have landed by now
+  emails = (await admin('/admin/emails')).text;
   const [nTwice, nOnce] = [count('Race Double'), count('Race Single')];
   ok(nOnce > 0 && nTwice === nOnce, `race: the coach email is not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
   ok(!/class="a-track[ "]/.test((await admin(`/admin/candidates/${await ficheId('Race Single')}`)).text), 'no track is generated when she sends her form: the coach generates them');
