@@ -33,3 +33,10 @@ test('the coach email names the chosen topic when there is one', () => {
   assert.ok(m.text.includes('Automatiser son déploiement'));
   assert.equal(coachCandidateAnswered({ name: 'Aïcha' }, 'approuvee', null, 'https://shespeaks.test/admin/candidates/1').subject, 'Aïcha approuve son sujet');
 });
+
+test('the coach email of a choice carries what she imagined, escaped like any text she wrote', () => {
+  const m = coachCandidateAnswered({ name: 'Awa' }, 'choisie', null, 'https://x.test/admin/candidates/1', 'Mon sujet', ['Comment l’aborder : montrer une démo en direct', 'Ce que le public doit retenir : <b>tester tôt</b>']);
+  assert.match(m.text, /Ce qu’elle a imaginé/);
+  assert.match(m.text, /montrer une démo en direct/);
+  assert.ok(!m.html.includes('<b>tester tôt</b>') && m.html.includes('&lt;b&gt;tester tôt&lt;/b&gt;'));
+});

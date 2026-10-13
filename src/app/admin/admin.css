@@ -433,3 +433,17 @@
 .a-journey.is-coach { color: var(--amber-text, #7A4B00); }
 .a-journey.is-candidate { color: var(--ink-muted); }
 .a-journey.is-none { color: #11512D; }
+
+/* candidates list: whose turn it is shows on the whole row (amber: the coach acts; green: done; no mark: she has the hand) */
+.a-tr.wait-coach { box-shadow: inset 4px 0 0 #F5A524; background: #FFF8EA; }
+.a-tr.wait-none { box-shadow: inset 4px 0 0 #2E8B57; }
+.a-legend { display: flex; flex-wrap: wrap; gap: 18px; margin: -8px 0 0; font-size: 13px; color: var(--ink-soft); }
+.a-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--surface-sunken); }
+.a-legend i.is-coach { background: #FFF8EA; box-shadow: inset 4px 0 0 #F5A524; }
+.a-legend i.is-candidate { background: var(--surface-raised, #fff); }
+.a-legend i.is-none { background: var(--surface-raised, #fff); box-shadow: inset 4px 0 0 #2E8B57; }
+/* dashboard notifications: one line per event, the ones still waiting for the coach in amber */
+.a-notices { list-style: none; margin: 0; padding: 0; }
+.a-notices li { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 12px 24px; border-top: 1px solid var(--surface-sunken); }
+.a-notices li a { font-weight: 600; color: inherit; flex: 1 1 320px; min-width: 0; }
+.a-notices li.is-todo { background: #FFF8EA; box-shadow: inset 4px 0 0 #F5A524; }

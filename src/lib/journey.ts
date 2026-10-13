@@ -18,6 +18,8 @@ export interface Proposal {
   response: ProposalResponse | null;
   response_choice: number | null;
   candidate_comment: string | null;
+  /** What she imagines for the track she chose (« choisie » only). */
+  response_data: ChoiceIdeas | null;
   coach_id: number | null;
   sent_at: string;
   answered_at: string | null;
@@ -31,6 +33,44 @@ export type Journey = { step: Step; steps: Step[]; waiting: 'coach' | 'candidate
 export const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', sujet: 'diagnostic_recu', photo: 'sujet_valide', soumission: 'sujet_valide', soumise: 'candidature_soumise' };
 
 export const COMMENT_MAX = 1000;
+
+/**
+ * Asked in the same form as her choice, so she has little to do: how she would approach the topic (at least one), what she could
+ * show or tell, the one thing to remember, what to prepare. Easier than « a plan »; the coach builds the plan from it.
+ */
+export const APPROACHES = ['experience', 'demo', 'pas_a_pas', 'erreurs', 'conseils'] as const;
+export type Approach = (typeof APPROACHES)[number];
+export type ChoiceIdeas = { approach: Approach[]; other: string; concrete: string; takeaway: string; prepare: string };
+export const IDEA_MAX = 600;
+/** For the coach (fiche, emails, AI prompt): the approaches in French. */
+export const APPROACH_LABEL: Record<Approach, string> = {
+  experience: 'raconter son expérience', demo: 'montrer une démo en direct', pas_a_pas: 'expliquer pas à pas',
+  erreurs: 'partager ses erreurs et ce qu’elle en a appris', conseils: 'donner des conseils pratiques',
+};
+const ideaText = (v: unknown) => (typeof v === 'string' ? v.replace(/\r\n?/g, '\n').trim() : '');
+export function validateChoiceIdeas(input: unknown): { ok: true; value: ChoiceIdeas } | { ok: false; error: string } {
+  const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const approach = Array.isArray(o.approach) ? [...new Set(o.approach.filter((x): x is Approach => (APPROACHES as readonly string[]).includes(x as string)))] : [];
+  const value: ChoiceIdeas = { approach, other: ideaText(o.other), concrete: ideaText(o.concrete), takeaway: ideaText(o.takeaway), prepare: ideaText(o.prepare) };
+  if (!value.approach.length && !value.other) return { ok: false, error: 'Dis-nous comment tu aimerais aborder ce sujet (au moins une case, ou en quelques mots).' };
+  if ([value.other, value.concrete, value.takeaway, value.prepare].some((x) => x.length > IDEA_MAX)) return { ok: false, error: `Une réponse est trop longue (${IDEA_MAX} caractères au maximum).` };
+  return { ok: true, value };
+}
+/** A stored JSON answer -> ideas, or null (absent or unreadable). */
+export function parseIdeas(raw: string | null | undefined): ChoiceIdeas | null {
+  if (!raw) return null;
+  try { const v = validateChoiceIdeas(JSON.parse(raw)); return v.ok ? v.value : null; } catch { return null; }
+}
+/** Her ideas as lines for the coach: « Approche : … », « Concret : … »… (empty answers left out). */
+export function ideaLines(i: ChoiceIdeas): string[] {
+  const approach = [...i.approach.map((a) => APPROACH_LABEL[a]), i.other].filter(Boolean).join(' ; ');
+  return [
+    approach && `Comment l’aborder : ${approach}`,
+    i.concrete && `Ce qu’elle pourrait montrer ou raconter : ${i.concrete}`,
+    i.takeaway && `Ce que le public doit retenir : ${i.takeaway}`,
+    i.prepare && `Ce qu’il faut préparer selon elle : ${i.prepare}`,
+  ].filter((x): x is string => !!x);
+}
 const PLAN_MAX = 8;
 const STEP_MAX = 300;
 

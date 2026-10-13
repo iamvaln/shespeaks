@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getRefs, getTracks, markUpdated, setStatus, tracksRefusal, type Coach } from '@/lib/data';
+import { getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
@@ -171,10 +171,8 @@ export async function trackAction(f: FormData) {
   const op = str(f, 'op');
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);
-  // no tracks before the form is sent (the buttons are greyed too): they are made from her answers
-  if (op === 'add' || op === 'regenerate') {
-    const why = await tracksRefusal(id);
-    if (why) return reply(f, cpath(id), why, true);
+  if ((op === 'add' || op === 'regenerate') && !(await get<{ ok: number }>('SELECT 1 AS ok FROM candidates WHERE id=? AND completed_at IS NOT NULL', id))) {
+    return reply(f, cpath(id), 'Possible quand son formulaire sera terminé : les pistes partent de ses réponses.', true);
   }
   if (op === 'add') {
     const title = oneLine(str(f, 'title'));

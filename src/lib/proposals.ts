@@ -4,7 +4,7 @@ import { all, get, run, tx } from './db.ts';
 import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
 import {
-  COMMENT_MAX, journey, planLines, STATUS_OF_STEP, validateChoice, validateSubject,
+  COMMENT_MAX, journey, parseIdeas, planLines, STATUS_OF_STEP, validateChoice, validateChoiceIdeas, validateSubject,
   type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
 } from './journey.ts';
 
@@ -24,8 +24,8 @@ async function getMailer(): Promise<ProposalMailer> {
 }
 const mail = (job: (m: ProposalMailer) => Promise<void>) => getMailer().then(job).catch((e) => console.error('[proposals] mail failed', e));
 
-type Row = Omit<Proposal, 'payload'> & { payload: string };
-const toProposal = (r: Row): Proposal => ({ ...r, payload: JSON.parse(r.payload) });
+type Row = Omit<Proposal, 'payload' | 'response_data'> & { payload: string; response_data: string | null };
+export const toProposal = (r: Row): Proposal => ({ ...r, payload: JSON.parse(r.payload), response_data: parseIdeas(r.response_data) });
 
 export async function listProposals(candidateId: number): Promise<Proposal[]> {
   return (await all<Row>('SELECT * FROM proposals WHERE candidate_id=? ORDER BY id', candidateId)).map(toProposal);
@@ -204,7 +204,8 @@ async function stepBackQuietly(candidateId: number, author: () => Promise<string
 }
 const coachName = async (coachId: number): Promise<string> => (await get<{ name: string }>('SELECT name FROM coaches WHERE id=?', coachId))?.name ?? 'coach';
 
-export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string): Promise<Outcome> {
+/** `ideas`: what she imagines for the track she chooses (required with « choisie », ignored otherwise). */
+export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string, ideas?: unknown): Promise<Outcome> {
   if (!validId(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
   const p = await get<Row>('SELECT * FROM proposals WHERE id=? AND candidate_id=?', proposalId, candidateId);
   if (!p) return { ok: false, error: 'Proposition introuvable.' };
@@ -214,11 +215,14 @@ export async function answerProposal(candidateId: number, proposalId: number, re
   if (NEEDS_COMMENT.includes(response) && !c) return { ok: false, error: 'Un commentaire est nécessaire.' };
   const items = p.kind === 'choix' ? (JSON.parse(p.payload) as { items: ChoiceItem[] }).items : [];
   if (response === 'choisie' && (choice === null || !Number.isInteger(choice) || choice < 0 || choice >= items.length)) return { ok: false, error: 'Choisis un des sujets proposés.' };
+  const checked = response === 'choisie' ? validateChoiceIdeas(ideas) : null;
+  if (checked && !checked.ok) return { ok: false, error: checked.error };
+  const data = checked?.ok ? JSON.stringify(checked.value) : null;
   const done = await tx(async () => {
     const row = await get<{ id: number }>(
-      `UPDATE proposals SET state='repondue', response=?, response_choice=?, candidate_comment=?, answered_at=(now() at time zone 'utc')
+      `UPDATE proposals SET state='repondue', response=?, response_choice=?, candidate_comment=?, response_data=?, answered_at=(now() at time zone 'utc')
        WHERE id=? AND candidate_id=? AND state='envoyee' RETURNING id`,
-      response, response === 'choisie' ? choice : null, c || null, proposalId, candidateId,
+      response, response === 'choisie' ? choice : null, c || null, data, proposalId, candidateId,
     );
     if (!row) return false;
     if (response === 'choisie') {

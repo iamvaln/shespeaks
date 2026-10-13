@@ -35,13 +35,6 @@ export interface Candidate {
   submitted_at?: string | null;
   reopened_at?: string | null; // « Rouvrir les échanges »: only her confirmation counts as submitted again
 }
-/** The tracks are made from her answers, once the form is sent: until then the coach neither regenerates nor adds any (the buttons are greyed, and the server refuses). */
-export const TRACKS_AFTER_FORM = 'Disponible quand son formulaire sera terminé : les pistes sont générées à partir de ses réponses.';
-/** Why the coach cannot regenerate or add tracks yet (the form is not sent), or null. */
-export async function tracksRefusal(candidateId: number): Promise<string | null> {
-  return (await getCandidate(candidateId))?.completed_at ? null : TRACKS_AFTER_FORM;
-}
-
 export interface Track {
   id: number;
   candidate_id: number;

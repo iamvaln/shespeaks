@@ -4,7 +4,7 @@ import { all } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
 import { STATUSES, statusLabel } from '@/lib/db';
 import {
-  eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches, TRACKS_AFTER_FORM,
+  eventLabelFor, eventFor, getAnswers, getCandidate, getCoach, getPhotos, getRefs, getSubject, getTracks, listCoaches,
 } from '@/lib/data';
 import {
   APPLICATION_STATES, AUDIENCES, FORMATS, SCREENS, SELF_CHECKS, flowFor, labelOf, resolveOptions, resumeScreen, visibleQuestions, type Answer, type Question,
@@ -32,7 +32,7 @@ import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
 import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
-import { journeyState, STATUS_OF_STEP, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
+import { ideaLines, journeyState, STATUS_OF_STEP, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
   addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
@@ -82,6 +82,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     : retained.length < 2 ? `${retained.length === 0 ? 'Aucune piste retenue' : '1 piste retenue'} : retiens-en 2 ou 3 (bouton « Retenir »).`
     : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
     : `${retained.length} pistes retenues, chacune avec sa phrase : prêt à envoyer.`;
+  // her form is not finished: the tracks come from her answers, so nothing is generated or added before she sends it (the AI buttons wait too)
+  const FORM_UNFINISHED = 'Possible quand son formulaire sera terminé : les pistes partent de ses réponses.';
+  // what she imagined when she chose her track: the coach builds the plan from it (latest choice only)
+  const chosenWithIdeas = [...exchanges].reverse().find((x) => x.kind === 'choix' && x.response === 'choisie');
+  const herIdeas = chosenWithIdeas?.response_data
+    ? { title: (chosenWithIdeas.payload as ChoicePayload).items[chosenWithIdeas.response_choice ?? -1]?.title ?? '', ideas: chosenWithIdeas.response_data }
+    : null;
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
   const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
@@ -220,6 +227,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             <strong>{RESPONSE_LABEL[x.response]}</strong>
                             {x.response === 'choisie' && x.response_choice !== null && x.kind === 'choix' ? ` : ${(x.payload as ChoicePayload).items[x.response_choice]?.title ?? ''}` : ''}
                             {x.answered_at ? <span className="a-sub"> · {fmtDate(x.answered_at, 'fr', DATE_TIME)}</span> : null}
+                            {x.response_data && <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{ideaLines(x.response_data).map((l) => <li key={l}>{l}</li>)}</ul>}
                             {x.candidate_comment && <div style={{ whiteSpace: 'pre-wrap' }}>« {x.candidate_comment} »</div>}
                           </div>
                         )}
@@ -242,7 +250,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <div className="a-card-head" style={{ flexWrap: 'wrap' }}>
                     <div>
                       <p className="a-muted" style={{ margin: 0 }}>
-                        Générées à partir de ses réponses. Retiens 2 ou 3 pistes (« Retenir »), adapte-les, puis envoie-les : c’est la candidate qui choisit, « Choisir » ne s’active qu’une fois qu’elle a répondu.
+                        Rien n’est généré à l’envoi de son formulaire : écris d’abord tes précisions, puis « Générer les propositions » (modèles faits à partir de ses réponses) ou « Suggérer avec l’IA ».
+                        Retiens 2 ou 3 pistes (« Retenir »), adapte-les, puis envoie-les : c’est la candidate qui choisit, « Choisir » ne s’active qu’une fois qu’elle a répondu.
                         « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
                         {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
@@ -268,7 +277,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                           ))}
                         </InlineForm>
                       )}
-                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={TRACKS_AFTER_FORM}><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}><Icon name="clock" size={16} />{tracks.some((t) => t.origin === 'personnelle' || t.origin === 'croisement') ? 'Régénérer' : 'Générer les propositions'}</EditButton></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
@@ -342,7 +351,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                       <input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="add" />
                       <input className="a-input" name="title" placeholder="Ajouter ma propre piste…" aria-label="Nouvelle piste" />
                       <select className="a-select-f" name="format" aria-label="Format de la nouvelle piste" style={{ width: 'auto' }}><option value="talk">Talk</option><option value="lightning">Lightning talk</option><option value="atelier">Atelier</option></select>
-                      <EditButton kind="other" className="a-btn is-ghost" locked={!c.completed_at} lockedReason={TRACKS_AFTER_FORM}>Ajouter</EditButton>
+                      <EditButton kind="other" className="a-btn is-ghost" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}>Ajouter</EditButton>
                     </InlineForm>
                   )}
                   {!lock && (
@@ -359,6 +368,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <Fold id="h-sujet" title="Sujet retenu et candidature">
                 <EditScope>
                 <p className="a-muted" style={{ margin: 0 }}>Se remplit tout seul quand la candidate a choisi une piste ; à compléter avant de valider le sujet.</p>
+                {herIdeas && (
+                  <div role="note" aria-label="Ce qu’elle a imaginé" style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--surface-sunken)' }}>
+                    <p className="a-eyebrow" style={{ margin: '0 0 6px' }}>Ce qu’elle a imaginé pour « {herIdeas.title} »</p>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>{ideaLines(herIdeas.ideas).map((l) => <li key={l}>{l}</li>)}</ul>
+                  </div>
+                )}
                 {!lock && c.completed_at && startSubject && (aiConfigured() || openaiConfigured()) && (
                   <InlineForm action={improveSubjectAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                     <input type="hidden" name="cid" value={id} />

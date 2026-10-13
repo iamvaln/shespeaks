@@ -103,10 +103,14 @@ test('suggestions made by the AI are not touched by the template regeneration', 
   assert.equal(t.filter((x) => x.origin !== 'ia').length, 5, 'and the five templates are still there');
 });
 
-test('no tracks are regenerated or added before her form is sent: the refusal the greyed buttons stand for', { skip }, async () => {
-  const unfinished = (await raw`insert into candidates (token, name, branch, status, current_screen) values (${crypto.randomBytes(8).toString('hex')}, 'Pas finie', 'A', 'en_cours', 'p1') returning id`)[0].id;
-  assert.equal(await data.tracksRefusal(unfinished), data.TRACKS_AFTER_FORM);
-  assert.match(await data.tracksRefusal(unfinished), /formulaire sera terminé/);
-  assert.equal(await data.tracksRefusal(await candidate()), null, 'a finished form: allowed');
-  assert.equal(await data.tracksRefusal(2000000000), data.TRACKS_AFTER_FORM, 'unknown candidate: nothing to regenerate');
+test('sending her form makes no track: the coach generates them from the fiche, after her orientations', { skip }, async () => {
+  const token = crypto.randomBytes(8).toString('hex');
+  const [{ id }] = await raw`insert into candidates (token, name, email, branch, status, current_screen)
+    values (${token}, 'Test', ${token + '@example.org'}, 'A', 'en_cours', 'a2') returning id`;
+  await data.setAnswers(id, { P5: 'fr', A2: ['mobile'], A3: 'Flutter', A7: ['demo'], A4: 'Un bug tenace sur la synchronisation hors-ligne' });
+  await diagnostic.completeDiagnostic(id);
+  assert.equal((await tracks(id)).length, 0, 'nothing generated at the end of the form');
+  assert.ok((await raw`select 1 from subjects where candidate_id = ${id}`).length, 'the subject row is still prepared');
+  await diagnostic.regenerateTracks(id); // « Générer les propositions »
+  assert.equal((await tracks(id)).length, 5);
 });
