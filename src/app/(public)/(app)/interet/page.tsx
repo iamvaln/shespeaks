@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getCandidateFromCookie, getLocale } from '@/lib/locale';
-import { wizardState } from '@/lib/diagnostic';
+import { healStuck, wizardState } from '@/lib/diagnostic';
 import { admission } from '@/lib/admission';
 import { getFormRefs } from '@/lib/data';
 import { Wizard, type WizardInit } from '@/components/Wizard';
@@ -14,7 +14,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function InteretPage() {
   const locale = await getLocale();
-  const c = await getCandidateFromCookie();
+  // a dossier left « done » without its end date is finished first, so she lands on her space and the closing date does not apply to her
+  const stored = await getCandidateFromCookie();
+  const c = stored ? await healStuck(stored) : undefined;
   if (c?.completed_at) redirect('/plan');
   const gate = await admission(c);
   if (!gate.open) return <ClosedNotice locale={locale} closedOn={gate.closedOn} />;

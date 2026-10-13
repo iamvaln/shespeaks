@@ -135,6 +135,22 @@ After the diagnostic, the coach and the candidate go through a short series of e
 - **No mention of AI on the candidate side.** Pages and emails speak of « ta coach » / « your coach » only, even when a topic started as an AI suggestion.
 - **Tests.** `tests/journey.test.ts` and the other unit tests, `tests/db/*.test.mjs` for the database rules.
 
+## Common calendar and admission
+
+The Settings page (coach space) holds the dates shared by every candidate: the last day to send an interest (`interest_deadline`), the internal submission date, the rehearsal day (`rehearsal_date`, with a free note `rehearsal_info`) and the switch for the calendar reminders. Empty = not set (no closing). Warnings (never blocking) point at dates that leave less than 14 days of preparation.
+
+- **Closing**: the deadline day is open all day (Douala time, UTC+1); the next day no new dossier starts and no unfinished one is sent, unless the coach opens the fiche of an unfinished dossier and uses « Admettre malgré la clôture ». The form, the resume links and the home page say so.
+- **Events offered**: only events with a real date that is still ahead (and after the rehearsal day when it is set). « Autre » is no longer offered; an existing dossier keeps its value. Dossiers already on « Autre » or on an event without a date can be listed with:
+
+  ```sql
+  select c.id, c.name, c.email, c.city, c.city_other, c.status
+  from candidates c left join devfest_events e on e.city = c.city
+  where c.status <> 'non_retenue' and (c.city = 'autre' or e.event_date is null)
+  order by c.id;
+  ```
+
+- **Stuck dossiers**: a candidate whose last page was recorded without the dossier being finished (a failure between the two steps of the former finish) shows « En cours » at « écran 1 sur 6 ». They are finished when the candidate opens her link, and Settings lists the others with a « Finaliser les dossiers bloqués » button (confirmation email to the candidate, notification to the coaches; the end date is the day of her last send). The same list as SQL: `select id, name, email, last_activity_at from candidates where current_screen = 'done' and completed_at is null;`.
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

@@ -4,8 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getCandidate, getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
-import { regenerateTracks } from '@/lib/diagnostic';
+import { getCandidate, getRefs, getTracks, markUpdated, setStatus, type Candidate, type Coach } from '@/lib/data';
+import { healStuck, regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
 import type { AiProvider } from '@/lib/ai-topics';
@@ -353,6 +353,23 @@ export async function saveSettingsAction(f: FormData) {
   // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
+}
+
+/** Finishes the dossiers left « done » without an end date (the former two-step finish): same steps as the last screen, mails included. */
+export async function recoverStuckAction() {
+  await requireCoach();
+  const rows = await all<Candidate>(`SELECT * FROM candidates WHERE current_screen='done' AND completed_at IS NULL ORDER BY id`);
+  let finished = 0;
+  for (const c of rows) {
+    try {
+      if ((await healStuck(c)).completed_at) finished++;
+    } catch (e) {
+      console.error('[recover] dossier', c.id, e);
+    }
+  }
+  revalidatePath('/admin/settings');
+  if (rows.length === 0) return back('/admin/settings', 'Aucun dossier bloqué.');
+  return back('/admin/settings', `${finished} dossier${finished > 1 ? 's' : ''} finalisé${finished > 1 ? 's' : ''} sur ${rows.length}${finished < rows.length ? ' : les autres ont échoué, détail dans le journal du serveur' : ''}.`, finished < rows.length);
 }
 
 // ---- exchanges with the candidate (proposals flow) -------------------------------

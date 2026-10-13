@@ -2,11 +2,11 @@ import { getSetting } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
 import { getRefs, listEvents, refsToText } from '@/lib/data';
 import { calendarWarnings } from '@/lib/calendar';
-import { todayIso } from '@/lib/dates';
+import { dayOf, todayIso } from '@/lib/dates';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
 import { all } from '@/lib/db';
-import { saveSettingsAction } from '../../actions';
+import { recoverStuckAction, saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +21,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   } catch {
     migrations = null; // table absent: migrations were never run through the tracked runner
   }
+  const stuck = await all<{ id: number; name: string | null; email: string | null; last_activity_at: string }>(`SELECT id, name, email, last_activity_at FROM candidates WHERE current_screen='done' AND completed_at IS NULL ORDER BY id`);
   const issues = checkEnv(process.env, { production: process.env.NODE_ENV === 'production' });
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
@@ -60,6 +61,19 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           </>
         )}
       </section>
+
+      {stuck.length > 0 && (
+        <section className="a-card a-stack" aria-labelledby="h-stuck">
+          <h2 id="h-stuck" className="a-h2">Dossiers bloqués ({stuck.length})</h2>
+          <p className="a-muted" style={{ margin: 0 }}>Ces candidates ont envoyé la dernière page du formulaire, mais leur dossier n’a pas été finalisé (il apparaît « En cours », sans date de fin, et personne n’a été prévenu). Le bouton les finalise comme à l’envoi de la dernière page : statut « Intérêt reçu », ligne du sujet, email de confirmation à la candidate et notification aux coachs. La date de fin reprend le jour de leur dernier envoi.</p>
+          <ul className="a-issues" aria-label="Dossiers bloqués">
+            {stuck.slice(0, 30).map((c) => (
+              <li key={c.id}><span className="a-pill is-soft">#{c.id}</span><div style={{ minWidth: 0 }}><a href={`/admin/candidates/${c.id}`}>{c.name || 'Sans nom'}</a><div className="a-muted">{c.email || 'pas d’email'} · dernier envoi le {(dayOf(c.last_activity_at) ?? '').split('-').reverse().join('/')}</div></div></li>
+            ))}
+          </ul>
+          <form action={recoverStuckAction}><button className="a-btn">Finaliser les dossiers bloqués ({stuck.length})</button></form>
+        </section>
+      )}
 
       <form action={saveSettingsAction} className="a-stack" style={{ gap: 20 }}>
         <section className="a-card a-stack">

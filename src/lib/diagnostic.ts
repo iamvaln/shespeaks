@@ -173,9 +173,12 @@ export async function submitScreen(token: string | null, screenId: string, value
     const sameBranch = newBranch === cur.branch;
     // Resume pointer = furthest screen reached (editing an earlier screen does not move it backwards).
     const pointer = nextId !== 'done' && sameBranch && furthest > idx + 1 ? cur.current_screen : nextId;
-    await run('UPDATE candidates SET current_screen=? WHERE id=?', pointer, id);
     await touchCandidate(id, true);
-    return { id, created, nextId, token: cur.token };
+    // The last screen finishes the form in this same transaction: the « done » marker, the end date, the status and the subject row go
+    // together or not at all (a failure leaves her on the last screen, never « done » without a date). The mails go out after the commit.
+    if (nextId === 'done') return { id, created, nextId, token: cur.token, finishedNow: await finalizeCandidate(id) };
+    await run('UPDATE candidates SET current_screen=? WHERE id=?', pointer, id);
+    return { id, created, nextId, token: cur.token, finishedNow: false };
   });
 
   const fresh = (await getCandidate(result.id))!;
@@ -183,46 +186,59 @@ export async function submitScreen(token: string | null, screenId: string, value
     const m = candidateStarted({ name: fresh.name ?? '' }, `${appUrl()}/reprendre/${fresh.token}`, fresh.locale);
     deferMail(() => sendMail({ ...m, to: fresh.email!, kind: 'candidate_started', candidateId: fresh.id }));
   }
-  let completed = false;
-  if (result.nextId === 'done') {
-    await completeDiagnostic(fresh.id);
-    completed = true;
-  }
-  return { ok: true, token: result.token, next: result.nextId, created: result.created, completed };
+  if (result.finishedNow) deferMail(() => notifyCompletion(fresh.id)); // after the response: the candidate never waits on email
+  return { ok: true, token: result.token, next: result.nextId, created: result.created, completed: result.nextId === 'done' };
 }
 
-/** Last screen validated: build the recap, set the status, notify (tracks are generated later, by the coach). */
-export async function completeDiagnostic(id: number) {
+/**
+ * The database part of finishing the form, for a transaction that is already open (or opened by completeDiagnostic): the completion is
+ * claimed in one statement (of two simultaneous submissions only one changes the row, so the subject row and the mails are never doubled),
+ * then the status and the subject row are written. Returns whether this call finished it. `completedAt` (a UTC timestamp) dates a dossier
+ * finished late by the recovery with the moment she sent it, not the moment it was recovered.
+ */
+export async function finalizeCandidate(id: number, completedAt: string | null = null): Promise<boolean> {
   const c = (await getCandidate(id))!;
-  if (c.completed_at) return;
+  if (c.completed_at) return false;
   const a = await getAnswers(id);
-  const refs = await getRefs();
-  const claimed = await tx(async () => {
-    // Claim the completion in one statement: of two simultaneous submissions (two devices, a retry), only one changes the row.
-    // The other waits for the first to commit, finds completed_at set and does nothing, so tracks and emails are never doubled.
-    const won = await run(`UPDATE candidates SET completed_at=(now() at time zone 'utc'), current_screen='done' WHERE id=? AND completed_at IS NULL`, id);
-    if (won === 0) return false;
-    await setStatus(id, 'diagnostic_recu', 'système');
-    const fmt = a['D4'] && a['D4'] !== 'ouverte' ? String(a['D4']) : null;
-    if (c.branch === 'A' || c.branch === 'B') {
-      // no track is made here: the coach gives her orientations first, then generates them (templates or AI) from the fiche
-      await run('INSERT INTO subjects (candidate_id,audience,format) VALUES (?,?,?) ON CONFLICT DO NOTHING', id, c.branch === 'B' ? String(a['B3'] ?? '') : null, fmt);
-    } else if (c.branch === 'C') {
-      await run(
-        `INSERT INTO subjects (candidate_id,title,abstract,audience,format) VALUES (?,?,?,?,?)
-         ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format`,
-        id, String(a['C1'] ?? ''), String(a['C-abstract'] ?? ''), String(a['C2'] ?? ''), fmt,
-      );
-    } else if (c.branch === 'D') {
-      await run(
-        `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state) VALUES (?,?,?,?,?,?)
-         ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format, application_state=excluded.application_state`,
-        id, String(a['D1-a'] ?? ''), String(a['D1-b'] ?? ''), String(a['D1-c'] ?? ''), fmt, String(a['D1-d'] ?? 'a_soumettre'),
-      );
-    }
-    return true;
-  });
-  if (claimed) deferMail(() => notifyCompletion(id)); // after the response: the candidate never waits on email
+  const won = await run(`UPDATE candidates SET completed_at=COALESCE(?::timestamp, now() at time zone 'utc'), current_screen='done' WHERE id=? AND completed_at IS NULL`, completedAt, id);
+  if (won === 0) return false;
+  await setStatus(id, 'diagnostic_recu', 'système');
+  const fmt = a['D4'] && a['D4'] !== 'ouverte' ? String(a['D4']) : null;
+  if (c.branch === 'A' || c.branch === 'B') {
+    // no track is made here: the coach gives her orientations first, then generates them (templates or AI) from the fiche
+    await run('INSERT INTO subjects (candidate_id,audience,format) VALUES (?,?,?) ON CONFLICT DO NOTHING', id, c.branch === 'B' ? String(a['B3'] ?? '') : null, fmt);
+  } else if (c.branch === 'C') {
+    await run(
+      `INSERT INTO subjects (candidate_id,title,abstract,audience,format) VALUES (?,?,?,?,?)
+       ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format`,
+      id, String(a['C1'] ?? ''), String(a['C-abstract'] ?? ''), String(a['C2'] ?? ''), fmt,
+    );
+  } else if (c.branch === 'D') {
+    await run(
+      `INSERT INTO subjects (candidate_id,title,abstract,audience,format,application_state) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(candidate_id) DO UPDATE SET title=excluded.title, abstract=excluded.abstract, audience=excluded.audience, format=excluded.format, application_state=excluded.application_state`,
+      id, String(a['D1-a'] ?? ''), String(a['D1-b'] ?? ''), String(a['D1-c'] ?? ''), fmt, String(a['D1-d'] ?? 'a_soumettre'),
+    );
+  }
+  return true;
+}
+
+/** Finish the form of a dossier that is not finished (the recovery): the same steps as the last screen, mails included. */
+export async function completeDiagnostic(id: number, completedAt: string | null = null) {
+  if (await tx(() => finalizeCandidate(id, completedAt))) deferMail(() => notifyCompletion(id));
+}
+
+/** A dossier whose last screen was recorded (« done » marker) without its end date: left so by the former two-step finish. */
+export const isStuck = (c: Pick<Candidate, 'current_screen' | 'completed_at'>) => c.current_screen === 'done' && !c.completed_at;
+
+/**
+ * Finish a stuck dossier when someone opens it, before answering, so she lands on the confirmation and not on screen 1. The end date is
+ * the moment she sent the last page (her last activity), so the closing date does not apply to her: she sent it in time.
+ */
+export async function healStuck(c: Candidate): Promise<Candidate> {
+  if (!isStuck(c)) return c;
+  await completeDiagnostic(c.id, c.last_activity_at);
+  return (await getCandidate(c.id)) ?? c;
 }
 
 export async function coachRecipients(c: Candidate): Promise<{ name: string; email: string }[]> {

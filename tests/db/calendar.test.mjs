@@ -144,3 +144,66 @@ test('reminders to finish the form stop once it is closed, unless she was admitt
   assert.notEqual(await reminders.sendReminderNow(admitted), 'closed');
   await reset();
 });
+
+// ---- finishing the form ----------------------------------------------------------------------------------------------------------
+const DIAG1 = { D1: 'premiere', D2: 2, D3: ['legitime', 'trac'] };
+const DIAG2 = { D4: 'atelier', P5: 'fr', D5: '1-2', D6: 'B' };
+async function walkToLastScreen() {
+  const { box, ip } = fresh();
+  const first = await diag.submitScreen(null, 'profile', profile(box, 'ouvert'), 'fr', ip);
+  assert.equal(first.ok, true, JSON.stringify(first));
+  for (const [screen, values] of [['diag1', DIAG1], ['diag2', DIAG2], ['b1', { B1: 'web', B3: 'tous' }]]) assert.equal((await diag.submitScreen(first.token, screen, values, 'fr')).ok, true, screen);
+  const [row] = await raw`select id from candidates where token = ${first.token}`;
+  return { token: first.token, id: row.id };
+}
+const waitFor = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
+
+test('the last screen finishes the form in one transaction: when finishing fails nothing is half done, and she can send it again', { skip }, async () => {
+  await reset();
+  const { token, id } = await walkToLastScreen();
+  await raw`create or replace function ss_fail_subject() returns trigger language plpgsql as $$ begin raise exception 'finishing failed on purpose'; end $$`;
+  await raw`create trigger ss_fail_subject before insert on subjects for each row execute function ss_fail_subject()`;
+  try {
+    await assert.rejects(() => diag.submitScreen(token, 'b2', { B4: ['retour'] }, 'fr'), /finishing failed on purpose/);
+  } finally {
+    await raw`drop trigger if exists ss_fail_subject on subjects`;
+  }
+  const [stuck] = await raw`select current_screen, completed_at, status from candidates where id = ${id}`;
+  assert.deepEqual({ ...stuck }, { current_screen: 'b2', completed_at: null, status: 'en_cours' }, 'not « done » without its end date, not half finished');
+  assert.equal((await raw`select count(*)::int as n from answers where candidate_id = ${id} and code = 'B4'`)[0].n, 0, 'the last answers were not kept either: she sends the page again');
+
+  const again = await diag.submitScreen(token, 'b2', { B4: ['retour'] }, 'fr');
+  assert.deepEqual([again.ok, again.completed, again.next], [true, true, 'done']);
+  const [done] = await raw`select current_screen, completed_at, status from candidates where id = ${id}`;
+  assert.equal(done.current_screen, 'done'); assert.ok(done.completed_at); assert.equal(done.status, 'diagnostic_recu');
+  assert.equal((await raw`select count(*)::int as n from subjects where candidate_id = ${id}`)[0].n, 1);
+  assert.ok(await waitFor(async () => (await raw`select count(*)::int as n from email_log where candidate_id = ${id}`)[0].n >= 1), 'the confirmation goes out after the commit');
+});
+
+test('two simultaneous sends of the last screen finish the form once', { skip }, async () => {
+  await reset();
+  const { token, id } = await walkToLastScreen();
+  const both = await Promise.all([diag.submitScreen(token, 'b2', { B4: ['retour'] }, 'fr'), diag.submitScreen(token, 'b2', { B4: ['retour'] }, 'fr')]);
+  assert.ok(both.every((r) => r.ok), JSON.stringify(both));
+  assert.equal((await raw`select count(*)::int as n from status_history where candidate_id = ${id} and new_status = 'diagnostic_recu'`)[0].n, 1, 'one status change');
+  assert.equal((await raw`select count(*)::int as n from subjects where candidate_id = ${id}`)[0].n, 1);
+});
+
+test('a dossier left « done » without an end date is finished when it is opened, dated from her last send, even after the closing day', { skip }, async () => {
+  await reset();
+  const [row] = await raw`insert into candidates (token, name, email, city, branch, status, current_screen, last_activity_at)
+    values ('t-stuck', 'Bloquée', 'stuck@example.org', 'ouvert', 'B', 'en_cours', 'done', '2026-09-30 22:30:00') returning id`;
+  await db.setSetting('interest_deadline', day(-10)); // closed for everyone else
+  const c = await data.getCandidate(row.id);
+  assert.equal(diag.isStuck(c), true);
+  const healed = await diag.healStuck(c);
+  assert.ok(healed.completed_at, 'finished');
+  assert.equal(healed.completed_at.slice(0, 19).replace('T', ' '), '2026-09-30 22:30:00', 'dated from her last send, not from the recovery');
+  assert.equal(healed.status, 'diagnostic_recu');
+  assert.equal((await raw`select count(*)::int as n from subjects where candidate_id = ${row.id}`)[0].n, 1);
+  assert.equal(diag.isStuck(healed), false);
+  assert.equal(await diag.healStuck(healed), healed, 'nothing to do the second time');
+  const quiet = await data.getCandidate((await raw`insert into candidates (token, name, branch, status, current_screen) values ('t-mid', 'Milieu', 'B', 'en_cours', 'b2') returning id`)[0].id);
+  assert.equal((await diag.healStuck(quiet)).completed_at, null, 'a dossier still being filled is left alone');
+  await reset();
+});
