@@ -243,6 +243,77 @@ export function candidateProposalReminder(name: string, url: string, loc: Locale
     ? build('Ta coach attend ta réponse', { heading: `${first(name)}, un petit rappel`, paragraphs: ['Ta coach t’a envoyé une proposition il y a deux jours. Réponds-lui depuis ton espace pour avancer vers ta candidature.'], cta: { label: 'Voir la proposition', url } })
     : build('Your coach is waiting for your answer', { heading: `${first(name)}, a quick reminder`, paragraphs: ['Your coach sent you a proposal two days ago. Answer from your space to move towards your application.'], cta: { label: 'See the proposal', url } });
 }
+// ---- calendar reminders (closing of the form, exchanges, submission) -------------------------------------------------------------
+const inDays = (n: number, loc: Locale) => (loc === 'fr' ? (n <= 0 ? 'ce soir' : n === 1 ? 'demain' : `dans ${n} jours`) : n <= 0 ? 'tonight' : n === 1 ? 'tomorrow' : `in ${n} days`);
+const daysLeftFr = (n: number) => `${n} jour${n > 1 ? 's' : ''}`;
+
+/** `daysLeft`: whole days from today to the last day (0 = today). `deadline`: that day, written for her. */
+export function candidateClosingReminder(c: { name: string }, resumeUrl: string, loc: Locale, i: { daysLeft: number; deadline: string; step: { done: number; total: number } }): Built {
+  const n = i.daysLeft;
+  return loc === 'fr'
+    ? build(n <= 0 ? 'Dernier jour pour envoyer ton intérêt SheSpeaks' : `Plus que ${daysLeftFr(n)} pour envoyer ton intérêt SheSpeaks`, {
+        heading: `${first(c.name)}, il est encore temps`,
+        paragraphs: [
+          `Tu as commencé ton formulaire d’intérêt SheSpeaks (écran ${i.step.done} sur ${i.step.total}) sans le terminer.`,
+          `Les candidatures ferment après le ${i.deadline} (${inDays(n, loc)}) : passé ce jour, plus aucun formulaire ne pourra être envoyé.`,
+          'Tes réponses sont déjà enregistrées : il te reste quelques minutes.',
+        ],
+        cta: { label: 'Reprendre là où je me suis arrêtée', url: resumeUrl },
+      })
+    : build(n <= 0 ? 'Last day to send your SheSpeaks interest' : `Only ${n} day${n > 1 ? 's' : ''} left to send your SheSpeaks interest`, {
+        heading: `${first(c.name)}, there is still time`,
+        paragraphs: [
+          `You started your SheSpeaks interest form (screen ${i.step.done} of ${i.step.total}) without finishing it.`,
+          `Applications close after ${i.deadline} (${inDays(n, loc)}): after that day, no form can be sent any more.`,
+          'Your answers are already saved: it only takes a few minutes.',
+        ],
+        cta: { label: 'Pick up where I left off', url: resumeUrl },
+      });
+}
+
+/** She has to answer her coach (choose a topic, approve a subject, add a photo) before the internal submission date. */
+export function candidateExchangeReminder(name: string, url: string, loc: Locale, i: { what: 'choix' | 'sujet' | 'photo'; daysLeft: number; deadline: string }): Built {
+  const fr = { choix: ['Ta coach attend ton choix de sujet', 'Ta coach t’a proposé des sujets : choisis celui que tu préfères depuis ton espace.'], sujet: ['Ta coach attend ta réponse sur ton sujet', 'Ta coach t’a envoyé ton sujet ajusté : approuve-le, ou demande des changements, depuis ton espace.'], photo: ['Ta coach attend ta photo', 'Ta coach attend ta photo de speaker : ajoute-la depuis ton espace.'] }[i.what];
+  const en = { choix: ['Your coach is waiting for your choice of topic', 'Your coach suggested topics: pick the one you prefer from your space.'], sujet: ['Your coach is waiting for your answer on your topic', 'Your coach sent you your adjusted topic: approve it, or ask for changes, from your space.'], photo: ['Your coach is waiting for your photo', 'Your coach is waiting for your speaker photo: add it from your space.'] }[i.what];
+  return loc === 'fr'
+    ? build(fr[0], { heading: `${first(name)}, on compte sur toi`, paragraphs: [fr[1], `La date interne de soumission est le ${i.deadline} (${inDays(i.daysLeft, loc)}) : plus tôt tu réponds, plus vite vous finalisez ta candidature ensemble.`], cta: { label: 'Ouvrir mon espace', url } })
+    : build(en[0], { heading: `${first(name)}, we are counting on you`, paragraphs: [en[1], `The internal submission date is ${i.deadline} (${inDays(i.daysLeft, loc)}): the sooner you answer, the sooner you finalise your application together.`], cta: { label: 'Open my space', url } });
+}
+
+/**
+ * Her topic is approved and her photo validated: she has to submit. `kind`: whether the date is the team's internal date or the call's
+ * own closing; `callCloses` is the call's closing when the date is the internal one.
+ */
+export function candidateSubmitReminder(name: string, url: string, loc: Locale, i: { daysLeft: number; date: string; kind: 'internal' | 'cfp'; callCloses: string | null; where: string | null }): Built {
+  const n = i.daysLeft;
+  const facts = i.where ? ([[loc === 'fr' ? 'Où soumettre' : 'Where to submit', i.where]] as [string, string][]) : undefined;
+  const when = inDays(n, loc);
+  return loc === 'fr'
+    ? build(n <= 0 ? 'Dernier jour pour soumettre ta candidature' : `Plus que ${daysLeftFr(n)} pour soumettre ta candidature`, {
+        heading: `${first(name)}, à toi de jouer`,
+        paragraphs: [
+          'Ton sujet est approuvé et ta photo validée : il ne reste qu’à soumettre ta candidature à l’appel à speakers.',
+          i.kind === 'internal'
+            ? `La date interne de soumission est le ${i.date} (${when})${i.callCloses ? ` : elle laisse à l’équipe le temps de relire avant la clôture de l’appel, le ${i.callCloses}` : ''}.`
+            : `L’appel à speakers ferme le ${i.date} (${when}).`,
+          'Une fois soumise, confirme-le dans ton espace.',
+        ],
+        facts,
+        cta: { label: 'Ouvrir mon espace', url },
+      })
+    : build(n <= 0 ? 'Last day to submit your application' : `Only ${n} day${n > 1 ? 's' : ''} left to submit your application`, {
+        heading: `${first(name)}, over to you`,
+        paragraphs: [
+          'Your topic is approved and your photo validated: all that is left is to submit your application to the call for speakers.',
+          i.kind === 'internal'
+            ? `The internal submission date is ${i.date} (${when})${i.callCloses ? `: it leaves the team time to proofread before the call closes on ${i.callCloses}` : ''}.`
+            : `The call for speakers closes on ${i.date} (${when}).`,
+          'Once submitted, confirm it in your space.',
+        ],
+        facts,
+        cta: { label: 'Open my space', url },
+      });
+}
 /** `code`: the 6-digit code that opens her journey in the browser she is using (the links open it in the one they open in). */
 export function candidateAccessLinks(entries: { event: string; date: string; url: string }[], loc: Locale, code: string | null = null): Built {
   const lines = entries.map((e) => (loc === 'fr' ? `${e.event} (commencé le ${e.date}) : ${e.url}` : `${e.event} (started on ${e.date}): ${e.url}`));

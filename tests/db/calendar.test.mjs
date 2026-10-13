@@ -207,3 +207,149 @@ test('a dossier left « done » without an end date is finished when it is opene
   assert.equal((await diag.healStuck(quiet)).completed_at, null, 'a dossier still being filled is left alone');
   await reset();
 });
+
+// ---- the calendar reminders ----------------------------------------------------------------------------------------------------
+let cal; let reminders;
+const at = (n) => new Date(Date.parse(`${day(n)}T09:00:00Z`)); // 10:00 in Douala on that day (relative to the run)
+const logged = async (id, kind) => (await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = ${kind}`)[0].n;
+const journal = async (id) => (await raw`select key from calendar_reminders where candidate_id = ${id} order by key`).map((r) => r.key);
+let seq = 0;
+async function stalled(extra = {}) {
+  const n = ++seq;
+  const [r] = await raw`insert into candidates (token, name, email, city, branch, status, current_screen, locale)
+    values (${'cal-s' + n + crypto.randomBytes(3).toString('hex')}, ${'Etape' + n}, ${`step${n}${crypto.randomBytes(3).toString('hex')}@example.org`}, 'ouvert', 'A', 'en_cours', 'a2', 'fr') returning id`;
+  return r.id;
+}
+async function finished(step, extra = {}) {
+  const n = ++seq;
+  const [r] = await raw`insert into candidates (token, name, email, city, branch, status, current_screen, completed_at, locale, photo_validated_at)
+    values (${'cal-f' + n + crypto.randomBytes(3).toString('hex')}, ${'Finie' + n}, ${`fin${n}${crypto.randomBytes(3).toString('hex')}@example.org`}, 'ouvert', 'D', 'diagnostic_recu', 'done', now() at time zone 'utc', 'fr', ${step === 'soumission' || step === 'photo' ? new Date() : null}) returning id`;
+  // branch D starts at the subject: one sent to her and waiting, or approved
+  if (step === 'sujet') await raw`insert into proposals (candidate_id, kind, payload, state) values (${r.id}, 'sujet', '{}', 'envoyee')`;
+  if (step === 'soumission') await raw`insert into proposals (candidate_id, kind, payload, state, response, answered_at) values (${r.id}, 'sujet', '{}', 'repondue', 'approuvee', now() at time zone 'utc')`;
+  return r.id;
+}
+const clean = async () => { await raw`delete from calendar_reminders`; await raw`delete from email_log`; await raw`delete from proposals`; await raw`delete from candidates`; await reset(); await db.setSetting('internal_deadline', ''); await db.setSetting('calendar_reminders_enabled', 'true'); await db.setSetting('reminders_enabled', 'true'); };
+
+test('closing of the form: 3 days and 1 day before, once each, only when the switch is on; the preview needs no switch and writes nothing', { skip }, async () => {
+  cal = await import('../../src/lib/calendar-reminders.ts'); reminders = await import('../../src/lib/reminders.ts');
+  await clean();
+  const id = await stalled();
+  const gone = await stalled(); await raw`update candidates set email = null where id = ${gone}`;
+  await db.setSetting('interest_deadline', day(3));
+  await db.setSetting('calendar_reminders_enabled', 'false');
+  assert.deepEqual((await cal.runCalendarReminders(at(0))).due, [], 'switch off: a real run does nothing');
+  const preview = await cal.runCalendarReminders(at(0), { dry: true });
+  assert.deepEqual(preview.due.map((d) => [d.id, d.kind, d.tier, d.daysLeft]), [[id, 'closing', 3, 3]], 'the preview lists her, not the one without an address');
+  assert.equal(preview.enabled, false);
+  assert.deepEqual(await journal(id), [], 'nothing written by a preview');
+  await db.setSetting('calendar_reminders_enabled', 'true');
+
+  assert.equal((await cal.runCalendarReminders(at(-1))).sent, 0, '4 days before: too early');
+  assert.equal((await cal.runCalendarReminders(at(0))).sent, 1);
+  assert.deepEqual(await journal(id), [`closing:${day(3)}:3`]);
+  assert.equal((await cal.runCalendarReminders(at(0))).sent, 0, 'the same run again: nothing');
+  assert.equal(await logged(id, 'calendar_closing'), 1);
+  assert.match((await raw`select body_text from email_log where candidate_id = ${id}`)[0].body_text, /Plus que 3 jours|trois jours|3 jours/);
+  assert.equal((await cal.runCalendarReminders(at(1))).sent, 0, 'the second day of the window: already written');
+  assert.equal((await cal.runCalendarReminders(at(2))).sent, 1, '1 day before: the second reminder');
+  assert.equal((await cal.runCalendarReminders(at(3))).sent, 0, 'the deadline day: already written (tier 1 spans it)');
+  assert.equal((await cal.runCalendarReminders(at(4))).sent, 0, 'never after the deadline');
+  assert.deepEqual(await journal(id), [`closing:${day(3)}:1`, `closing:${day(3)}:3`]);
+});
+
+test('a missed day is made up the day after, a longer miss is not; a failed send gives the reminder back; a new date arms it again', { skip }, async () => {
+  await clean();
+  const id = await stalled();
+  await db.setSetting('interest_deadline', day(3));
+  assert.equal((await cal.runCalendarReminders(at(1))).sent, 1, 'the cron missed the day it fell on: sent the day after');
+  await raw`delete from calendar_reminders`; await raw`delete from email_log`;
+  assert.equal((await cal.runCalendarReminders(at(-3))).sent, 0);
+
+  // a send that fails (Resend unreachable) leaves no trace in the journal
+  await raw`delete from calendar_reminders`;
+  const saved = { key: process.env.RESEND_API_KEY, url: process.env.RESEND_API_URL, gap: process.env.RESEND_MIN_GAP_MS };
+  process.env.RESEND_API_KEY = 'x'; process.env.RESEND_API_URL = 'http://127.0.0.1:9'; process.env.RESEND_MIN_GAP_MS = '0';
+  let failed;
+  try { failed = await cal.runCalendarReminders(at(0)); } finally { process.env.RESEND_API_KEY = saved.key ?? ''; if (!saved.key) delete process.env.RESEND_API_KEY; if (saved.url) process.env.RESEND_API_URL = saved.url; else delete process.env.RESEND_API_URL; if (saved.gap) process.env.RESEND_MIN_GAP_MS = saved.gap; else delete process.env.RESEND_MIN_GAP_MS; }
+  assert.deepEqual([failed.sent, failed.failed], [0, 1]);
+  assert.deepEqual(await journal(id), [], 'given back, so the next run tries again');
+  assert.equal((await cal.runCalendarReminders(at(0))).sent, 1, 'the next run sends it');
+
+  // the team moves the date: the reminder is armed again for the new date
+  await db.setSetting('interest_deadline', day(4));
+  assert.equal((await cal.runCalendarReminders(at(1))).sent, 1, 'new date, new key');
+  assert.deepEqual(await journal(id), [`closing:${day(3)}:3`, `closing:${day(4)}:3`]);
+});
+
+test('exchanges: only when it is her turn, 7, 3 and 1 days before the internal date; a reopened journey keeps them', { skip }, async () => {
+  await clean();
+  await db.setSetting('internal_deadline', day(7));
+  const waiting = await finished('sujet');
+  const coachTurn = await finished('sujet'); await raw`delete from proposals where candidate_id = ${coachTurn}`; // nothing sent to her
+  const reopened = await finished('sujet'); await raw`update candidates set reopened_at = now() at time zone 'utc' where id = ${reopened}`;
+  const out = await finished('sujet'); await raw`update candidates set status = 'non_retenue' where id = ${out}`;
+  const submitted = await finished('sujet'); await raw`update candidates set submitted_at = now() at time zone 'utc' where id = ${submitted}`;
+  const r = await cal.runCalendarReminders(at(0));
+  assert.deepEqual(r.due.map((d) => d.id).sort(), [reopened, waiting].sort(), 'her turn only; not set aside, not submitted');
+  assert.equal(r.sent, 2);
+  assert.equal(await logged(waiting, 'calendar_exchange'), 1);
+  assert.deepEqual(await journal(waiting), [`exchange:${day(7)}:7`]);
+  assert.equal((await cal.runCalendarReminders(at(4))).sent, 2, '3 days before');
+  assert.equal((await cal.runCalendarReminders(at(6))).sent, 2, '1 day before');
+});
+
+test('submission: aims at the first date ahead, and a missed day sends only the closest tier', { skip }, async () => {
+  await clean();
+  await raw`update devfest_events set cfp_close_date = ${day(12)} where city = 'ouvert'`;
+  await db.setSetting('internal_deadline', day(5));
+  const id = await finished('soumission');
+  let r = await cal.runCalendarReminders(at(-2));
+  assert.deepEqual(r.due.map((d) => [d.kind, d.target, d.tier]), [['submit', day(5), 7]], 'internal date first');
+  await clean(); await db.setSetting('internal_deadline', day(5));
+  const again = await finished('soumission');
+  r = await cal.runCalendarReminders(at(5)); // the cron missed the day before: « 1 day left » and « last day » are both due
+  assert.deepEqual(r.due.map((d) => [d.id, d.tier]), [[again, 0]], 'the closest tier is sent');
+  assert.deepEqual(await journal(again), [`submit:${day(5)}:0`, `submit:${day(5)}:1`], 'the other is written, not sent');
+  assert.equal(await logged(again, 'calendar_submit'), 1);
+  // the internal date has passed: the next date ahead is the call's own closing
+  await clean(); await db.setSetting('internal_deadline', day(1));
+  const later = await finished('soumission');
+  r = await cal.runCalendarReminders(at(6));
+  assert.deepEqual(r.due.map((d) => [d.id, d.kind, d.target, d.tier]), [[later, 'submit', day(12), 7]], 'second date: its own reminders');
+  assert.equal(id > 0, true);
+});
+
+test('one email per candidate and day: the other passes wait, nothing is claimed; one per mailbox', { skip }, async () => {
+  await clean();
+  await db.setSetting('interest_deadline', day(3));
+  const id = await stalled();
+  await raw`update candidates set last_activity_at = (now() at time zone 'utc') - interval '3 days' where id = ${id}`; // the abandoned-form pass would also write to her
+  const now = new Date();
+  const first = await cal.runCalendarReminders(now);
+  assert.equal(first.sent, 1);
+  const other = await reminders.runReminders(now);
+  assert.ok(!other.due.some((d) => d.id === id), 'the abandoned-form pass skips her today');
+  assert.equal((await raw`select reminders_sent from candidates where id = ${id}`)[0].reminders_sent, 0, 'and her tier is not burned');
+  assert.equal(await logged(id, 'candidate_reminder_1'), 0);
+
+  // the 48 h proposal reminder waits too
+  const waiting = await finished('sujet');
+  await raw`update proposals set sent_at = (now() at time zone 'utc') - interval '3 days' where candidate_id = ${waiting}`;
+  await raw`insert into calendar_reminders (candidate_id, key) values (${waiting}, 'closing:old:3')`; // written to today
+  assert.equal(await reminders.remindPendingProposals(now), 0);
+  assert.equal((await raw`select reminded_at from proposals where candidate_id = ${waiting}`)[0].reminded_at, null, 'its one reminder is still to come');
+
+  // two dossiers on one mailbox: one per run
+  await clean();
+  await db.setSetting('interest_deadline', day(3));
+  const a = await stalled(); const b = await stalled();
+  await raw`update candidates set email = 'shared@example.org' where id in (${a}, ${b})`;
+  const r = await cal.runCalendarReminders(at(0));
+  assert.equal(r.sent, 1);
+  assert.equal(r.due.filter((d) => d.held).length, 1, 'the other is held, and listed with the reason');
+  assert.match(r.due.find((d) => d.held).held, /même boîte/);
+  assert.equal((await cal.runCalendarReminders(at(1))).sent, 1, 'the other dossier goes the next day, still inside the two-day window');
+  assert.equal((await cal.runCalendarReminders(at(1))).sent, 0, 'and only once');
+  assert.deepEqual([await journal(a), await journal(b)].map((k) => k.length), [1, 1]);
+});

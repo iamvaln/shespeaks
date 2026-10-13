@@ -29,3 +29,10 @@ export const dayOf = (ts: string | null | undefined): string | null => {
   const ms = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(ts) ? ts.replace(' ', 'T') : `${ts.replace(' ', 'T')}Z`);
   return Number.isNaN(ms) ? null : todayIso(new Date(ms));
 };
+
+/** The database timestamp (UTC, « YYYY-MM-DD HH:MM:SS ») at which the programme's day `today` begins: 00:00 in Douala is 23:00 UTC the day before. */
+export const dayStartUtc = (today: string): string => {
+  const guess = Date.parse(`${today}T00:00:00Z`);
+  const wall = Date.parse(`${new Date(guess).toLocaleString('sv-SE', { timeZone: TIME_ZONE }).replace(' ', 'T')}Z`); // the zone's clock at that instant
+  return new Date(guess - (wall - guess)).toISOString().replace('T', ' ').slice(0, 19);
+};

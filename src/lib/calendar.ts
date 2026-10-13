@@ -83,3 +83,12 @@ export function rehearsalFor(i: { rehearsalDate?: string | null; eventDay?: stri
   const e = isoOrNull(i.eventDay);
   return e ? addDays(e, -10) : null;
 }
+
+/**
+ * Of the tiers of one target, those due today and not yet written: the closest one goes out, the others are only written (a cron that
+ * missed the day before would otherwise send « 1 day left » and « last day » together). `taken` says whether a tier is already in the journal.
+ */
+export function pickTier(i: { today: string; target: string | null | undefined; tiers: number[]; taken: (tier: number) => boolean }): { send: number | null; skip: number[] } {
+  const due = i.tiers.filter((t) => reminderDue({ today: i.today, target: i.target, tier: t }) && !i.taken(t)).sort((a, b) => a - b);
+  return { send: due.length ? due[0] : null, skip: due.slice(1) };
+}

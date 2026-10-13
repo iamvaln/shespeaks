@@ -10,6 +10,7 @@ import { countsAsSubmitted } from './proposals.ts';
 import { admission } from './admission.ts';
 import { admissionOpen } from './calendar.ts';
 import { todayIso } from './dates.ts';
+import { mailedToday } from './calendar-journal.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
 const hoursBetween = (a: Date, b: Date) => (a.getTime() - b.getTime()) / 3_600_000;
@@ -43,11 +44,13 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
   const mailedBoxes = new Set<string>();
   const today = todayIso(now);
   const interestDeadline = await getSetting('interest_deadline');
+  const mailed = await mailedToday(today); // the calendar pass wrote to these today: one email a day, so they wait for tomorrow (nothing is claimed)
 
   for (const c of rows) {
     if (c.reminders_sent >= max) continue;
     // after the last day to send an interest the form is closed to anyone the team has not admitted: nobody is urged to finish it
     if (!admissionOpen({ today, interestDeadline, admittedLate: !!c.admitted_late_at })) continue;
+    if (mailed.has(c.id)) continue;
     const ref = toDate(c.reminders_sent === 0 ? c.last_activity_at : (c.last_reminder_at ?? c.last_activity_at));
     const threshold = c.reminders_sent === 0 ? first : interval;
     if (hoursBetween(now, ref) < threshold) continue;
@@ -97,7 +100,9 @@ export async function remindPendingProposals(now = new Date()): Promise<number> 
        AND c.status <> 'non_retenue' AND c.email IS NOT NULL AND c.email <> ''`,
     now.toISOString().replace('T', ' ').slice(0, 19));
   let sent = 0;
+  const mailed = await mailedToday(todayIso(now)); // written to by the calendar pass today: the reminder waits for tomorrow, still unclaimed
   for (const p of due) {
+    if (mailed.has(p.candidate_id)) continue;
     const claimed = await get<{ id: number }>(`UPDATE proposals SET reminded_at=(now() at time zone 'utc') WHERE id=? AND reminded_at IS NULL AND state='envoyee' RETURNING id`, p.id);
     if (!claimed) continue;
     const c = await getCandidate(p.candidate_id);

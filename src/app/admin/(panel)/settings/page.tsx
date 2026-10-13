@@ -2,6 +2,7 @@ import { getSetting } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
 import { getRefs, listEvents, refsToText } from '@/lib/data';
 import { calendarWarnings } from '@/lib/calendar';
+import { runCalendarReminders, type CalendarKind } from '@/lib/calendar-reminders';
 import { dayOf, todayIso } from '@/lib/dates';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
@@ -11,6 +12,7 @@ import { recoverStuckAction, saveSettingsAction } from '../../actions';
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'Paramètres' };
+const KIND_LABEL: Record<CalendarKind, string> = { closing: 'clôture du formulaire', exchange: 'échange à finir', submit: 'soumission' };
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   await requireCoach();
   const sp = await searchParams;
@@ -31,6 +33,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     calendarReminders: await getSetting('calendar_reminders_enabled'),
     focus: await getSetting('topic_focus'),
   };
+  const preview = await runCalendarReminders(new Date(), { dry: true });
   const warnings = calendarWarnings({ interestDeadline: v.interest, internalDeadline: v.deadline, rehearsalDate: v.rehearsal, events: await listEvents() });
   return (
     <div className="a-page" style={{ gap: 20, maxWidth: 860 }}>
@@ -109,6 +112,21 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               ))}
             </ul>
           )}
+          <div className="a-stack" style={{ gap: 8 }} aria-labelledby="h-preview">
+            <h3 id="h-preview" style={{ margin: 0, fontSize: 15 }}>Aperçu des relances du calendrier pour aujourd’hui</h3>
+            {preview.due.length === 0 ? (
+              <p className="a-muted" style={{ margin: 0 }}>Aucune relance du calendrier n’est due aujourd’hui.{v.calendarReminders === 'true' ? '' : ' (Le réglage est éteint : rien ne partirait de toute façon.)'}</p>
+            ) : (
+              <ul className="a-issues" aria-label="Relances dues aujourd’hui">
+                {preview.due.map((d) => (
+                  <li key={d.key + d.id}>
+                    <span className={`a-pill ${d.held ? 'is-soft' : 'is-green'}`}>{d.held ? 'Retenue' : 'Partirait'}</span>
+                    <div style={{ minWidth: 0 }}><a href={`/admin/candidates/${d.id}`}>{d.name || 'Sans nom'}</a> · {KIND_LABEL[d.kind]} · {d.daysLeft === 0 ? 'jour même' : `J-${d.daysLeft}`} ({d.target.split('-').reverse().join('/')}){d.held ? <div className="a-muted">Pas aujourd’hui : {d.held}</div> : null}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <p className="a-sub" style={{ fontWeight: 400, whiteSpace: 'normal', margin: 0 }}>Aujourd’hui : {todayIso().split('-').reverse().join('/')}. Ces avertissements ne bloquent rien.</p>
         </section>
 

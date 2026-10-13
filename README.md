@@ -151,6 +151,12 @@ The Settings page (coach space) holds the dates shared by every candidate: the l
 
 - **Stuck dossiers**: a candidate whose last page was recorded without the dossier being finished (a failure between the two steps of the former finish) shows « En cours » at « écran 1 sur 6 ». They are finished when the candidate opens her link, and Settings lists the others with a « Finaliser les dossiers bloqués » button (confirmation email to the candidate, notification to the coaches; the end date is the day of her last send). The same list as SQL: `select id, name, email, last_activity_at from candidates where current_screen = 'done' and completed_at is null;`.
 
+### Calendar reminders
+
+A pass of the daily cron (`src/lib/calendar-reminders.ts`, run before the abandoned-form pass) writes to candidates at a date: **closing of the form** (unfinished form, 3 and 1 day before `interest_deadline`), **exchanges** (it is her turn to choose a topic, answer on her subject or send a photo: 7, 3 and 1 day before the internal date) and **submission** (topic approved, photo validated: 7, 3, 1 day and the day itself before the first date still ahead among the internal date and the event's call closing). Each reminder is written once in `calendar_reminders` before it is sent (the key holds the target date, so moving a date arms it again) and given back if the send fails. A reminder is due on the day it falls on and the day after (a missed cron is made up, never later); if two tiers of one target are due together only the closest is sent. One email per candidate and day (the abandoned-form pass and the 48 h proposal reminder check the journal first and wait without being claimed), one per mailbox and run, at most 300 per run.
+
+The pass does nothing while `calendar_reminders_enabled` is off (Settings). **To activate**: read « Aperçu des relances du calendrier » in Settings, call the cron by hand on the preproduction (`curl -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/reminders?dry=1"` prints what would be sent and sends nothing; `dry=1` also skips the abandoned-form pass, which has no preview mode), call it again without `dry=1`, read the emails log, then switch it on in production.
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):

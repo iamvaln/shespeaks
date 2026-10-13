@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, dayOf, isoOrNull, todayIso } from '../src/lib/dates.ts';
-import { admissionOpen, calendarWarnings, openEvents, reminderDue, rehearsalFor, urgency } from '../src/lib/calendar.ts';
+import { addDays, dayOf, dayStartUtc, isoOrNull, todayIso } from '../src/lib/dates.ts';
+import { admissionOpen, calendarWarnings, openEvents, pickTier, reminderDue, rehearsalFor, urgency } from '../src/lib/calendar.ts';
 
 test('isoOrNull accepts real days only', () => {
   assert.equal(isoOrNull('2026-10-26'), '2026-10-26');
@@ -90,4 +90,23 @@ test('the rehearsal day of a candidate: the common one, else ten days before her
   assert.equal(rehearsalFor({ rehearsalDate: '', eventDay: '2026-11-21' }), '2026-11-11');
   assert.equal(rehearsalFor({ rehearsalDate: null, eventDay: null }), null);
   assert.equal(rehearsalFor({ eventDay: 'à confirmer' }), null);
+});
+
+test('the programme\'s day begins at 23:00 UTC the day before (Douala is UTC+1, no summer time)', () => {
+  assert.equal(dayStartUtc('2026-10-13'), '2026-10-12 23:00:00');
+  assert.equal(dayStartUtc('2027-01-01'), '2026-12-31 23:00:00');
+  assert.equal(dayOf(dayStartUtc('2026-10-13')), '2026-10-13');
+  assert.equal(dayOf('2026-10-12 22:59:59'), '2026-10-12');
+});
+
+test('of the tiers due together only the closest goes out, the others are written; a tier already written is not due again', () => {
+  const none = () => false;
+  assert.deepEqual(pickTier({ today: '2026-10-25', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: 1, skip: [] }, 'one day before');
+  assert.deepEqual(pickTier({ today: '2026-10-26', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: 0, skip: [1] }, 'the day itself after a missed day: « last day » replaces « 1 day left »');
+  assert.deepEqual(pickTier({ today: '2026-10-26', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: (t) => t === 0 }), { send: 1, skip: [] }, 'tier 0 taken: tier 1 is still in its window');
+  assert.deepEqual(pickTier({ today: '2026-10-20', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: 7, skip: [] }, '6 days before: the second day of the 7-day window (a missed cron is made up)');
+  assert.deepEqual(pickTier({ today: '2026-10-21', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: null, skip: [] }, '5 days before: nothing is due');
+  assert.deepEqual(pickTier({ today: '2026-10-19', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: 7, skip: [] });
+  assert.deepEqual(pickTier({ today: '2026-10-27', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: null, skip: [] }, 'never after the target');
+  assert.deepEqual(pickTier({ today: '2026-10-25', target: null, tiers: [3, 1], taken: none }), { send: null, skip: [] });
 });

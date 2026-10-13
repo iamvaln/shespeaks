@@ -247,6 +247,8 @@ test('the candidate-facing form says nothing about the AI tool (the owner does n
       assert.ok(all.length >= (key === "journey" ? 30 : 5), `${key} (${loc}) has strings to check`);
       for (const s of all) assert.ok(!mention.test(s), `${key} (${loc}): ${s}`);
     }
+    // every other group of the public dictionary too (new groups are checked without anyone having to remember to list them)
+    for (const [key, group] of Object.entries(t(loc))) for (const s of strings(group)) assert.ok(!mention.test(s), `${key} (${loc}): ${s}`);
   }
 });
 
