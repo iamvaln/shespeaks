@@ -47,7 +47,10 @@ export function calendarWarnings(i: CalendarInput): string[] {
     for (const [label, d] of [['la date limite des intérêts', interest], ['la date interne de soumission', internal]] as const) {
       if (!d) continue;
       const gap = daysUntil(rehearsal, d);
-      if (gap !== null && gap < MIN_PREP_DAYS) out.push(`Il y a ${gap} jour${Math.abs(gap) > 1 ? 's' : ''} entre ${label} (${dayLabel(d)}) et le jour de répétition (${dayLabel(rehearsal)}) : visez ${MIN_PREP_DAYS} jours au moins.`);
+      if (gap === null || gap >= MIN_PREP_DAYS) continue;
+      out.push(gap < 0
+        ? `Le jour de répétition (${dayLabel(rehearsal)}) tombe avant ${label} (${dayLabel(d)}) : la répétition aurait lieu avant la soumission.`
+        : `Il y a ${gap} jour${gap > 1 ? 's' : ''} entre ${label} (${dayLabel(d)}) et le jour de répétition (${dayLabel(rehearsal)}) : visez ${MIN_PREP_DAYS} jours au moins.`);
     }
     const before = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); return !!d && d <= rehearsal; });
     const close = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); const gap = d ? daysUntil(d, rehearsal) : null; return gap !== null && gap > 0 && gap < 7; });
