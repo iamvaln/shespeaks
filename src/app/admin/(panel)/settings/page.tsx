@@ -1,6 +1,8 @@
 import { getSetting } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
-import { getRefs, refsToText } from '@/lib/data';
+import { getRefs, listEvents, refsToText } from '@/lib/data';
+import { calendarWarnings } from '@/lib/calendar';
+import { todayIso } from '@/lib/dates';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
 import { all } from '@/lib/db';
@@ -9,7 +11,7 @@ import { saveSettingsAction } from '../../actions';
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'Paramètres' };
-export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   await requireCoach();
   const sp = await searchParams;
   const refs = await getRefs();
@@ -24,12 +26,16 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
     first: await getSetting('reminder_first_hours'), interval: await getSetting('reminder_interval_hours'), max: await getSetting('reminder_max'),
     deadline: await getSetting('internal_deadline'),
+    interest: await getSetting('interest_deadline'), rehearsal: await getSetting('rehearsal_date'), rehearsalInfo: await getSetting('rehearsal_info'),
+    calendarReminders: await getSetting('calendar_reminders_enabled'),
     focus: await getSetting('topic_focus'),
   };
+  const warnings = calendarWarnings({ interestDeadline: v.interest, internalDeadline: v.deadline, rehearsalDate: v.rehearsal, events: await listEvents() });
   return (
     <div className="a-page" style={{ gap: 20, maxWidth: 860 }}>
       <h1 className="a-h1" style={{ margin: 0 }}>Paramètres</h1>
       {sp.msg && <div className="flash" role="status" style={{ margin: 0 }}>{sp.msg}</div>}
+      {sp.err && <div className="flash err" role="alert" style={{ margin: 0 }}>{sp.err}</div>}
 
       <section className="a-card a-stack" aria-labelledby="h-server">
         <h2 id="h-server" className="a-h2">Configuration du serveur</h2>
@@ -72,9 +78,24 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           </div>
         </section>
 
-        <section className="a-card a-stack">
-          <h2 className="a-h2">Calendrier interne</h2>
-          <label className="a-label">Date limite interne (relecture avant les clôtures officielles)<input className="a-input" type="date" name="internal_deadline" defaultValue={v.deadline} style={{ maxWidth: 260 }} /></label>
+        <section className="a-card a-stack" aria-labelledby="h-calendar">
+          <h2 id="h-calendar" className="a-h2">Calendrier commun</h2>
+          <p className="a-muted" style={{ margin: 0 }}>Trois dates valent pour toutes les candidates. Après la date limite des intérêts, plus aucune nouvelle candidature n’est acceptée (jusqu’à 23 h 59, heure du Cameroun, le jour même). Le jour de répétition laisse au moins deux semaines de préparation entre le dernier intérêt reçu et la répétition. Seuls les événements qui ont une date, postérieure au jour de répétition, sont proposés aux candidates.</p>
+          <div className="a-grid-3">
+            <label className="a-label">Dernier jour pour envoyer son intérêt<input className="a-input" type="date" name="interest_deadline" defaultValue={v.interest} /></label>
+            <label className="a-label">Date limite interne (relecture avant les clôtures officielles)<input className="a-input" type="date" name="internal_deadline" defaultValue={v.deadline} /></label>
+            <label className="a-label">Jour de répétition (pour toutes)<input className="a-input" type="date" name="rehearsal_date" defaultValue={v.rehearsal} /></label>
+          </div>
+          <label className="a-label">Répétition : lieu, heure, lien (texte libre, repris dans les emails)<input className="a-input" name="rehearsal_info" defaultValue={v.rehearsalInfo} maxLength={300} placeholder="Ex. visioconférence à 18 h, lien envoyé la veille" /></label>
+          <label className="a-check"><input type="checkbox" name="calendar_reminders_enabled" defaultChecked={v.calendarReminders === 'true'} /><span>Envoyer les relances du calendrier (clôture du formulaire, échanges, soumission, préparation). Décoché : aucune de ces relances ne part.</span></label>
+          {warnings.length > 0 && (
+            <ul className="a-issues" aria-label="Points à vérifier dans le calendrier">
+              {warnings.map((w) => (
+                <li key={w}><span className="a-pill is-soft">Attention</span><div style={{ minWidth: 0 }}>{w}</div></li>
+              ))}
+            </ul>
+          )}
+          <p className="a-sub" style={{ fontWeight: 400, whiteSpace: 'normal', margin: 0 }}>Aujourd’hui : {todayIso().split('-').reverse().join('/')}. Ces avertissements ne bloquent rien.</p>
         </section>
 
         <section className="a-card a-stack">

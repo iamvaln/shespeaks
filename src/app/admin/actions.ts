@@ -17,6 +17,7 @@ import { isEmail } from '@/lib/questions';
 import { statusRefusal } from '@/lib/status';
 import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
+import { isoOrNull } from '@/lib/dates';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -327,10 +328,14 @@ export async function toggleCoachAction(f: FormData) {
 }
 
 // ---- settings ----------------------------------------------------------------------
+const CALENDAR_DAYS: [SettingKey, string][] = [['internal_deadline', 'La date limite interne'], ['interest_deadline', 'La date limite des intérêts'], ['rehearsal_date', 'Le jour de répétition']];
 export async function saveSettingsAction(f: FormData) {
   await requireCoach();
-  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
+  // a date is a real day or empty: nothing is saved when one cannot be read
+  for (const [k, label] of CALENDAR_DAYS) if (str(f, k) && !isoOrNull(str(f, k))) return back('/admin/settings', `${label} n’est pas une date valide (AAAA-MM-JJ). Rien n’a été enregistré.`, true);
+  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'interest_deadline', 'rehearsal_date', 'rehearsal_info', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
+  await setSetting('calendar_reminders_enabled', f.get('calendar_reminders_enabled') ? 'true' : 'false');
   // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
