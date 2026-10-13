@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { answersToHandle, candidateRows } from '@/lib/admin-data';
+import { answersToHandle, candidateRows, isWorkLeft } from '@/lib/admin-data';
 import { getSetting, statusLabel } from '@/lib/db';
 import { eventName, listEvents } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
@@ -26,7 +26,10 @@ export default async function Dashboard() {
   const coach = await requireCoach();
   const now = new Date();
   const today = todayIso(now);
-  const [rows, answers] = await Promise.all([candidateRows(), answersToHandle()]);
+  const [rows, allAnswers] = await Promise.all([candidateRows(), answersToHandle()]);
+  // only the answers that still ask something of the coach (the menu figure counts the same)
+  const working = new Set(rows.filter(isWorkLeft).map((r) => r.id));
+  const answers = allAnswers.filter((a) => working.has(a.id));
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');
 

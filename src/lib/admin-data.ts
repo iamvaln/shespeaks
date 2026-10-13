@@ -11,6 +11,8 @@ export interface Row extends Candidate {
   note_count: number;
   /** How many proposals were sent to her (0: nobody has worked on her interest yet). */
   proposal_count: number;
+  /** She answered and the coach has not dealt with it yet (not handled, nothing sent since). */
+  answer_to_handle: boolean;
   event_label: string;
   topic: string;
   /** Where the exchanges with her stand (null while her form is not finished, or once she is « non retenue »). */
@@ -18,7 +20,7 @@ export interface Row extends Candidate {
 }
 
 export async function candidateRows(): Promise<Row[]> {
-  const rows = await all<Omit<Row, 'event_label' | 'topic' | 'journey'> & { application_state: string | null; photo_count: number }>(
+  const rows = await all<Omit<Row, 'event_label' | 'topic' | 'journey' | 'answer_to_handle'> & { application_state: string | null; photo_count: number }>(
     `SELECT c.*, co.name AS coach_name, s.title AS subject_title, s.application_state,
        (SELECT COUNT(*)::int FROM photos ph WHERE ph.candidate_id=c.id) AS photo_count,
        (SELECT value FROM answers a WHERE a.candidate_id=c.id AND a.code IN ('C1','D1-a') ORDER BY a.code LIMIT 1) AS a_title,
@@ -45,20 +47,21 @@ export async function candidateRows(): Promise<Row[]> {
     const j = r.completed_at && r.status !== 'non_retenue'
       ? journeyState(journey({ branch: r.branch, photoValidatedAt: r.photo_validated_at ?? null, submitted: countsAsSubmitted(r, application_state), proposals }), proposals, photo_count)
       : null;
-    return { ...r, event_label: eventLabel(r, events), topic: (r.subject_title || at || '').trim(), journey: j };
+    const answer_to_handle = proposals.some((p) => p.state === 'repondue' && !p.handled_at);
+    return { ...r, event_label: eventLabel(r, events), topic: (r.subject_title || at || '').trim(), journey: j, answer_to_handle };
   });
 }
 
-/** A new interest nobody has worked on yet: received, and nothing sent to her. */
-export const UNTOUCHED_SQL = `c.status='diagnostic_recu' AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id)`;
 /**
- * The work left for the coaches (the figure beside « Candidates » in the menu): new interests nobody has worked on yet, plus
- * candidates whose answer the coach has not dealt with. Sending her something takes her out of it, until her next answer.
+ * Work left for the coaches: the coach has the hand (the same computation as the list and the fiche), and it is either a new interest
+ * nobody has worked on yet (nothing sent) or an answer she has not dealt with. An answer whose next step is hers (she approved her
+ * subject and the photo is already validated: she submits) is no work, nor anything once she counts as submitted.
  */
+export const isWorkLeft = (r: Pick<Row, 'journey' | 'status' | 'proposal_count' | 'answer_to_handle'>): boolean =>
+  r.journey?.waiting === 'coach' && ((r.status === 'diagnostic_recu' && r.proposal_count === 0) || r.answer_to_handle);
+/** The figure beside « Candidates » in the menu. */
 export async function countToProcess(): Promise<number> {
-  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates c WHERE c.name IS NOT NULL AND c.name <> '' AND (
-    (${UNTOUCHED_SQL}) OR EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id AND p.state='repondue' AND p.handled_at IS NULL))`);
-  return r?.n ?? 0;
+  return (await candidateRows()).filter(isWorkLeft).length;
 }
 
 export interface ToHandle { id: number; name: string; role: string | null; since: string; responses: string[] }

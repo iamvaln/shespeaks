@@ -559,3 +559,20 @@ test('her choice carries what she imagines: required (one way to approach it), k
   await P.answerProposal(id2, (await state(id2)).pending.id, 'aucune', null, 'Aucune', ideas);
   assert.equal((await P.listProposals(id2))[0].response_data, null);
 });
+
+test('the menu figure is the work left: an approval whose photo is already validated asks nothing of the coach (candidate 4)', { skip }, async () => {
+  const admin = await import('../../src/lib/admin-data.ts');
+  const id = await candidate('C');
+  await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`;
+  const counted = async () => (await admin.candidateRows()).some((r) => r.id === id && admin.isWorkLeft(r));
+  assert.equal(await counted(), true, 'new interest, nothing sent: counted');
+  await P.sendSubject(id, 1);
+  assert.equal(await counted(), false, 'sent: she has the hand');
+  await P.answerProposal(id, (await state(id)).pending.id, 'approuvee', null, '');
+  assert.equal(await counted(), true, 'approved, no photo: the coach has to ask for one');
+  const [{ id: photo }] = await raw`insert into photos (candidate_id, filename, mime, size) values (${id}, ${id + '/p.jpg'}, 'image/jpeg', 10) returning id`;
+  await P.validatePhoto(id, photo);
+  assert.equal((await state(id)).step, 'soumission');
+  assert.equal(await counted(), false, 'photo validated: she submits, nothing left for the coach');
+  assert.equal((await admin.countToProcess()) >= 0, true);
+});
