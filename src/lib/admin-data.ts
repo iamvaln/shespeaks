@@ -1,7 +1,7 @@
 // Queries for admin screens.
 import { all, get } from './db.ts';
 import { eventLabel, listEvents, type Candidate } from './data.ts';
-import { countsAsSubmitted, toProposal } from './proposals.ts';
+import { countsAsSubmitted, journeyOf, toProposal } from './proposals.ts';
 import { journey, journeyState, type JourneyState, type Proposal } from './journey.ts';
 
 export interface Row extends Candidate {
@@ -11,6 +11,7 @@ export interface Row extends Candidate {
   note_count: number;
   /** How many proposals were sent to her (0: nobody has worked on her interest yet). */
   proposal_count: number;
+
   event_label: string;
   topic: string;
   /** Where the exchanges with her stand (null while her form is not finished, or once she is « non retenue »). */
@@ -49,16 +50,30 @@ export async function candidateRows(): Promise<Row[]> {
   });
 }
 
-/** A new interest nobody has worked on yet: received, and nothing sent to her. */
-export const UNTOUCHED_SQL = `c.status='diagnostic_recu' AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id)`;
 /**
- * The work left for the coaches (the figure beside « Candidates » in the menu): new interests nobody has worked on yet, plus
- * candidates whose answer the coach has not dealt with. Sending her something takes her out of it, until her next answer.
+ * The figure beside « Candidates » in the menu: the work left for the coaches.
+ * - new interests nobody has worked on yet (received, nothing sent, not already submitted at intake), counted in SQL;
+ * - answers she sent that the coach has not dealt with, but only when the coach has the hand: an approval whose photo is already
+ *   validated asks nothing of her (the candidate submits). The journey is computed for those candidates only (a handful).
+ * It shows on every coach page: a failure answers 0 (and is logged) rather than breaking the page.
  */
 export async function countToProcess(): Promise<number> {
-  const r = await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM candidates c WHERE c.name IS NOT NULL AND c.name <> '' AND (
-    (${UNTOUCHED_SQL}) OR EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id AND p.state='repondue' AND p.handled_at IS NULL))`);
-  return r?.n ?? 0;
+  try {
+    const named = `c.name IS NOT NULL AND c.name <> ''`;
+    const fresh = await get<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM candidates c LEFT JOIN subjects s ON s.candidate_id=c.id
+       WHERE ${named} AND c.status='diagnostic_recu' AND c.submitted_at IS NULL AND COALESCE(s.application_state,'') NOT IN ('soumise','retenue')
+         AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.candidate_id=c.id)`);
+    const answered = await all<{ id: number }>(
+      `SELECT DISTINCT c.id FROM proposals p JOIN candidates c ON c.id=p.candidate_id
+       WHERE ${named} AND c.status <> 'non_retenue' AND p.state='repondue' AND p.handled_at IS NULL`);
+    let n = fresh?.n ?? 0;
+    for (const { id } of answered) if ((await journeyOf(id))?.waiting === 'coach') n++;
+    return n;
+  } catch (e) {
+    console.error('[admin] menu figure failed', e);
+    return 0;
+  }
 }
 
 export interface ToHandle { id: number; name: string; role: string | null; since: string; responses: string[] }
@@ -71,4 +86,21 @@ export async function answersToHandle(): Promise<ToHandle[]> {
      WHERE p.state='repondue' AND p.handled_at IS NULL AND c.name IS NOT NULL AND c.name <> ''
      GROUP BY c.id, c.name, c.role ORDER BY MIN(p.answered_at), c.id`,
   );
+}
+
+export type Notice = { kind: string; candidate_id: number; name: string; subject: string; at: string };
+/**
+ * The dashboard « Notifications »: what the coaches were emailed about (new interest, a choice, an approval, changes asked, a photo, a
+ * submission), from the email log, once per event (one email per coach otherwise), newest first, the last two weeks.
+ */
+export async function recentNotices(limit = 12): Promise<Notice[]> {
+  return all<Notice>(
+    `SELECT n.kind, n.candidate_id, c.name, n.subject, n.at FROM (
+       SELECT DISTINCT ON (e.kind, e.candidate_id, date_trunc('minute', e.at)) e.kind, e.candidate_id, e.subject, e.at
+       FROM email_log e
+       WHERE (e.kind = 'coach_new_diagnostic' OR e.kind LIKE 'coach_answer_%') AND e.candidate_id IS NOT NULL
+         AND e.at > (now() at time zone 'utc') - interval '14 days'
+       ORDER BY e.kind, e.candidate_id, date_trunc('minute', e.at), e.at
+     ) n JOIN candidates c ON c.id = n.candidate_id
+     ORDER BY n.at DESC LIMIT ?`, limit);
 }
