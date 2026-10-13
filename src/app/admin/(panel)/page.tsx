@@ -31,7 +31,8 @@ export default async function Dashboard() {
   const deadline = await getSetting('internal_deadline');
 
   // oldest first: interests are handled in the order they arrived
-  const received = rows.filter((r) => r.status === 'diagnostic_recu').sort((a, b) => (a.completed_at ?? '').localeCompare(b.completed_at ?? ''));
+  // new interests nobody has worked on yet (the menu figure counts these, plus the answers to deal with)
+  const received = rows.filter((r) => r.status === 'diagnostic_recu' && r.proposal_count === 0).sort((a, b) => (a.completed_at ?? '').localeCompare(b.completed_at ?? ''));
   const stalled = rows.filter((r) => r.status === 'en_cours').sort((a, b) => a.last_activity_at.localeCompare(b.last_activity_at));
   const idle = stalled.filter((r) => elapsedHours(r.last_activity_at, now) >= LATE_HOURS).length;
   const next = events

@@ -10,6 +10,7 @@ import { assembleAbstract } from '@/lib/abstract';
 import { autoChecks } from '@/lib/review';
 import { wordCount } from '@/lib/text';
 import { t } from '@/lib/i18n';
+import { ResumeCode } from './ResumeCode';
 
 export interface WizardInit {
   candidate: { name: string; branch: Branch | null; current: string; completed: boolean; locale: Locale } | null;
@@ -25,6 +26,8 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // her address already has a journey: she resumes it with the code sent by email instead of starting a second one
+  const [resume, setResume] = useState<{ canStartNew: boolean } | null>(null);
   const [checks, setChecks] = useState<Record<string, boolean>>(() => Object.fromEntries(SELF_CHECKS.map((s) => [s.code, init.answers[`chk_${s.code}`] === '1'])));
   const [abstractEdited, setAbstractEdited] = useState(() => {
     const stored = init.answers['C-abstract'];
@@ -62,17 +65,18 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
     setScreenId(next);
   }
 
-  async function submit() {
+  async function submit(startNew = false) {
     setBusy(true);
     setBanner(null);
     const values: Answers = {};
     for (const q of questions) if (answers[q.code] !== undefined) values[q.code] = answers[q.code];
     if (screen.kind === 'review') for (const s of SELF_CHECKS) values[`chk_${s.code}`] = checks[s.code] ? '1' : '';
     try {
-      const r = await fetch('/api/diag/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ screen: screenId, values }) });
+      const r = await fetch('/api/diag/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ screen: screenId, values, startNew }) });
       const j = await r.json();
       if (!r.ok || !j.ok) {
         if (j.fatal === 'already_completed') { router.replace('/plan'); return; }
+        if (j.fatal === 'resume_needed') { setResume({ canStartNew: !!j.canStartNew }); setBusy(false); window.scrollTo({ top: 0 }); return; }
         setErrors(j.errors ?? {});
         const fieldErrors = j.errors && Object.keys(j.errors).length > 0;
         // A failed save is not always the candidate's fault: say what really happened.
@@ -113,6 +117,17 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
           <div className="progress-bar" role="progressbar" aria-label={d.screenOf(idx + 1, total)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={d.screenOf(idx + 1, total)}><div style={{ width: `${pct}%` }} /></div>
         </div>
 
+        {resume ? (
+          <section className="form-card stack" aria-labelledby="resume-title">
+            <h1 id="resume-title" className="form-title">{t(locale).access.resumeTitle}</h1>
+            <p>{t(locale).access.resumeIntro}</p>
+            <ResumeCode email={String(answers['P4'] ?? '')} d={t(locale).access} />
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setResume(null)}>{d.back}</button>
+              {resume.canStartNew && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => { setResume(null); submit(true); }}>{t(locale).access.startNew}</button>}
+            </div>
+          </section>
+        ) : (
         <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
           <header className="form-head">
             <p className="form-block">{screen.block[locale]}</p>
@@ -142,6 +157,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
           </div>
           <p className="small form-note">{d.saved}</p>
         </form>
+        )}
       </div>
     </div>
   );

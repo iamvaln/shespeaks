@@ -242,7 +242,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <div className="a-card-head" style={{ flexWrap: 'wrap' }}>
                     <div>
                       <p className="a-muted" style={{ margin: 0 }}>
-                        Générées à partir de ses réponses. Retiens 2 ou 3 pistes (« Retenir »), adapte-les, puis envoie-les : c’est la candidate qui choisit, « Choisir » ne s’active qu’une fois qu’elle a répondu.
+                        Rien n’est généré à l’envoi de son formulaire : écris d’abord tes précisions, puis « Générer les propositions » (modèles faits à partir de ses réponses) ou « Suggérer avec l’IA ».
+                        Retiens 2 ou 3 pistes (« Retenir »), adapte-les, puis envoie-les : c’est la candidate qui choisit, « Choisir » ne s’active qu’une fois qu’elle a répondu.
                         « Régénérer » refait les propositions-modèles
                         et « Suggérer avec l’IA » les suggestions de l’IA, sauf les pistes retenues, écartées ou choisies (« Retenir » garde une piste, même réécrite).
                         {!aiConfigured() && !openaiConfigured() ? ' Suggestions de l’IA non activées sur ce serveur (clé API manquante).' : !c.completed_at ? ' Les suggestions de l’IA seront possibles quand le formulaire sera terminé.' : ' Les suggestions de l’IA sont à relire : elles peuvent se tromper. Chaque modèle ne remplace que ses propres suggestions non retenues.'}
@@ -267,7 +268,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                           ))}
                         </InlineForm>
                       )}
-                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}><Icon name="clock" size={16} />Régénérer</EditButton></InlineForm>}
+                      {!lock && <InlineForm action={trackAction}><input type="hidden" name="cid" value={id} /><input type="hidden" name="op" value="regenerate" /><EditButton kind="other" className="a-btn is-ghost is-sm" locked={!c.completed_at} lockedReason={FORM_UNFINISHED}><Icon name="clock" size={16} />{tracks.some((t) => t.origin === 'personnelle' || t.origin === 'croisement') ? 'Régénérer' : 'Générer les propositions'}</EditButton></InlineForm>}
                     </div>
                   </div>
                   {tracks.length === 0 ? <p className="a-empty">Aucune piste.</p> : (
