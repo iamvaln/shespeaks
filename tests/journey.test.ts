@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { accessOutcome } from '../src/lib/access-outcome.ts';
-import { journey, journeySteps, journeyState, pitchToSave, planLines, validateChoice, validateSubject, WAITING_SR, type Proposal } from '../src/lib/journey.ts';
+import { IDEA_MAX, ideaLines, journey, journeySteps, journeyState, parseIdeas, pitchToSave, planLines, validateChoice, validateChoiceIdeas, validateSubject, WAITING_SR, type Proposal } from '../src/lib/journey.ts';
 
 let n = 0;
 const p = (kind: Proposal['kind'], state: Proposal['state'], response: Proposal['response'] = null): Proposal => ({
   id: ++n, candidate_id: 1, kind, payload: kind === 'choix' ? { items: [] } : kind === 'sujet' ? { title: 't', abstract: 'a', why: '', plan: [] } : { comment: '' },
-  state, response, response_choice: null, candidate_comment: null, coach_id: 1, sent_at: `2026-10-11 10:00:${String(n).padStart(2, '0')}`,
+  state, response, response_choice: null, candidate_comment: null, response_data: null, coach_id: 1, sent_at: `2026-10-11 10:00:${String(n).padStart(2, '0')}`,
   answered_at: null, handled_at: null, reminded_at: null,
 });
 const j = (branch: 'A' | 'C', proposals: Proposal[], photo: string | null = null, submitted = false) =>
@@ -160,4 +160,24 @@ test('journey state: the photo step says whether there is a photo to review', ()
 
 test('journey state: every state has a label and a spoken « who has the hand »', () => {
   for (const w of ['coach', 'candidate', 'none'] as const) assert.ok(WAITING_SR[w]);
+});
+
+test('her ideas with the choice: at least one way to approach it; unknown approaches and doubles dropped; lengths capped; lines for the coach', () => {
+  assert.equal(validateChoiceIdeas(undefined).ok, false);
+  assert.equal(validateChoiceIdeas({ approach: ['nope'] }).ok, false);
+  const other = validateChoiceIdeas({ approach: [], other: '  En posant des questions au public  ' });
+  assert.ok(other.ok && other.value.other === 'En posant des questions au public', 'her own words are enough');
+  assert.equal(validateChoiceIdeas({ approach: ['demo'], prepare: 'x'.repeat(IDEA_MAX + 1) }).ok, false);
+  const v = validateChoiceIdeas({ approach: ['demo', 'demo', 'conseils', 'nope'], concrete: 'Mon app', takeaway: '', prepare: 'Répéter' });
+  assert.ok(v.ok);
+  if (!v.ok) return;
+  assert.deepEqual(v.value.approach, ['demo', 'conseils']);
+  assert.deepEqual(ideaLines(v.value), [
+    'Comment l’aborder : montrer une démo en direct ; donner des conseils pratiques',
+    'Ce qu’elle pourrait montrer ou raconter : Mon app',
+    'Ce qu’il faut préparer selon elle : Répéter',
+  ]);
+  assert.deepEqual(parseIdeas(JSON.stringify(v.value)), v.value);
+  assert.equal(parseIdeas('not json'), null);
+  assert.equal(parseIdeas(null), null);
 });

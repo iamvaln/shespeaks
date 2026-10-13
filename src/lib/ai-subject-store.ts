@@ -2,6 +2,8 @@
 import { get, getSetting, run } from './db.ts';
 import { getAnswers, getCandidate, getRefs, getSubject } from './data.ts';
 import { currentSubject, improveSubject, type SubjectProposal } from './ai-subject.ts';
+import { listProposals } from './proposals.ts';
+import { ideaLines } from './journey.ts';
 import { providerConfigured, type AiClient, type AiFailure, type AiProvider, type FetchLike } from './ai-topics.ts';
 import { aiEventFor } from './ai-tracks.ts';
 import { checkAiRate, refundAiRate } from './ratelimit.ts';
@@ -19,7 +21,10 @@ export async function improveSubjectFor(candidateId: number, coachId: number, pr
   if (!(provider === 'claude' && opts.client) && !providerConfigured(provider)) return { ok: false, reason: 'disabled' };
   if (!(await checkAiRate(coachId, candidateId)).ok) return { ok: false, reason: 'limited' }; // shared with the title suggestions
 
-  const res = await improveSubject({ branch: c.branch, locale: c.locale, answers, refs, current, event, focus, brief: c.ai_brief ?? '' }, provider, opts);
+  // what she imagined when she chose her track (latest choice): the plan should come close to it
+  const chosen = (await listProposals(candidateId)).filter((x) => x.kind === 'choix' && x.response === 'choisie').at(-1);
+  const ideas = chosen?.response_data ? ideaLines(chosen.response_data) : [];
+  const res = await improveSubject({ branch: c.branch, locale: c.locale, answers, refs, current, event, focus, brief: c.ai_brief ?? '', ideas }, provider, opts);
   if (!res.ok) {
     console.error('[ai] subject improvement failed', { candidate: candidateId, provider, reason: res.reason, detail: res.detail });
     // only an outage (the call did not complete, nothing billed) gives the press back; a cut, refused or unusable answer was produced and

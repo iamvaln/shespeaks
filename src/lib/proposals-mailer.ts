@@ -4,7 +4,7 @@ import { eventFor, getCandidate } from './data.ts';
 import { coachRecipients } from './diagnostic.ts';
 import { fmtDate } from './i18n.ts';
 import { listProposals, type ProposalMailer } from './proposals.ts';
-import type { ChoicePayload, SubjectPayload } from './journey.ts';
+import { ideaLines, type ChoicePayload, type SubjectPayload } from './journey.ts';
 
 export const realMailer: ProposalMailer = {
   async toCandidate(id, what) {
@@ -33,11 +33,13 @@ export const realMailer: ProposalMailer = {
     const c = await getCandidate(id);
     if (!c) return;
     let topic: string | null = null;
+    let ideas: string[] = [];
     if (what === 'choisie') {
       const chosen = (await listProposals(id)).filter((x) => x.kind === 'choix' && x.response === 'choisie').at(-1);
       topic = chosen ? (chosen.payload as ChoicePayload).items[chosen.response_choice ?? -1]?.title ?? null : null;
+      ideas = chosen?.response_data ? ideaLines(chosen.response_data) : [];
     }
-    const m = coachCandidateAnswered({ name: c.name ?? '' }, what, comment, `${appUrl()}/admin/candidates/${id}`, topic);
+    const m = coachCandidateAnswered({ name: c.name ?? '' }, what, comment, `${appUrl()}/admin/candidates/${id}`, topic, ideas);
     await Promise.allSettled((await coachRecipients(c)).map((r) => sendMail({ ...m, to: r.email, kind: `coach_answer_${what}`, candidateId: id })));
   },
 };

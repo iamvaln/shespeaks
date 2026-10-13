@@ -245,6 +245,13 @@ html:has(.themed-root), body:has(.themed-root) { background: #F4F3F7; }
 .scale-opt input:checked + span { background: var(--amber); border-color: var(--ink); color: var(--on-amber); box-shadow: inset 0 0 0 1px var(--ink); }
 .scale-opt input:focus-visible + span { outline: 3px solid var(--amber-text); outline-offset: 2px; }
 .scale-legend { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--ink-muted); margin-top: 6px; }
+/* a simple labelled field (candidate space, « Retrouver mon espace »): the question above, its box below, like the form's */
+.field { display: grid; gap: 6px; margin: 0; border: 0; padding: 0; min-width: 0; font-weight: 600; line-height: 24px; }
+.field > legend { font-weight: 600; padding: 0; margin-bottom: 6px; }
+.field .small { font-weight: 400; color: var(--ink-muted); }
+.field input:not([type='checkbox']):not([type='radio']), .field textarea { width: 100%; font: 400 16px/24px var(--font-sans); color: var(--ink); background: var(--surface-raised); border: 1px solid var(--ink-muted); border-radius: var(--r-sm); padding: 11px 14px; min-height: 46px; }
+.field textarea { min-height: 88px; resize: vertical; }
+.field input:not([type='checkbox']):not([type='radio']):focus, .field textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px var(--amber-text); }
 .form-actions { display: flex; gap: var(--s4); align-items: center; justify-content: space-between; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .form-actions .grow { display: flex; gap: var(--s4); flex-wrap: wrap; justify-content: flex-end; }
 .form-note { margin: 16px 0 0; }

@@ -1,7 +1,7 @@
 // Queries for admin screens.
 import { all, get } from './db.ts';
 import { eventLabel, listEvents, type Candidate } from './data.ts';
-import { countsAsSubmitted } from './proposals.ts';
+import { countsAsSubmitted, toProposal } from './proposals.ts';
 import { journey, journeyState, type JourneyState, type Proposal } from './journey.ts';
 
 export interface Row extends Candidate {
@@ -29,12 +29,12 @@ export async function candidateRows(): Promise<Row[]> {
   );
   const [events, sent] = await Promise.all([
     listEvents(),
-    all<Omit<Proposal, 'payload'> & { payload: string }>('SELECT * FROM proposals ORDER BY id'), // one query for the whole list, never one per row
+    all<Omit<Proposal, 'payload' | 'response_data'> & { payload: string; response_data: string | null }>('SELECT * FROM proposals ORDER BY id'), // one query for the whole list, never one per row
   ]);
   const byCandidate = new Map<number, Proposal[]>();
   for (const x of sent) {
     const list = byCandidate.get(x.candidate_id) ?? [];
-    list.push({ ...x, payload: JSON.parse(x.payload) });
+    list.push(toProposal(x));
     byCandidate.set(x.candidate_id, list);
   }
   return rows.map(({ application_state, photo_count, ...r }) => {
