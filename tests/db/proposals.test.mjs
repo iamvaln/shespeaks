@@ -564,7 +564,8 @@ test('the menu figure is the work left: an approval whose photo is already valid
   const admin = await import('../../src/lib/admin-data.ts');
   const id = await candidate('C');
   await raw`insert into subjects (candidate_id, title, abstract) values (${id}, 'T', 'A')`;
-  const counted = async () => (await admin.candidateRows()).some((r) => r.id === id && admin.isWorkLeft(r));
+  const base = (await admin.countToProcess()) - 1; // this new interest is counted
+  const counted = async () => (await admin.countToProcess()) === base + 1;
   assert.equal(await counted(), true, 'new interest, nothing sent: counted');
   await P.sendSubject(id, 1);
   assert.equal(await counted(), false, 'sent: she has the hand');
@@ -574,5 +575,6 @@ test('the menu figure is the work left: an approval whose photo is already valid
   await P.validatePhoto(id, photo);
   assert.equal((await state(id)).step, 'soumission');
   assert.equal(await counted(), false, 'photo validated: she submits, nothing left for the coach');
-  assert.equal((await admin.countToProcess()) >= 0, true);
+  await raw`update proposals set handled_at = null where candidate_id = ${id}`;
+  assert.equal(await counted(), false, 'even with her approval left unhandled');
 });
