@@ -2,7 +2,7 @@
 import { get, getSetting, run, tx } from './db.ts';
 import { SCREENS, SELF_CHECKS, flowFor, profileColumns, resumeScreen, validateScreen, visibleQuestions, type Answers, type Branch, type FieldErrors, type Locale } from './questions.ts';
 import {
-  eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getRefs, getSubject, getTracks, setAnswers,
+  eventLabelFor, createCandidate, deleteAnswers, getAnswers, getCandidate, getCoach, getFormRefs, getRefs, getSubject, getTracks, setAnswers,
   setStatus, touchCandidate, type Candidate,
 } from './data.ts';
 import { assembleAbstract } from './abstract.ts';
@@ -10,6 +10,7 @@ import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
 import { journeysOf } from './resume-code.ts';
 import { requestAccess } from './access.ts';
+import { admission } from './admission.ts';
 import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
 import { checkChangeRate, checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
@@ -24,7 +25,7 @@ export const BRANCH_LABEL: Record<Branch, string> = {
 export interface WizardState {
   candidate: { name: string; branch: Branch | null; current: string; completed: boolean; locale: Locale };
   answers: Answers;
-  refs: Awaited<ReturnType<typeof getRefs>>;
+  refs: Awaited<ReturnType<typeof getFormRefs>>;
   /** abstract draft for C2 (assembled unless hand-edited) */
   draft: string | null;
 }
@@ -40,13 +41,13 @@ export async function wizardState(c: Candidate): Promise<WizardState> {
   return {
     candidate: { name: c.name ?? '', branch: c.branch, current: resumeScreen(c.branch, c.current_screen), completed: !!c.completed_at, locale: c.locale },
     answers,
-    refs: await getRefs(),
+    refs: await getFormRefs(),
     draft,
   };
 }
 
 export type SubmitResult =
-  | { ok: false; errors: FieldErrors; fatal?: string; canStartNew?: boolean }
+  | { ok: false; errors: FieldErrors; fatal?: string; canStartNew?: boolean; closedOn?: string | null }
   | { ok: true; token: string; next: string; created: boolean; completed: boolean };
 
 /**
@@ -55,11 +56,13 @@ export type SubmitResult =
 export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown', startNew = false): Promise<SubmitResult> {
   const screen = SCREENS[screenId];
   if (!screen) return { ok: false, errors: {}, fatal: 'unknown_screen' };
-  const refs = await getRefs();
+  const refs = await getFormRefs();
 
   let c = token ? await get<Candidate>('SELECT * FROM candidates WHERE token=?', token) : undefined;
   if (!c && screenId !== 'profile') return { ok: false, errors: {}, fatal: 'no_session' };
   if (c?.completed_at) return { ok: false, errors: {}, fatal: 'already_completed' };
+  const gate = await admission(c);
+  if (!gate.open) return { ok: false, errors: {}, fatal: 'closed', closedOn: gate.closedOn };
   const existing = c ? await getAnswers(c.id) : {};
   const merged: Answers = { ...existing, ...values };
 

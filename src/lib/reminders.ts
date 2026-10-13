@@ -7,6 +7,9 @@ import { SCREENS, flowFor, resumeScreen } from './questions.ts';
 import { coachRecipients } from './diagnostic.ts';
 import { mailboxKey } from './contact.ts';
 import { countsAsSubmitted } from './proposals.ts';
+import { admission } from './admission.ts';
+import { admissionOpen } from './calendar.ts';
+import { todayIso } from './dates.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
 const hoursBetween = (a: Date, b: Date) => (a.getTime() - b.getTime()) / 3_600_000;
@@ -38,9 +41,13 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
   const events = await listEvents();
   const byRecipient = new Map<string, { name: string; items: StalledItem[] }>();
   const mailedBoxes = new Set<string>();
+  const today = todayIso(now);
+  const interestDeadline = await getSetting('interest_deadline');
 
   for (const c of rows) {
     if (c.reminders_sent >= max) continue;
+    // after the last day to send an interest the form is closed to anyone the team has not admitted: nobody is urged to finish it
+    if (!admissionOpen({ today, interestDeadline, admittedLate: !!c.admitted_late_at })) continue;
     const ref = toDate(c.reminders_sent === 0 ? c.last_activity_at : (c.last_reminder_at ?? c.last_activity_at));
     const threshold = c.reminders_sent === 0 ? first : interval;
     if (hoursBetween(now, ref) < threshold) continue;
@@ -105,9 +112,10 @@ export async function remindPendingProposals(now = new Date()): Promise<number> 
 }
 
 /** Manual reminder from the coach's fiche (does not touch the automatic counter). 'unavailable' = no address or form already done. */
-export async function sendReminderNow(candidateId: number): Promise<'sent' | 'logged' | 'failed' | 'unavailable'> {
+export async function sendReminderNow(candidateId: number): Promise<'sent' | 'logged' | 'failed' | 'unavailable' | 'closed'> {
   const c = await getCandidate(candidateId);
   if (!c || !c.email || c.completed_at) return 'unavailable';
+  if (!(await admission(c)).open) return 'closed'; // her link would only lead to the « applications are closed » page: admit her first
   const m = candidateReminder({ name: c.name ?? '' }, `${appUrl()}/reprendre/${c.token}`, c.locale, screenProgress(c));
   return sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });
 }

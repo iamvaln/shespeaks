@@ -80,7 +80,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
         <section className="a-card a-stack" aria-labelledby="h-calendar">
           <h2 id="h-calendar" className="a-h2">Calendrier commun</h2>
-          <p className="a-muted" style={{ margin: 0 }}>Trois dates valent pour toutes les candidates. Après la date limite des intérêts, plus aucune nouvelle candidature n’est acceptée (jusqu’à 23 h 59, heure du Cameroun, le jour même). Le jour de répétition laisse au moins deux semaines de préparation entre le dernier intérêt reçu et la répétition. Seuls les événements qui ont une date, postérieure au jour de répétition, sont proposés aux candidates.</p>
+          <p className="a-muted" style={{ margin: 0 }}>Trois dates valent pour toutes les candidates. La date limite des intérêts vaut toute la journée du jour dit (heure du Cameroun) : le lendemain, plus aucune candidature n’est acceptée. Le jour de répétition laisse au moins deux semaines de préparation entre le dernier intérêt reçu et la répétition. Seuls les événements qui ont une date, postérieure au jour de répétition, sont proposés aux candidates.</p>
           <div className="a-grid-3">
             <label className="a-label">Dernier jour pour envoyer son intérêt<input className="a-input" type="date" name="interest_deadline" defaultValue={v.interest} /></label>
             <label className="a-label">Date limite interne (relecture avant les clôtures officielles)<input className="a-input" type="date" name="internal_deadline" defaultValue={v.deadline} /></label>

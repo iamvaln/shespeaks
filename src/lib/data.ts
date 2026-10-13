@@ -3,6 +3,8 @@ import crypto from 'node:crypto';
 import { all, get, getSetting, insert, run } from './db.ts';
 import { DEFAULT_ANGLES, DEFAULT_DOMAINS, OTHER_EVENT, type Answers, type Answer, type Option, type Refs, type Locale, type Branch } from './questions.ts';
 import { norm } from './text.ts';
+import { openEvents } from './calendar.ts';
+import { todayIso } from './dates.ts';
 import type { DevfestEvent } from './roadmap.ts';
 
 export interface Candidate {
@@ -34,6 +36,7 @@ export interface Candidate {
   photo_validated_at?: string | null;
   submitted_at?: string | null;
   reopened_at?: string | null; // « Rouvrir les échanges »: only her confirmation counts as submitted again
+  admitted_late_at?: string | null; // admitted by the team after the last day to send an interest: her form stays open
 }
 export interface Track {
   id: number;
@@ -100,6 +103,16 @@ export async function getRefs(): Promise<Refs> {
   // Events come from the admin calendar (value = event slug). Past events stay selectable until a coach removes them.
   const events: Option[] = (await listEvents()).map((e) => ({ value: e.city, label: { fr: eventName(e), en: eventName(e) } }));
   return { domains, angles, events: [...events, OTHER_EVENT] };
+}
+
+/**
+ * What the form offers a new candidate: only the events that are still ahead and after the common rehearsal day, never « Autre ».
+ * getRefs() stays the full list, to name the event of a dossier that already exists.
+ */
+export async function getFormRefs(today = todayIso()): Promise<Refs> {
+  const refs = await getRefs();
+  const open = openEvents(await listEvents(), today, await getSetting('rehearsal_date')).map((e) => e.city);
+  return { ...refs, events: refs.events.filter((o) => open.includes(o.value)) };
 }
 
 // ---- candidates --------------------------------------------------------------

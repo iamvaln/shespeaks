@@ -49,6 +49,7 @@
 .lp-btn-outline { background: #fff; border-color: var(--lp-navy); color: var(--lp-navy); }
 .lp-btn-outline:hover { background: #F6F7FB; }
 .lp-eyebrow { margin: 0 0 8px; font: 700 13px/1.3 var(--font-sans); letter-spacing: 0.09em; text-transform: uppercase; color: var(--lp-orange-ink); }
+.lp-deadline { margin: 0 0 14px; font: 700 14px/1.35 var(--font-sans); color: var(--lp-navy); }
 .lp-eyebrow-night { color: var(--lp-amber); font-size: 12px; margin-bottom: 6px; }
 .lp-h2 { margin: 0; font-weight: 800; font-stretch: 100%; letter-spacing: -0.02em; line-height: 1.15; font-size: clamp(24px, 2vw, 30px); color: var(--lp-navy); }
 .lp-h2-lg { font-size: clamp(28px, 3vw, 44px); line-height: 1.1; max-width: 16ch; text-wrap: balance; }

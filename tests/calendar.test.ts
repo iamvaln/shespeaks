@@ -52,6 +52,8 @@ test('the dates the team sets are checked for coherence (warnings, never errors)
   assert.match(calendarWarnings({ ...ok, internalDeadline: '2026-11-10' }).join('|'), /4 jours entre la date interne de soumission/);
   assert.match(calendarWarnings({ ...ok, interestDeadline: '2026-10-28' }).join('|'), /devrait précéder la date interne/);
   assert.match(calendarWarnings({ ...ok, events: [{ event_date: '2026-11-10', name: 'Bamenda' }, { event_date: '2026-11-21', name: 'Yaoundé' }] }).join('|'), /Un événement a lieu au plus tard le jour de répétition.*Bamenda/);
+  assert.match(calendarWarnings({ ...ok, events: [{ event_date: '2026-11-18', name: 'Douala' }] }).join('|'), /Un événement a lieu moins de 7 jours après le jour de répétition.*Douala/);
+  assert.deepEqual(calendarWarnings({ ...ok, events: [{ event_date: '2026-11-21', name: 'Yaoundé' }] }), [], 'exactly 7 days is enough');
   assert.match(calendarWarnings({ ...ok, rehearsalDate: '14/11' }).join('|'), /Le jour de répétition n’est pas une date lisible/);
   assert.match(calendarWarnings({ interestDeadline: 'bientôt' }).join('|'), /La date limite des intérêts n’est pas une date lisible/);
 });

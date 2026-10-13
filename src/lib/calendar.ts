@@ -50,6 +50,8 @@ export function calendarWarnings(i: CalendarInput): string[] {
       if (gap !== null && gap < MIN_PREP_DAYS) out.push(`Il y a ${gap} jour${Math.abs(gap) > 1 ? 's' : ''} entre ${label} (${dayLabel(d)}) et le jour de répétition (${dayLabel(rehearsal)}) : visez ${MIN_PREP_DAYS} jours au moins.`);
     }
     const before = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); return !!d && d <= rehearsal; });
+    const close = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); const gap = d ? daysUntil(d, rehearsal) : null; return gap !== null && gap > 0 && gap < 7; });
+    if (close.length) out.push(`${close.length === 1 ? 'Un événement a lieu' : `${close.length} événements ont lieu`} moins de 7 jours après le jour de répétition : les dernières tâches de préparation se tassent (${close.map((e) => e.name ?? '?').join(', ')}).`);
     if (before.length) out.push(`${before.length === 1 ? 'Un événement a lieu' : `${before.length} événements ont lieu`} au plus tard le jour de répétition${before.length === 1 ? '' : ' (ou avant)'} : ${before.length === 1 ? 'il n’est' : 'ils ne sont'} plus proposé${before.length === 1 ? '' : 's'} aux candidates (${before.map((e) => e.name ?? '?').join(', ')}).`);
   }
   return out;

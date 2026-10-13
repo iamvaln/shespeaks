@@ -31,10 +31,13 @@ import { getSubjectProposal } from '@/lib/ai-subject-store';
 import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
+import { admissionOpen } from '@/lib/calendar';
+import { todayIso } from '@/lib/dates';
+import { getSetting } from '@/lib/db';
 import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
 import { ideaLines, journeyState, STATUS_OF_STEP, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  addNoteAction, admitLateAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
@@ -71,6 +74,8 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
     journeyOf(id), listProposals(id),
   ]);
   const retained = tracks.filter((t) => t.state === 'retenue_coach');
+  // after the last day to send an interest, an unfinished form is closed unless the team admits it
+  const formClosed = !admissionOpen({ today: todayIso(), interestDeadline: await getSetting('interest_deadline'), admittedLate: false });
   // the button needs 2 or 3 retained tracks, each with a SAVED sentence (the hook shown as a starting point is not sent)
   const choiceReady = retained.length >= 2 && retained.length <= 3 && retained.every((t) => (t.pitch ?? '').trim());
   // once she counts as submitted (her confirmation, « déjà soumise » in the form, or a status moved forward) nothing more is sent
@@ -147,6 +152,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           {wa && <a className="a-btn is-amber" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"><Icon name="message" />Écrire sur WhatsApp</a>}
           {wa && <a className="a-btn is-ghost" href={`https://wa.me/${wa}?text=${encodeURIComponent(`${c.locale === 'en' ? `Hello ${c.name?.split(' ')[0] ?? ''}, here is your personal link to get back to your SheSpeaks space: ` : `Bonjour ${c.name?.split(' ')[0] ?? ''}, voici ton lien personnel pour retrouver ton espace SheSpeaks : `}${appUrl()}/reprendre/${c.token}`)}`} target="_blank" rel="noopener noreferrer">Envoyer son lien d’accès sur WhatsApp</a>}
           {c.email && <a className="a-btn is-ghost" href={`mailto:${c.email}`}><Icon name="mail" />Envoyer un email</a>}
+          {!c.completed_at && (c.admitted_late_at || formClosed) && (
+            <form action={admitLateAction}>
+              <input type="hidden" name="id" value={id} /><input type="hidden" name="tab" value={tab === 'sujet' ? '' : tab} /><input type="hidden" name="on" value={c.admitted_late_at ? '0' : '1'} />
+              <button className="a-btn is-ghost">{c.admitted_late_at ? 'Retirer l’admission tardive' : 'Admettre malgré la clôture'}</button>
+            </form>
+          )}
           {!c.completed_at && c.email && (
             <form action={remindNowAction}>
               <input type="hidden" name="id" value={id} /><input type="hidden" name="tab" value={tab === 'sujet' ? '' : tab} />

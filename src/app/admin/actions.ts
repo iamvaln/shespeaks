@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
+import { getCandidate, getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
 import { regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
@@ -246,7 +246,21 @@ export async function remindNowAction(f: FormData) {
   if (sent === 'sent') return back(cpath(id, tab), 'Rappel envoyé par email');
   if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans la page Emails. Écris-lui sur WhatsApp.', true);
   if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans la page Emails). Écris-lui sur WhatsApp.', true);
+  if (sent === 'closed') return back(cpath(id, tab), 'Les candidatures sont closes pour ce dossier : son lien ne mènerait qu’à la page « candidatures closes ». Admets-la d’abord (bouton « Admettre malgré la clôture »), puis renvoie le rappel.', true);
   return back(cpath(id, tab), 'Impossible : pas d’email ou formulaire déjà terminé', true);
+}
+
+/** Lets a candidate whose form is unfinished go on after the last day to send an interest (or takes that back). */
+export async function admitLateAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'id');
+  const tab = str(f, 'tab');
+  const c = validCid(id) ? await getCandidate(id) : undefined;
+  if (!c) return back('/admin/candidates', 'Candidate introuvable', true);
+  if (c.completed_at) return back(cpath(id, tab), 'Son formulaire est déjà terminé : rien à admettre.', true);
+  const on = str(f, 'on') === '1';
+  await run(`UPDATE candidates SET admitted_late_at = ${on ? `COALESCE(admitted_late_at, now() at time zone 'utc')` : 'NULL'}, updated_at=(now() at time zone 'utc') WHERE id=?`, id);
+  return back(cpath(id, tab), on ? 'Dossier admis malgré la clôture : elle peut terminer son formulaire. Envoie-lui un rappel ou son lien d’accès.' : 'Admission retirée : si la date limite est passée, son formulaire est de nouveau clos.');
 }
 
 export async function deleteCandidateAction(f: FormData) {
