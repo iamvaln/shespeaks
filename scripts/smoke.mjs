@@ -197,9 +197,12 @@ else {
   ok(r1.json?.ok && (r2.json?.ok || r2.json?.fatal === 'already_completed'), 'race: both simultaneous submissions are answered');
   const once = await racer('Race Single');
   await once.save('b2', { B4: ['retour'] });
-  const count = async (name) => ((await admin(`/admin/candidates/${await ficheId(name)}`)).text.match(/class="a-track[ "]/g) ?? []).length;
-  const [nTwice, nOnce] = [await count('Race Double'), await count('Race Single')];
-  ok(nOnce > 0 && nTwice === nOnce, `race: tracks are not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
+  // nothing is generated at the end of the form any more (the coach generates the tracks): the coach's « new interest » email is what must not double
+  const emails = (await admin('/admin/emails')).text;
+  const count = (name) => emails.split(`Nouvel intérêt reçu : ${name}`).length - 1;
+  const [nTwice, nOnce] = [count('Race Double'), count('Race Single')];
+  ok(nOnce > 0 && nTwice === nOnce, `race: the coach email is not doubled (${nTwice} for two simultaneous submissions, ${nOnce} for one)`);
+  ok(!/class="a-track[ "]/.test((await admin(`/admin/candidates/${await ficheId('Race Single')}`)).text), 'no track is generated when she sends her form: the coach generates them');
 }
 
 // resume link
