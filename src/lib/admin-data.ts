@@ -87,3 +87,20 @@ export async function answersToHandle(): Promise<ToHandle[]> {
      GROUP BY c.id, c.name, c.role ORDER BY MIN(p.answered_at), c.id`,
   );
 }
+
+export type Notice = { kind: string; candidate_id: number; name: string; subject: string; at: string };
+/**
+ * The dashboard « Notifications »: what the coaches were emailed about (new interest, a choice, an approval, changes asked, a photo, a
+ * submission), from the email log, once per event (one email per coach otherwise), newest first, the last two weeks.
+ */
+export async function recentNotices(limit = 12): Promise<Notice[]> {
+  return all<Notice>(
+    `SELECT n.kind, n.candidate_id, c.name, n.subject, n.at FROM (
+       SELECT DISTINCT ON (e.kind, e.candidate_id, date_trunc('minute', e.at)) e.kind, e.candidate_id, e.subject, e.at
+       FROM email_log e
+       WHERE (e.kind = 'coach_new_diagnostic' OR e.kind LIKE 'coach_answer_%') AND e.candidate_id IS NOT NULL
+         AND e.at > (now() at time zone 'utc') - interval '14 days'
+       ORDER BY e.kind, e.candidate_id, date_trunc('minute', e.at), e.at
+     ) n JOIN candidates c ON c.id = n.candidate_id
+     ORDER BY n.at DESC LIMIT ?`, limit);
+}

@@ -578,3 +578,17 @@ test('the menu figure is the work left: an approval whose photo is already valid
   await raw`update proposals set handled_at = null where candidate_id = ${id}`;
   assert.equal(await counted(), false, 'even with her approval left unhandled');
 });
+
+test('dashboard notifications: what the coaches were emailed, once per event, the last two weeks, newest first', { skip }, async () => {
+  const admin = await import('../../src/lib/admin-data.ts');
+  const id = await candidate('C');
+  const subject = `Test ${id} a choisi un sujet`;
+  await raw`insert into email_log (kind, to_addr, subject, body_text, status, candidate_id, at) values
+    ('coach_answer_choisie', 'a@example.org', ${subject}, 'x', 'logged', ${id}, now() at time zone 'utc'),
+    ('coach_answer_choisie', 'b@example.org', ${subject}, 'x', 'logged', ${id}, now() at time zone 'utc'),
+    ('coach_new_diagnostic', 'a@example.org', ${'Nouvel intérêt ' + id}, 'x', 'logged', ${id}, (now() at time zone 'utc') - interval '20 days'),
+    ('candidate_confirmation', 'c@example.org', 'pour elle', 'x', 'logged', ${id}, now() at time zone 'utc')`;
+  const mine = (await admin.recentNotices(50)).filter((n) => n.candidate_id === id);
+  assert.deepEqual(mine.map((n) => n.subject), [subject], 'one line for two coaches; older than 14 days and candidate emails left out');
+  assert.equal(mine[0].name, 'Test');
+});
