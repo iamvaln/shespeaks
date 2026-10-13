@@ -103,19 +103,14 @@ test('suggestions made by the AI are not touched by the template regeneration', 
   assert.equal(t.filter((x) => x.origin !== 'ia').length, 5, 'and the five templates are still there');
 });
 
-test('a « Régénérer » before she finished does not double the tracks when she sends her form', { skip }, async () => {
+test('sending her form makes no track: the coach generates them from the fiche, after her orientations', { skip }, async () => {
   const token = crypto.randomBytes(8).toString('hex');
   const [{ id }] = await raw`insert into candidates (token, name, email, branch, status, current_screen)
     values (${token}, 'Test', ${token + '@example.org'}, 'A', 'en_cours', 'a2') returning id`;
-  await data.setAnswers(id, { P5: 'fr', A2: ['mobile'], A3: 'Flutter' });
-  await diagnostic.regenerateTracks(id); // the accidental click, on part of her answers
-  const early = await tracks(id);
-  assert.equal(early.length, 5);
-  await raw`insert into tracks (candidate_id, title, format, origin, position) values (${id}, 'Ma piste à moi', 'talk', 'coach', 5)`;
-  await data.setAnswers(id, { A7: ['demo'], A4: 'Un bug tenace sur la synchronisation hors-ligne' });
+  await data.setAnswers(id, { P5: 'fr', A2: ['mobile'], A3: 'Flutter', A7: ['demo'], A4: 'Un bug tenace sur la synchronisation hors-ligne' });
   await diagnostic.completeDiagnostic(id);
-  const t = await tracks(id);
-  assert.equal(t.filter((x) => x.origin !== 'coach').length, 5, 'five template proposals, made again from all her answers');
-  assert.ok(t.some((x) => x.title === 'Ma piste à moi'), 'the coach’s own track stays');
-  assert.equal(new Set(t.map((x) => x.title)).size, t.length, 'no duplicate');
+  assert.equal((await tracks(id)).length, 0, 'nothing generated at the end of the form');
+  assert.ok((await raw`select 1 from subjects where candidate_id = ${id}`).length, 'the subject row is still prepared');
+  await diagnostic.regenerateTracks(id); // « Générer les propositions »
+  assert.equal((await tracks(id)).length, 5);
 });
