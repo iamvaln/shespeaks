@@ -251,14 +251,14 @@ else {
 // or changes per mailbox and hour (« +tag » is the same mailbox), and 30 attempts per address.
 {
   const base = `limite${RUN}`;
-  const starts = [];
-  for (const email of [`${base}@example.com`, `${base}+a@example.com`, `${base.toUpperCase()}+b@example.com`]) {
-    const c = new Client();
-    starts.push((await c.save('profile', profile('Limite Email', { P4: email }))).json?.ok === true);
+  // one journey per mailbox: starting again with the same address (any « +tag », any case) creates nothing, she gets a code by email
+  ok((await new Client().save('profile', profile('Limite Email', { P4: `${base}@example.com` }))).json?.ok === true, 'one journey per address: the first start is accepted');
+  for (const email of [`${base}+a@example.com`, `${base.toUpperCase()}+b@example.com`]) {
+    const again = await new Client().save('profile', profile('Limite Email', { P4: email }));
+    ok(again.status === 409 && again.json?.fatal === 'resume_needed' && again.json?.canStartNew === false, `one journey per address: starting again with ${email} offers to resume (409 resume_needed)`);
   }
-  ok(starts.every(Boolean), 'creation limit: three starts for one mailbox are accepted');
-  const fourth = await new Client().save('profile', profile('Limite Email', { P4: `${base}+c@example.com` }));
-  ok(fourth.status === 429 && fourth.json?.fatal === 'email_rate_limited', 'creation limit: the fourth start for the same mailbox is refused (429)');
+  const wrongCode = await fetch(BASE + '/api/acces/code', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': randomIp() }, body: JSON.stringify({ email: `${base}@example.com`, code: '000000' }) });
+  ok(wrongCode.status === 400 && !(wrongCode.headers.getSetCookie?.() ?? []).length, 'resume code: a wrong code opens nothing (400, no cookie)');
   const other = await new Client().save('profile', profile('Limite Autre'));
   ok(other.json?.ok === true, 'creation limit: another mailbox is not affected');
 
@@ -266,8 +266,8 @@ else {
   if (cookie) {
     const list = await (await fetch(BASE + `/admin/candidates?q=${base}`, { headers: { cookie } })).text();
     const ids = new Set([...list.matchAll(/\/admin\/candidates\/(\d+)/g)].map((m) => m[1]));
-    ok(ids.size === 3, `creation limit: the refused start created no candidate (${ids.size} candidates for that mailbox, expected 3)`);
-  } else console.log('SKIP  creation limit: refused start creates nothing (SESSION_SECRET not set)');
+    ok(ids.size === 1, `one journey per address: the repeated starts created no candidate (${ids.size} for that mailbox, expected 1)`);
+  } else console.log('SKIP  one journey per address: repeated starts create nothing (SESSION_SECRET not set)');
 
   // a typo elsewhere on the screen must not use up the mailbox allowance
   const typos = [];
@@ -275,9 +275,15 @@ else {
   ok(typos.every((x) => x === 422), `creation limit: invalid screens answer 422 and are not counted (${typos.join(',')})`);
   ok((await new Client().save('profile', profile('Limite Faute', { P4: `faute${RUN}@example.com` }))).json?.ok === true, 'creation limit: the corrected screen is then accepted');
 
-  // changing the address of an existing candidate counts like starting with it: the reminders would go to the new address
+  // changing the address of an existing candidate counts like starting with it (the reminders would go to the new address): at most 3
+  // uses per mailbox and hour, the start above being the first
   const changer = new Client();
   ok((await changer.save('profile', profile('Limite Change', { P4: `decoy${RUN}@example.com` }))).json?.ok === true, 'creation limit: a candidate starts with her own address');
+  for (const n of [1, 2]) {
+    const c = new Client();
+    await c.save('profile', profile(`Limite Change ${n}`, { P4: `decoy${n}${RUN}@example.com` }));
+    ok((await c.save('profile', profile(`Limite Change ${n}`, { P4: `${base}+d${n}@example.com` }))).json?.ok === true, `creation limit: change ${n} to that mailbox is accepted`);
+  }
   const toVictim = await changer.save('profile', profile('Limite Change', { P4: `${base}+d@example.com` }));
   ok(toVictim.status === 429 && toVictim.json?.fatal === 'email_rate_limited', 'creation limit: changing to a mailbox already used three times is refused');
   ok((await changer.save('profile', profile('Limite Change', { P4: `fresh${RUN}@example.com` }))).json?.ok === true, 'creation limit: changing to a free mailbox is accepted');

@@ -486,3 +486,53 @@ test('the list shows where the exchanges stand for each candidate, as her fiche 
     assert.deepEqual(label(id), journeyState(j, await P.listProposals(id), await photoCount(id)), `candidate ${id}`);
   }
 });
+
+test('resume code: sent with the links, opens her unfinished journey once; wrong tries count, five void it; it expires', { skip }, async () => {
+  const access = await import('../../src/lib/access.ts');
+  const rc = await import('../../src/lib/resume-code.ts');
+  const sent = [];
+  access.setAccessSender(async (to, entries, loc, code) => { sent.push({ to, code, first: entries[0].url }); });
+  const box = `rc${crypto.randomBytes(3).toString('hex')}`;
+  const [done, open] = [crypto.randomBytes(8).toString('hex'), crypto.randomBytes(8).toString('hex')];
+  await raw`insert into candidates (token, name, email, locale, completed_at) values (${done}, 'Fini', ${box + '@gmail.com'}, 'en', now() at time zone 'utc')`;
+  await raw`insert into candidates (token, name, email, locale) values (${open}, 'En cours', ${box.slice(0, 2) + '.' + box.slice(2) + '@gmail.com'}, 'en')`; // same mailbox (Gmail ignores dots)
+  await access.requestAccess(`${box}@gmail.com`, '198.51.100.20');
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].code, /^\d{6}$/);
+  assert.ok(sent[0].first.endsWith(open), `the unfinished journey comes first (the code opens it): ${sent[0].first} vs ${open}`);
+  const code = sent[0].code;
+  const wrong = code === '000000' ? '111111' : '000000';
+  assert.deepEqual(await rc.verifyCode(`${box}@gmail.com`, wrong, '198.51.100.21'), { wrong: true });
+  assert.deepEqual(await rc.verifyCode(`${box}@gmail.com`, code.slice(0, 3) + ' ' + code.slice(3), '198.51.100.21'), { token: open, completed: false }, 'spaces are ignored');
+  assert.deepEqual(await rc.verifyCode(`${box}@gmail.com`, code, '198.51.100.21'), { wrong: true }, 'a code works once');
+  // five wrong tries void the live code
+  const id = (await raw`select id from candidates where token = ${open}`)[0].id;
+  const fresh = await rc.issueCode(id);
+  const bad = fresh === '000000' ? '111111' : '000000';
+  for (let k = 0; k < 5; k++) await rc.verifyCode(`${box}@gmail.com`, bad, '198.51.100.22');
+  assert.deepEqual(await rc.verifyCode(`${box}@gmail.com`, fresh, '198.51.100.22'), { wrong: true }, 'void after five wrong tries');
+  const late = await rc.issueCode(id);
+  await raw`update resume_codes set expires_at = (now() at time zone 'utc') - interval '1 minute' where candidate_id = ${id} and used_at is null`;
+  assert.deepEqual(await rc.verifyCode(`${box}@gmail.com`, late, '198.51.100.23'), { wrong: true }, 'expired');
+  assert.deepEqual(await rc.verifyCode('nobody@example.org', '123456', '198.51.100.23'), { wrong: true });
+});
+
+test('the first screen does not start a second journey for an address that has one; another is allowed once all are finished', { skip }, async () => {
+  const access = await import('../../src/lib/access.ts');
+  const diag = await import('../../src/lib/diagnostic.ts');
+  const sent = [];
+  access.setAccessSender(async (to, entries, loc, code) => { sent.push(code); });
+  const box = `dup${crypto.randomBytes(3).toString('hex')}`;
+  const profile = { P1: 'Awa Test', P2: 'autre', P2o: 'DevFest Test', P3: '+237 612 345 678', P4: `${box}@example.org`, P6: 'étudiante', P7: '1-3' };
+  const first = await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.30');
+  assert.equal(first.ok, true, JSON.stringify(first));
+  const again = await diag.submitScreen(null, 'profile', { ...profile, P4: `${box.toUpperCase()}@example.org` }, 'fr', '198.51.100.31');
+  assert.deepEqual(again, { ok: false, errors: {}, fatal: 'resume_needed', canStartNew: false });
+  assert.equal(sent.length, 1, 'she receives her code and links');
+  assert.equal((await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.31', true)).fatal, 'resume_needed', 'no second journey while one is unfinished');
+  await raw`update candidates set completed_at = now() at time zone 'utc' where token = ${first.token}`;
+  assert.equal((await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.32')).canStartNew, true);
+  const other = await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.32', true);
+  assert.equal(other.ok, true, 'another event, once all hers are finished, when she asks');
+  assert.equal((await raw`select count(*)::int as n from candidates where lower(email) = ${box + '@example.org'}`)[0].n, 2);
+});

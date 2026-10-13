@@ -8,6 +8,8 @@ import {
 import { assembleAbstract } from './abstract.ts';
 import { autoChecks } from './review.ts';
 import { generateTracks } from './topics.ts';
+import { journeysOf } from './resume-code.ts';
+import { requestAccess } from './access.ts';
 import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
 import { checkChangeRate, checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
@@ -44,13 +46,13 @@ export async function wizardState(c: Candidate): Promise<WizardState> {
 }
 
 export type SubmitResult =
-  | { ok: false; errors: FieldErrors; fatal?: string }
+  | { ok: false; errors: FieldErrors; fatal?: string; canStartNew?: boolean }
   | { ok: true; token: string; next: string; created: boolean; completed: boolean };
 
 /**
  * Persist one screen (autosave at every step). `token` null = no candidate yet (only the profile screen can create one).
  */
-export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown'): Promise<SubmitResult> {
+export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown', startNew = false): Promise<SubmitResult> {
   const screen = SCREENS[screenId];
   if (!screen) return { ok: false, errors: {}, fatal: 'unknown_screen' };
   const refs = await getRefs();
@@ -74,6 +76,19 @@ export async function submitScreen(token: string | null, screenId: string, value
     if (!errors.P4 && !(await emailDomainAccepts(String(merged['P4'] ?? '')))) errors.P4 = 'undeliverable_email';
   }
   if (Object.keys(errors).length) return { ok: false, errors };
+
+  // Her journey is found by her email, not by the browser (an in-app browser keeps no cookie, she may switch phones): an address that
+  // already has a journey does not start a second one. She receives a code and her links by email and types the code back (resume-code.ts).
+  // Another journey (another event) can be started only once all of hers are finished, and only when she asks for it.
+  if (screenId === 'profile' && !c) {
+    const email = String(merged['P4'] ?? '').trim();
+    const mine = email ? await journeysOf(email) : [];
+    const allDone = mine.every((r) => !!r.completed_at);
+    if (mine.length && !(startNew && allDone)) {
+      await requestAccess(email, ip);
+      return { ok: false, errors: {}, fatal: 'resume_needed', canStartNew: allDone };
+    }
+  }
 
   // Reminders and the confirmation go to the address on the profile, so an address is « used » when a candidate is created with it
   // AND when an existing candidate changes to it: at most a few per mailbox and hour, counted only now that the form is valid

@@ -243,11 +243,17 @@ export function candidateProposalReminder(name: string, url: string, loc: Locale
     ? build('Ta coach attend ta réponse', { heading: `${first(name)}, un petit rappel`, paragraphs: ['Ta coach t’a envoyé une proposition il y a deux jours. Réponds-lui depuis ton espace pour avancer vers ta candidature.'], cta: { label: 'Voir la proposition', url } })
     : build('Your coach is waiting for your answer', { heading: `${first(name)}, a quick reminder`, paragraphs: ['Your coach sent you a proposal two days ago. Answer from your space to move towards your application.'], cta: { label: 'See the proposal', url } });
 }
-export function candidateAccessLinks(entries: { event: string; date: string; url: string }[], loc: Locale): Built {
+/** `code`: the 6-digit code that opens her journey in the browser she is using (the links open it in the one they open in). */
+export function candidateAccessLinks(entries: { event: string; date: string; url: string }[], loc: Locale, code: string | null = null): Built {
   const lines = entries.map((e) => (loc === 'fr' ? `${e.event} (commencé le ${e.date}) : ${e.url}` : `${e.event} (started on ${e.date}): ${e.url}`));
+  const codeLines = code
+    ? (loc === 'fr'
+      ? [`Ton code pour reprendre : ${code}`, 'Tape-le sur la page où tu l’as demandé (valable 15 minutes). Ou bien ouvre ton lien personnel ci-dessous.']
+      : [`Your code to pick up where you left off: ${code}`, 'Type it on the page where you asked for it (valid for 15 minutes). Or open your personal link below.'])
+    : [];
   return loc === 'fr'
-    ? build('Ton lien pour retrouver ton espace', { heading: 'Retrouve ton espace SheSpeaks', paragraphs: ['Voici ton lien personnel. Ne le partage pas : il ouvre ton espace sans mot de passe.', ...lines], cta: { label: 'Ouvrir mon espace', url: entries[0].url } })
-    : build('Your link to get back to your space', { heading: 'Get back to your SheSpeaks space', paragraphs: ['Here is your personal link. Don’t share it: it opens your space without a password.', ...lines], cta: { label: 'Open my space', url: entries[0].url } });
+    ? build(code ? `Ton code SheSpeaks : ${code}` : 'Ton lien pour retrouver ton espace', { heading: 'Retrouve ton espace SheSpeaks', paragraphs: [...codeLines, 'Voici ton lien personnel. Ne le partage pas : il ouvre ton espace sans mot de passe.', ...lines], cta: { label: 'Ouvrir mon espace', url: entries[0].url } })
+    : build(code ? `Your SheSpeaks code: ${code}` : 'Your link to get back to your space', { heading: 'Get back to your SheSpeaks space', paragraphs: [...codeLines, 'Here is your personal link. Don’t share it: it opens your space without a password.', ...lines], cta: { label: 'Open my space', url: entries[0].url } });
 }
 const ANSWER_LABEL: Record<string, string> = {
   choisie: 'a choisi un sujet', aucune: 'ne retient aucun des sujets proposés', approuvee: 'approuve son sujet', changements: 'demande des changements sur son sujet',
