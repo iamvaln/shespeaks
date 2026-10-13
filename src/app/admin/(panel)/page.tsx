@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { answersToHandle, candidateRows } from '@/lib/admin-data';
+import { answersToHandle, candidateRows, recentNotices } from '@/lib/admin-data';
 import { getSetting, statusLabel } from '@/lib/db';
 import { eventName, listEvents } from '@/lib/data';
 import { fmtDate } from '@/lib/i18n';
@@ -26,7 +26,9 @@ export default async function Dashboard() {
   const coach = await requireCoach();
   const now = new Date();
   const today = todayIso(now);
-  const [rows, answers] = await Promise.all([candidateRows(), answersToHandle()]);
+  const [rows, answers, notices] = await Promise.all([candidateRows(), answersToHandle(), recentNotices()]);
+  // a notice whose candidate still waits for the coach is shown as « à traiter »
+  const coachHand = new Set(rows.filter((r) => r.journey?.waiting === 'coach').map((r) => r.id));
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');
 
@@ -72,6 +74,27 @@ export default async function Dashboard() {
           <Link className="more" href="/admin/events">Gérer les événements →</Link>
         </section>
       </div>
+
+      <section className="a-card is-flush" aria-labelledby="h-notif">
+        <div className="a-card-head">
+          <h2 id="h-notif" className="a-h2">Notifications</h2>
+          <span className="a-muted">Ce que les emails aux coachs annoncent, les plus récentes d’abord (14 jours)</span>
+        </div>
+        {notices.length === 0 ? <p className="a-empty">Rien de nouveau ces deux dernières semaines.</p> : (
+          <ul className="a-notices">
+            {notices.map((n) => {
+              const todo = coachHand.has(n.candidate_id);
+              return (
+                <li key={`${n.kind}-${n.candidate_id}-${n.at}`} className={todo ? 'is-todo' : undefined}>
+                  <Link href={`/admin/candidates/${n.candidate_id}`} className="a-stretch">{n.subject}</Link>
+                  <span className="a-sub">il y a {elapsed(n.at, now)}{todo ? '' : ' · traitée ou en attente de la candidate'}</span>
+                  {todo && <span className="a-pill is-amber">À traiter</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <div className="a-split">
         <section className="a-card is-flush a-main" aria-labelledby="h-recu">
