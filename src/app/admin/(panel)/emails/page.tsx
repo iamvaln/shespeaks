@@ -11,6 +11,7 @@ export const metadata = { title: 'Emails' };
 const KINDS: Record<string, string> = {
   candidate_started: 'Candidate · parcours commencé', candidate_confirmation: 'Candidate · confirmation de réception',
   candidate_reminder_1: 'Candidate · relance 1', candidate_reminder_2: 'Candidate · relance 2', candidate_reminder_manual: 'Candidate · rappel manuel',
+  calendar_closing: 'Candidate · clôture du formulaire', calendar_exchange: 'Candidate · échange à finir', calendar_submit: 'Candidate · soumission à faire',
   coach_new_diagnostic: 'Coach · nouvel intérêt', coach_stalled_digest: 'Coach · relances à faire', coach_login: 'Coach · connexion', coach_invite: 'Coach · invitation',
 };
 // Reminders are numbered up to the maximum set in Paramètres (1 to 10), so their labels are built, not listed.

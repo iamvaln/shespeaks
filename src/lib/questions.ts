@@ -45,7 +45,7 @@ export interface Screen {
 export interface Refs {
   domains: Option[];
   angles: Option[];
-  /** events candidates can take part in (from the admin calendar) + "another event" */
+  /** events candidates can take part in (from the admin calendar); « another event » only names the choice of dossiers that already exist */
   events: Option[];
 }
 

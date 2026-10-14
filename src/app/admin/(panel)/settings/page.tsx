@@ -1,15 +1,19 @@
 import { getSetting } from '@/lib/db';
 import { requireCoach } from '@/lib/auth';
-import { getRefs, refsToText } from '@/lib/data';
+import { getRefs, listEvents, refsToText } from '@/lib/data';
+import { calendarWarnings } from '@/lib/calendar';
+import { runCalendarReminders, type CalendarKind } from '@/lib/calendar-reminders';
+import { dayOf, todayIso } from '@/lib/dates';
 import { mailConfigured } from '@/lib/mail';
 import { checkEnv } from '@/lib/env';
 import { all } from '@/lib/db';
-import { saveSettingsAction } from '../../actions';
+import { recoverStuckAction, saveSettingsAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'Paramètres' };
-export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+const KIND_LABEL: Record<CalendarKind, string> = { closing: 'clôture du formulaire', exchange: 'échange à finir', submit: 'soumission' };
+export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string; err?: string }> }) {
   await requireCoach();
   const sp = await searchParams;
   const refs = await getRefs();
@@ -19,17 +23,23 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   } catch {
     migrations = null; // table absent: migrations were never run through the tracked runner
   }
+  const stuck = await all<{ id: number; name: string | null; email: string | null; last_activity_at: string }>(`SELECT id, name, email, last_activity_at FROM candidates WHERE current_screen='done' AND completed_at IS NULL ORDER BY id`);
   const issues = checkEnv(process.env, { production: process.env.NODE_ENV === 'production' });
   const v = {
     notification_email: await getSetting('notification_email'), reminders_enabled: await getSetting('reminders_enabled'),
     first: await getSetting('reminder_first_hours'), interval: await getSetting('reminder_interval_hours'), max: await getSetting('reminder_max'),
     deadline: await getSetting('internal_deadline'),
+    interest: await getSetting('interest_deadline'), rehearsal: await getSetting('rehearsal_date'), rehearsalInfo: await getSetting('rehearsal_info'),
+    calendarReminders: await getSetting('calendar_reminders_enabled'),
     focus: await getSetting('topic_focus'),
   };
+  const preview = await runCalendarReminders(new Date(), { dry: true }).catch((e) => { console.error('[settings] reminder preview failed', e); return null; }); // the page opens even if the preview cannot be computed
+  const warnings = calendarWarnings({ interestDeadline: v.interest, internalDeadline: v.deadline, rehearsalDate: v.rehearsal, events: await listEvents(), today: todayIso() });
   return (
     <div className="a-page" style={{ gap: 20, maxWidth: 860 }}>
       <h1 className="a-h1" style={{ margin: 0 }}>Paramètres</h1>
       {sp.msg && <div className="flash" role="status" style={{ margin: 0 }}>{sp.msg}</div>}
+      {sp.err && <div className="flash err" role="alert" style={{ margin: 0 }}>{sp.err}</div>}
 
       <section className="a-card a-stack" aria-labelledby="h-server">
         <h2 id="h-server" className="a-h2">Configuration du serveur</h2>
@@ -55,6 +65,20 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         )}
       </section>
 
+      {stuck.length > 0 && (
+        <section className="a-card a-stack" aria-labelledby="h-stuck">
+          <h2 id="h-stuck" className="a-h2">Dossiers bloqués ({stuck.length})</h2>
+          <p className="a-muted" style={{ margin: 0 }}>Ces candidates ont envoyé la dernière page du formulaire, mais leur dossier n’a pas été finalisé (il apparaît « En cours », sans date de fin, et personne n’a été prévenu). Le bouton les finalise comme à l’envoi de la dernière page : statut « Intérêt reçu », ligne du sujet, email de confirmation à la candidate et notification aux coachs. La date de fin reprend le jour de leur dernier envoi. Un dossier que l’équipe a déjà écarté (« Non retenue ») est terminé sans changer son statut et sans email.</p>
+          <ul className="a-issues" aria-label="Dossiers bloqués">
+            {stuck.slice(0, 30).map((c) => (
+              <li key={c.id}><span className="a-pill is-soft">#{c.id}</span><div style={{ minWidth: 0 }}><a href={`/admin/candidates/${c.id}`}>{c.name || 'Sans nom'}</a><div className="a-muted">{c.email || 'pas d’email'} · dernier envoi le {(dayOf(c.last_activity_at) ?? '').split('-').reverse().join('/')}</div></div></li>
+            ))}
+          </ul>
+          {stuck.length > 30 && <p className="a-muted" style={{ margin: 0 }}>… et {stuck.length - 30} autres (le bouton les traite tous).</p>}
+          <form action={recoverStuckAction}><button className="a-btn">Finaliser les dossiers bloqués ({stuck.length})</button></form>
+        </section>
+      )}
+
       <form action={saveSettingsAction} className="a-stack" style={{ gap: 20 }}>
         <section className="a-card a-stack">
           <h2 className="a-h2">Notifications</h2>
@@ -72,9 +96,46 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           </div>
         </section>
 
-        <section className="a-card a-stack">
-          <h2 className="a-h2">Calendrier interne</h2>
-          <label className="a-label">Date limite interne (relecture avant les clôtures officielles)<input className="a-input" type="date" name="internal_deadline" defaultValue={v.deadline} style={{ maxWidth: 260 }} /></label>
+        <section className="a-card a-stack" aria-labelledby="h-calendar">
+          <h2 id="h-calendar" className="a-h2">Calendrier commun</h2>
+          <p className="a-muted" style={{ margin: 0 }}>Trois dates valent pour toutes les candidates. La date limite des intérêts vaut toute la journée du jour dit (heure du Cameroun) : le lendemain, plus aucune candidature n’est acceptée. Visez au moins 14 jours entre le dernier jour pour envoyer son intérêt (et la date interne) et la répétition : un avertissement s’affiche sinon, sans rien bloquer. Seuls les événements datés, à venir et après le jour de répétition sont proposés aux candidates.</p>
+          <div className="a-grid-3" style={{ alignItems: 'end' }}>
+            <label className="a-label">Dernier jour pour envoyer son intérêt<input className="a-input" type="date" name="interest_deadline" defaultValue={v.interest} /></label>
+            <label className="a-label">Date limite interne<input className="a-input" type="date" name="internal_deadline" defaultValue={v.deadline} /></label>
+            <label className="a-label">Jour de répétition (pour toutes)<input className="a-input" type="date" name="rehearsal_date" defaultValue={v.rehearsal} /></label>
+          </div>
+          <label className="a-label">Répétition : lieu, heure, lien (texte libre ; affiché aux candidates avec les prochaines livraisons)<input className="a-input" name="rehearsal_info" defaultValue={v.rehearsalInfo} maxLength={300} placeholder="Ex. visioconférence à 18 h, lien envoyé la veille" /></label>
+          <label className="a-check"><input type="checkbox" name="calendar_reminders_enabled" defaultChecked={v.calendarReminders === 'true'} /><span>Envoyer les relances du calendrier (clôture du formulaire, échanges à finir, soumission). Décoché : aucune de ces relances ne part. La date interne est la dernière date limite avant la soumission à l’appel : c’est vers elle que partent les relances d’échanges.</span></label>
+          {warnings.length > 0 && (
+            <ul className="a-issues" aria-label="Points à vérifier dans le calendrier">
+              {warnings.map((w) => (
+                <li key={w}><span className="a-pill is-soft">Attention</span><div style={{ minWidth: 0 }}>{w}</div></li>
+              ))}
+            </ul>
+          )}
+          <section className="a-stack" style={{ gap: 8 }} aria-labelledby="h-preview">
+            <h3 id="h-preview" style={{ margin: 0, fontSize: 15 }}>Aperçu des relances du calendrier pour aujourd’hui</h3>
+            {preview === null ? (
+              <p className="a-muted" style={{ margin: 0 }}>L’aperçu n’a pas pu être calculé (détail dans le journal du serveur).</p>
+            ) : (
+              <>
+                {v.calendarReminders !== 'true' && <p className="a-muted" style={{ margin: 0 }}>Le réglage ci-dessus est éteint : rien ne partirait, même si des relances sont dues.</p>}
+                {preview.due.length === 0 ? (
+                  <p className="a-muted" style={{ margin: 0 }}>Aucune relance du calendrier n’est due aujourd’hui.</p>
+                ) : (
+                  <ul className="a-issues" aria-label="Relances dues aujourd’hui">
+                    {preview.due.map((d) => (
+                      <li key={d.key + d.id}>
+                        <span className={`a-pill ${d.held ? 'is-soft' : 'is-green'}`}>{d.held ? 'Reportée' : 'Partirait'}</span>
+                        <div style={{ minWidth: 0 }}><a href={`/admin/candidates/${d.id}`}>{d.name || 'Sans nom'}</a> · {KIND_LABEL[d.kind]} · {d.daysLeft === 0 ? 'jour même' : `J-${d.daysLeft}`} ({d.target.split('-').reverse().join('/')}){d.held ? <div className="a-muted">Pas envoyée aujourd’hui : {d.held}</div> : null}</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+          <p className="a-sub" style={{ fontWeight: 400, whiteSpace: 'normal', margin: 0 }}>Aujourd’hui : {todayIso().split('-').reverse().join('/')}.{warnings.length > 0 ? ' Les avertissements ne bloquent rien.' : ''}</p>
         </section>
 
         <section className="a-card a-stack">

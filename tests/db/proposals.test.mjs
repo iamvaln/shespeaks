@@ -663,7 +663,8 @@ test('the first screen does not start a second journey for an address that has o
   const sent = [];
   access.setAccessSender(async (to, entries, loc, code) => { sent.push(code); });
   const box = `dup${crypto.randomBytes(3).toString('hex')}`;
-  const profile = { P1: 'Awa Test', P2: 'autre', P2o: 'DevFest Test', P3: '+237 612 345 678', P4: `${box}@example.org`, P6: 'étudiante', P7: '1-3' };
+  await raw`insert into devfest_events (city, name, event_date) values ('douala', 'Douala', to_char(current_date + 60, 'YYYY-MM-DD')) on conflict (city) do update set event_date = excluded.event_date`; // an event the form still offers, whatever the day the tests run
+  const profile = { P1: 'Awa Test', P2: 'douala', P3: '+237 612 345 678', P4: `${box}@example.org`, P6: 'étudiante', P7: '1-3' };
   const first = await diag.submitScreen(null, 'profile', profile, 'fr', '198.51.100.30');
   assert.equal(first.ok, true, JSON.stringify(first));
   const again = await diag.submitScreen(null, 'profile', { ...profile, P4: `${box.toUpperCase()}@example.org` }, 'fr', '198.51.100.31');

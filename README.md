@@ -35,7 +35,7 @@ npm install
 npm run db:setup                # creates tables, seeds the DevFest calendar and the first coach
 npm run dev                     # http://localhost:3000  — admin: /admin
 npm test                        # unit tests (pure logic)
-node scripts/smoke.mjs          # API journey for the 4 branches (server must be running); add SESSION_SECRET=<the server's secret> to run the coach-space checks too
+node scripts/smoke.mjs          # API journey for the 4 branches (server must be running, and the form must offer 'douala': a dated, future event, and no past interest deadline. The seed's Douala date is 2026-11-28; CI moves it with: update devfest_events set event_date = to_char(current_date + 60, 'YYYY-MM-DD') where city = 'douala'); add SESSION_SECRET=<the server's secret> to run the coach-space checks too
 ```
 
 Without `SUPABASE_URL`, photos are stored in `./data/uploads` (dev only).
@@ -135,6 +135,28 @@ After the diagnostic, the coach and the candidate go through a short series of e
 - **No mention of AI on the candidate side.** Pages and emails speak of « ta coach » / « your coach » only, even when a topic started as an AI suggestion.
 - **Tests.** `tests/journey.test.ts` and the other unit tests, `tests/db/*.test.mjs` for the database rules.
 
+## Common calendar and admission
+
+The Settings page (coach space) holds the dates shared by every candidate: the last day to send an interest (`interest_deadline`), the internal submission date, the rehearsal day (`rehearsal_date`, with a free note `rehearsal_info`) and the switch for the calendar reminders. Empty = not set (no closing). Warnings (never blocking) point at dates that leave less than 14 days of preparation.
+
+- **Closing**: the deadline day is open all day (Douala time, UTC+1); the next day no new dossier starts and no unfinished one is sent, unless the coach opens the fiche of an unfinished dossier and uses « Admettre malgré la clôture ». The form, the resume links and the home page say so.
+- **Events offered**: only events with a real date that is still ahead (and after the rehearsal day when it is set). « Autre » is no longer offered; an existing dossier keeps its value. Dossiers already on « Autre » or on an event without a date can be listed with:
+
+  ```sql
+  select c.id, c.name, c.email, c.city, c.city_other, c.status
+  from candidates c left join devfest_events e on e.city = c.city
+  where c.status <> 'non_retenue' and (c.city = 'autre' or e.event_date is null)
+  order by c.id;
+  ```
+
+- **Stuck dossiers**: a candidate whose last page was recorded without the dossier being finished (a failure between the two steps of the former finish) shows « En cours » at « écran 1 sur 6 ». They are finished when the candidate opens her link, and Settings lists the others with a « Finaliser les dossiers bloqués » button (confirmation email to the candidate, notification to the coaches; the end date is the day of her last send). The same list as SQL: `select id, name, email, last_activity_at from candidates where current_screen = 'done' and completed_at is null;`.
+
+### Calendar reminders
+
+A pass of the daily cron (`src/lib/calendar-reminders.ts`, run before the abandoned-form pass) writes to candidates at a date: **closing of the form** (unfinished form, 3 and 1 day before `interest_deadline`), **exchanges** (it is her turn to choose a topic, answer on her subject or send a photo: 7, 3 and 1 day before the internal date) and **submission** (topic approved, photo validated: 7, 3, 1 day and the day itself before the first date still ahead among the internal date and the event's call closing). Nobody is written to after her event is over, nor about exchanges and submission once her event's call has closed (the event is found by its slug or, for « Autre », by the name she typed). Each reminder is written once in `calendar_reminders` before it is sent (the key holds the target date, so moving a date arms it again) and given back if the send fails. A reminder is due on the day it falls on and the day after (a missed cron is made up, never later); if two tiers of one target are due together only the closest is sent. One email per candidate and day, whichever pass writes it (the journal, `last_reminder_at` and `proposals.reminded_at` are all checked, before anything is claimed, so a skipped reminder is not burnt), one per mailbox and day (two dossiers on one mailbox take turns), at most 300 per run.
+
+The pass does nothing while `calendar_reminders_enabled` is off (Settings). **To activate**: (1) on the preproduction, set the dates in Settings (an interest deadline a few days ahead) and **switch `calendar_reminders_enabled` on** (with it off a real run does nothing), and have a dossier that is due (an unfinished form, or an exchange waiting for her); (2) call the cron by hand: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/reminders?dry=1"` prints what would be sent and sends nothing (any form of the parameter is a preview; it also skips the abandoned-form pass, which has no preview mode); (3) call it again without `dry`: with no Resend key the emails are only logged, read the `calendar_closing` / `calendar_exchange` / `calendar_submit` rows in Admin → Emails; (4) only then, in production, read « Aperçu des relances du calendrier » in Settings and switch the setting on.
+
 ## Environment check
 
 The app validates its configuration (rules in `src/lib/env.ts`; it only ever reports variable **names**, never values):
@@ -173,9 +195,12 @@ How sending behaves: confirmations/notifications are sent **after** the response
 | **Diagnostic completed** | **assigned coach + extra notification emails** | name, city, starting point, subject, contacts, direct link to the fiche |
 | **Unfinished diagnostic** (default: after 24 h, then every 48 h, max 2) | **candidate** (if she gave an email) | reminder with resume link and progress |
 | **Unfinished diagnostic** (same trigger) | **coach + extra notification emails** | digest of stalled candidates with WhatsApp numbers (works even without candidate email) |
+| **Closing of the form** (J-3, J-1 before the last day to send an interest) | **candidate** with an unfinished form | days left, resume link (`calendar_closing`) |
+| **Exchange to finish** (J-7, J-3, J-1 before the internal date) | **candidate** whose turn it is | what her coach waits for, link to her space (`calendar_exchange`) |
+| **Submission** (J-7, J-3, J-1, the day itself) | **candidate** whose subject is approved and photo validated | the date to submit by, where, link (`calendar_submit`) |
 | Coach login / invitation | coach | one-time link (15 min) |
 
-Without `RESEND_API_KEY`, emails are only recorded in **Admin → Emails** (nothing is sent), which is handy for local testing. Delay, interval, max count, extra recipients: **Admin → Paramètres**.
+Without `RESEND_API_KEY`, emails are only recorded in **Admin → Emails** (nothing is sent), which is handy for local testing. Delay, interval, max count, extra recipients: **Admin → Paramètres**. After the last day to send an interest the unfinished-form reminders stop, except for dossiers the coach admitted.
 
 Reminders are driven by `/api/cron/reminders` (Vercel Cron, or any scheduler: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/reminders`). Runs are idempotent: each candidate is claimed before any email is sent.
 

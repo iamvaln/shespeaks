@@ -4,8 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clearSession, consumeLoginToken, inviteCoach, requestLogin, requireCoach, setSession } from '@/lib/auth';
 import { all, get, insert, run, setSetting, STATUSES, type SettingKey } from '@/lib/db';
-import { getRefs, getTracks, markUpdated, setStatus, type Coach } from '@/lib/data';
-import { regenerateTracks } from '@/lib/diagnostic';
+import { getCandidate, getRefs, getTracks, markUpdated, setStatus, type Candidate, type Coach } from '@/lib/data';
+import { healStuck, regenerateTracks } from '@/lib/diagnostic';
 import { suggestTracksFor } from '@/lib/ai-tracks';
 import { improveSubjectFor } from '@/lib/ai-subject-store';
 import type { AiProvider } from '@/lib/ai-topics';
@@ -17,6 +17,7 @@ import { isEmail } from '@/lib/questions';
 import { statusRefusal } from '@/lib/status';
 import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
+import { isoOrNull } from '@/lib/dates';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 const num = (f: FormData, k: string) => Number(f.get(k));
@@ -245,7 +246,21 @@ export async function remindNowAction(f: FormData) {
   if (sent === 'sent') return back(cpath(id, tab), 'Rappel envoyé par email');
   if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans la page Emails. Écris-lui sur WhatsApp.', true);
   if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans la page Emails). Écris-lui sur WhatsApp.', true);
+  if (sent === 'closed') return back(cpath(id, tab), 'Les candidatures sont closes pour ce dossier : son lien ne mènerait qu’à la page « candidatures closes ». Admets-la d’abord (bouton « Admettre malgré la clôture »), puis renvoie le rappel.', true);
   return back(cpath(id, tab), 'Impossible : pas d’email ou formulaire déjà terminé', true);
+}
+
+/** Lets a candidate whose form is unfinished go on after the last day to send an interest (or takes that back). */
+export async function admitLateAction(f: FormData) {
+  await requireCoach();
+  const id = num(f, 'id');
+  const tab = str(f, 'tab');
+  const c = validCid(id) ? await getCandidate(id) : undefined;
+  if (!c) return back('/admin/candidates', 'Candidate introuvable', true);
+  if (c.completed_at) return back(cpath(id, tab), 'Son formulaire est déjà terminé : rien à admettre.', true);
+  const on = str(f, 'on') === '1';
+  await run(`UPDATE candidates SET admitted_late_at = ${on ? `COALESCE(admitted_late_at, now() at time zone 'utc')` : 'NULL'}, updated_at=(now() at time zone 'utc') WHERE id=?`, id);
+  return back(cpath(id, tab), on ? 'Dossier admis malgré la clôture : elle peut terminer son formulaire. Envoie-lui un rappel ou son lien d’accès.' : 'Admission retirée : si la date limite est passée, son formulaire est de nouveau clos.');
 }
 
 export async function deleteCandidateAction(f: FormData) {
@@ -327,13 +342,34 @@ export async function toggleCoachAction(f: FormData) {
 }
 
 // ---- settings ----------------------------------------------------------------------
+const CALENDAR_DAYS: [SettingKey, string][] = [['internal_deadline', 'La date limite interne'], ['interest_deadline', 'La date limite des intérêts'], ['rehearsal_date', 'Le jour de répétition']];
 export async function saveSettingsAction(f: FormData) {
   await requireCoach();
-  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
+  // a date is a real day or empty: nothing is saved when one cannot be read
+  for (const [k, label] of CALENDAR_DAYS) if (str(f, k) && !isoOrNull(str(f, k))) return back('/admin/settings', `${label} n’est pas une date valide (AAAA-MM-JJ). Rien n’a été enregistré.`, true);
+  const keys: SettingKey[] = ['notification_email', 'internal_deadline', 'interest_deadline', 'rehearsal_date', 'rehearsal_info', 'reminder_first_hours', 'reminder_interval_hours', 'reminder_max', 'domains', 'angles', 'topic_focus'];
   for (const k of keys) await setSetting(k, str(f, k));
+  await setSetting('calendar_reminders_enabled', f.get('calendar_reminders_enabled') ? 'true' : 'false');
   // show_tracks_to_candidates is no longer offered: the candidate only sees the frozen copies her coach sends (the row stays untouched)
   await setSetting('reminders_enabled', f.get('reminders_enabled') ? 'true' : 'false');
   return back('/admin/settings', 'Réglages enregistrés');
+}
+
+/** Finishes the dossiers left « done » without an end date (the former two-step finish): same steps as the last screen, mails included. */
+export async function recoverStuckAction() {
+  await requireCoach();
+  const rows = await all<Candidate>(`SELECT * FROM candidates WHERE current_screen='done' AND completed_at IS NULL ORDER BY id`);
+  let finished = 0;
+  for (const c of rows) {
+    try {
+      if ((await healStuck(c)).completed_at) finished++;
+    } catch (e) {
+      console.error('[recover] dossier', c.id, e);
+    }
+  }
+  revalidatePath('/admin/settings');
+  if (rows.length === 0) return back('/admin/settings', 'Aucun dossier bloqué.');
+  return back('/admin/settings', `${finished} dossier${finished > 1 ? 's' : ''} finalisé${finished > 1 ? 's' : ''} sur ${rows.length}${finished < rows.length ? (finished === 0 ? ' : aucun n’a abouti, détail dans le journal du serveur' : ' : les autres ont échoué, détail dans le journal du serveur') : ''}.`, finished < rows.length);
 }
 
 // ---- exchanges with the candidate (proposals flow) -------------------------------
