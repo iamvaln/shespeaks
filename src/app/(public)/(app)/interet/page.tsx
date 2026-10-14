@@ -6,10 +6,15 @@ import { admission } from '@/lib/admission';
 import { getFormRefs } from '@/lib/data';
 import { Wizard, type WizardInit } from '@/components/Wizard';
 import { ClosedNotice } from '@/components/ClosedNotice';
+import { t } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: (await getLocale()) === 'fr' ? 'Soumettre mon intérêt' : 'Submit my interest' };
+  const locale = await getLocale();
+  const c = await getCandidateFromCookie();
+  // the tab, the history and screen readers name the page for what it shows: closed applications are not « Submit my interest »
+  const closed = !c?.completed_at && !(await admission(c)).open;
+  return { title: closed ? t(locale).closed.title : locale === 'fr' ? 'Soumettre mon intérêt' : 'Submit my interest' };
 }
 
 export default async function InteretPage() {

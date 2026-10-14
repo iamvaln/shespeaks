@@ -62,7 +62,7 @@ espace coach en français, jamais de mention de l'IA côté candidate, commentai
 
 ### A6. Vérification et relecture
 
-`npm test`, `npm run test:db`, `tsc`, Chromium (formulaire ouvert, fermé, admis, liste des événements, bandeau, rattrapage, mobile), cron appelé à la main avec `?dry=1`. Relecture indépendante (formulaire et clôture ; finalisation ; relances ; textes et accessibilité). **Activation** (dans cette livraison, pour que les relances du 26 octobre puissent partir) : l'équipe relit les textes de la PR avant la fusion ; après le déploiement, aperçu du jour dans les Paramètres, appel manuel du cron sur la préproduction (`?dry=1` puis réel, sans envoi), lecture du journal des emails, puis activation de `calendar_reminders_enabled` en production.
+`npm test`, `npm run test:db`, `tsc`, Chromium (formulaire ouvert, fermé, admis, liste des événements, bandeau, rattrapage, mobile), cron appelé à la main avec `?dry=1`. Relecture indépendante (formulaire et clôture ; finalisation ; relances ; textes et accessibilité). **Activation** (dans cette livraison, pour que les relances du 26 octobre puissent partir) : l'équipe relit les textes de la PR avant la fusion ; après le déploiement : en préproduction, régler les dates, **allumer `calendar_reminders_enabled`** et préparer un dossier de test dû, appel manuel du cron (`?dry=1` : aperçu, puis réel : emails seulement consignés), lecture de la page Emails (`calendar_closing`, `calendar_exchange`, `calendar_submit`) ; puis, en production, aperçu du jour dans les Paramètres et activation de `calendar_reminders_enabled`.
 
 ## Livraison B : le plan de préparation (candidate)
 

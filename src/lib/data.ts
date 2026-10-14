@@ -109,10 +109,12 @@ export async function getRefs(): Promise<Refs> {
  * What the form offers a new candidate: only the events that are still ahead and after the common rehearsal day, never « Autre ».
  * getRefs() stays the full list, to name the event of a dossier that already exists.
  */
-export async function getFormRefs(today = todayIso()): Promise<Refs> {
+export async function getFormRefs(today = todayIso(), own?: Pick<Candidate, 'city'> | null): Promise<Refs> {
   const refs = await getRefs();
   const open = openEvents(await listEvents(), today, await getSetting('rehearsal_date')).map((e) => e.city);
-  return { ...refs, events: refs.events.filter((o) => open.includes(o.value)) };
+  // a dossier that exists keeps the event she chose, even one that is no longer offered to new candidates (or « Autre »)
+  const keep = own?.city ?? null;
+  return { ...refs, events: refs.events.filter((o) => open.includes(o.value) || (keep !== null && o.value === keep)) };
 }
 
 // ---- candidates --------------------------------------------------------------
@@ -196,11 +198,14 @@ export const csvList = (s: string | null | undefined): string[] => (s ?? '').spl
 /** Public name of an event: "DevFest Douala 2026" (falls back to the place name). */
 export const eventName = (e: { title?: string | null; name: string }) => e.title?.trim() || e.name;
 
-export async function eventFor(c: Pick<Candidate, 'city' | 'city_other'>): Promise<DevfestEvent | null> {
+/** The event a candidate aims at among `events`: by slug, or by the name she typed on « Autre » (the match the coach space uses). */
+export function findEvent<E extends { city: string; name: string; title?: string | null }>(c: Pick<Candidate, 'city' | 'city_other'>, events: E[]): E | null {
   const key = c.city === 'autre' ? norm(c.city_other ?? '') : (c.city ?? '');
   if (!key) return null;
-  const events = await listEvents();
   return events.find((e) => e.city === key || norm(e.name) === key || norm(eventName(e)) === key) ?? null;
+}
+export async function eventFor(c: Pick<Candidate, 'city' | 'city_other'>): Promise<DevfestEvent | null> {
+  return findEvent(c, await listEvents());
 }
 
 /** Name of the event a candidate chose; "other" events show what she typed. */

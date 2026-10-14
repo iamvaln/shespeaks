@@ -1,12 +1,12 @@
 // The calendar pass of the daily reminders: the closing of the form, the exchanges to finish and the submission, each aimed at a date.
 // Idempotent: a reminder is written to the journal (calendar_reminders) before it is sent, and given back if the send fails.
 import { all, getSetting } from './db.ts';
-import { listEvents, type Candidate } from './data.ts';
+import { findEvent, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateClosingReminder, candidateExchangeReminder, candidateSubmitReminder, sendMail, type Mail } from './mail.ts';
 import { journeyOf } from './proposals.ts';
 import { screenProgress } from './reminders.ts';
 import { mailboxKey } from './contact.ts';
-import { claimCalendarReminder, mailedToday, releaseCalendarReminder, takenKeys } from './calendar-journal.ts';
+import { claimCalendarReminder, lastWrittenAt, mailedToday, releaseCalendarReminder, takenKeys } from './calendar-journal.ts';
 import { pickTier, reminderDue } from './calendar.ts';
 import { daysUntil, isoOrNull, todayIso } from './dates.ts';
 import { fmtDate } from './i18n.ts';
@@ -27,7 +27,7 @@ interface Planned extends DueReminder { c: Candidate; skip: number[]; what?: 'ch
  * `dry`: nothing is written or sent, the report lists what the run would do (and what it holds back, with the reason). The preview works
  * before the switch is on; a real run does nothing while `calendar_reminders_enabled` is off.
  */
-export async function runCalendarReminders(now = new Date(), opts: { dry?: boolean } = {}): Promise<CalendarReport> {
+export async function runCalendarReminders(now = new Date(), opts: { dry?: boolean; max?: number } = {}): Promise<CalendarReport> {
   const enabled = (await getSetting('calendar_reminders_enabled')) === 'true';
   const report: CalendarReport = { enabled, dry: !!opts.dry, checked: 0, due: [], sent: 0, failed: 0 };
   if (!enabled && !opts.dry) return report;
@@ -55,8 +55,11 @@ export async function runCalendarReminders(now = new Date(), opts: { dry?: boole
   const keys = await takenKeys(rows.map((r) => r.c.id));
   const planned: Planned[] = [];
   for (const { c, kind } of rows) {
-    const ev = events.find((e) => e.city === c.city);
+    const ev = findEvent(c, events); // by slug, or by the name she typed on « Autre » (the match the coach space uses)
     const cfp = isoOrNull(ev?.cfp_close_date);
+    const eventDay = isoOrNull(ev?.event_date);
+    if (eventDay && eventDay < today) continue; // her event is over: nobody is urged towards it
+    if (kind !== 'closing' && cfp && cfp < today) continue; // her call has closed: nothing left to answer for or submit to
     // submission aims at the first date still ahead (today included): the team's internal date, then the call's own closing
     const target = kind === 'closing' ? interest : kind === 'exchange' ? internal : [internal, cfp].filter((d): d is string => !!d && d >= today).sort()[0] ?? null;
     if (!target) continue;
@@ -64,20 +67,23 @@ export async function runCalendarReminders(now = new Date(), opts: { dry?: boole
     if (pick.send === null) continue;
     planned.push({
       id: c.id, name: c.name ?? '', kind, tier: pick.send, target, key: `${kind}:${target}:${pick.send}`, daysLeft: daysUntil(target, today) ?? 0,
-      c, skip: pick.skip, what: steps.get(c.id)?.what, internal: target === internal, callCloses: cfp && cfp !== target ? cfp : null,
+      c, skip: pick.skip, what: steps.get(c.id)?.what, internal: target === internal, callCloses: cfp && cfp > target && cfp >= today ? cfp : null,
       where: ev?.submission_label || ev?.submission_url || null,
     });
   }
 
   // one email per candidate and day (the other passes check the same journal), one per mailbox and run, the closest date first
   const mailed = await mailedToday(today);
-  const boxes = new Set<string>();
+  const boxes = new Set(mailed.boxes); // a mailbox written to today by any pass is not written to again
+  const before = await lastWrittenAt(planned.map((p) => p.id));
+  const cap = opts.max ?? MAX_PER_RUN;
   const sendable: Planned[] = [];
-  for (const p of planned.sort((a, b) => a.daysLeft - b.daysLeft || a.id - b.id)) {
+  // the closest date first; among equals, whoever waited longest (two dossiers on one mailbox take turns instead of one always winning)
+  for (const p of planned.sort((a, b) => a.daysLeft - b.daysLeft || (before.get(a.id) ?? '').localeCompare(before.get(b.id) ?? '') || a.id - b.id)) {
     const box = mailboxKey(p.c.email ?? '');
-    if (mailed.has(p.id)) p.held = 'déjà écrite aujourd’hui';
-    else if (boxes.has(box)) p.held = 'même boîte mail qu’un autre dossier, demain';
-    else if (sendable.length >= MAX_PER_RUN) p.held = `plafond de ${MAX_PER_RUN} par passage, demain`;
+    if (mailed.ids.has(p.id)) p.held = 'déjà prévenue aujourd’hui';
+    else if (boxes.has(box)) p.held = 'même boîte mail qu’un autre dossier, au prochain passage';
+    else if (sendable.length >= cap) p.held = `plafond de ${cap} par passage`;
     else { boxes.add(box); sendable.push(p); }
     report.due.push({ id: p.id, name: p.name, kind: p.kind, tier: p.tier, target: p.target, key: p.key, daysLeft: p.daysLeft, held: p.held });
   }
@@ -88,7 +94,8 @@ export async function runCalendarReminders(now = new Date(), opts: { dry?: boole
     for (const t of p.skip) await claimCalendarReminder(p.id, `${p.kind}:${p.target}:${t}`); // the closer tier replaces them
     const status = await sendMail(mailFor(p));
     if (status === 'failed') {
-      await releaseCalendarReminder(p.id, p.key); // the next run tries again
+      await releaseCalendarReminder(p.id, p.key); // the next run tries again, with the tiers it replaced
+      for (const t of p.skip) await releaseCalendarReminder(p.id, `${p.kind}:${p.target}:${t}`);
       report.failed++;
     } else report.sent++;
   }

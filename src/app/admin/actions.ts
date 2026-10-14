@@ -369,7 +369,7 @@ export async function recoverStuckAction() {
   }
   revalidatePath('/admin/settings');
   if (rows.length === 0) return back('/admin/settings', 'Aucun dossier bloqué.');
-  return back('/admin/settings', `${finished} dossier${finished > 1 ? 's' : ''} finalisé${finished > 1 ? 's' : ''} sur ${rows.length}${finished < rows.length ? ' : les autres ont échoué, détail dans le journal du serveur' : ''}.`, finished < rows.length);
+  return back('/admin/settings', `${finished} dossier${finished > 1 ? 's' : ''} finalisé${finished > 1 ? 's' : ''} sur ${rows.length}${finished < rows.length ? (finished === 0 ? ' : aucun n’a abouti, détail dans le journal du serveur' : ' : les autres ont échoué, détail dans le journal du serveur') : ''}.`, finished < rows.length);
 }
 
 // ---- exchanges with the candidate (proposals flow) -------------------------------

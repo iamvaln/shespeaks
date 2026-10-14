@@ -112,3 +112,16 @@ test('of the tiers due together only the closest goes out, the others are writte
   assert.deepEqual(pickTier({ today: '2026-10-27', target: '2026-10-26', tiers: [7, 3, 1, 0], taken: none }), { send: null, skip: [] }, 'never after the target');
   assert.deepEqual(pickTier({ today: '2026-10-25', target: null, tiers: [3, 1], taken: none }), { send: null, skip: [] });
 });
+
+test('warnings about what is closed now, and an internal date after an event\'s call closes', () => {
+  const ok = { interestDeadline: '2026-10-26', internalDeadline: '2026-10-28', rehearsalDate: '2026-11-14', events: [{ event_date: '2026-11-21', name: 'Yaoundé', cfp_close_date: '2026-10-31' }] };
+  assert.deepEqual(calendarWarnings({ ...ok, today: '2026-10-13' }), [], 'nothing wrong today');
+  assert.match(calendarWarnings({ ...ok, today: '2026-10-27' }).join('|'), /date limite des intérêts \(26\/10\/2026\) est passée : le formulaire est déjà fermé/);
+  assert.match(calendarWarnings({ ...ok, interestDeadline: '', events: [{ event_date: '2026-11-10', name: 'X' }], today: '2026-10-13' }).join('|'), /Aucun événement n’est proposé aujourd’hui/);
+  assert.match(calendarWarnings({ ...ok, internalDeadline: '2026-11-02', today: '2026-10-13' }).join('|'), /date interne de soumission \(02\/11\/2026\) est après la clôture de l’appel de Yaoundé \(31\/10\/2026\)/);
+  assert.ok(!/après la clôture de l’appel/.test(calendarWarnings({ ...ok, internalDeadline: '2026-11-02', today: '2026-11-05' }).join('|')), 'a call already closed is not warned about');
+  // past events are not « events that take place before the rehearsal »
+  const past = [{ event_date: '2025-11-21', name: 'Douala 2025' }, { event_date: '2026-11-21', name: 'Yaoundé' }];
+  assert.ok(!/Douala 2025/.test(calendarWarnings({ ...ok, events: past, today: '2026-10-13' }).join('|')));
+  assert.match(calendarWarnings({ ...ok, events: past }).join('|'), /Douala 2025/, 'without a day, every dated event is listed (the former behaviour)');
+});

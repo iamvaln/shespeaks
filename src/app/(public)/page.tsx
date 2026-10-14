@@ -57,7 +57,7 @@ export default async function Home() {
     : !gate.open ? { href: '/interet', label: closedText.cta, short: closedText.ctaShort }
     : c ? { href: '/interet', label: d.hero.resume, short: d.hero.resumeShort }
     : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
-  const deadlineNote = !c?.completed_at && gate.open && interestDeadline ? (interestDeadline === todayIso() ? closedText.lastDay : closedText.openUntil(fmtDate(interestDeadline, locale))) : null;
+  const deadlineNote = !c?.completed_at && gate.open && interestDeadline && interestDeadline >= todayIso() ? (interestDeadline === todayIso() ? closedText.lastDay : closedText.openUntil(fmtDate(interestDeadline, locale))) : null;
   const navLinks: [string, string][] = [['#qui', d.nav.who], ['#comment', d.nav.how], ['#formats', d.nav.formats], ['#faq', d.nav.faq]];
 
   return (

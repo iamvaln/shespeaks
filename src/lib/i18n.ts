@@ -29,9 +29,9 @@ const fr = {
   // applications are closed after the last day to send an interest (or when no event is on offer)
   closed: {
     title: 'Les candidatures sont closes',
-    since: (date: string): string => `La date limite pour envoyer son intérêt était le ${date}. Il n’est plus possible de commencer ni de terminer le formulaire pour cette édition.`,
+    since: (date: string): string => `La date limite pour envoyer ton intérêt était le ${date}. Il n’est plus possible de commencer ni de terminer le formulaire pour cette édition.`,
     noEvent: 'Aucun événement n’est ouvert aux candidatures pour le moment.',
-    next: 'Les candidatures rouvriront pour un prochain événement : reviens nous voir bientôt. Si tu as déjà échangé avec l’équipe, réponds simplement à son dernier message.',
+    next: 'D’autres appels pourront ouvrir pour de prochains événements : reviens nous voir bientôt. Si tu as déjà échangé avec l’équipe, réponds simplement à son dernier message.',
     home: 'Retour à l’accueil',
     openUntil: (date: string): string => `Candidatures ouvertes jusqu’au ${date}`,
     lastDay: 'Dernier jour pour envoyer ton intérêt',
@@ -147,7 +147,7 @@ const fr = {
         ['Je n’ai pas encore de sujet.', 'Ce n’est pas un problème. Le formulaire fait le point sur tes intérêts et ton quotidien ; l’équipe SheSpeaks te propose ensuite une sélection d’idées de sujets et vous choisissez ensemble.'],
         ['Ma candidature sera-t-elle forcément retenue ?', 'Ce sont les organisateurs de chaque événement qui choisissent les talks. SheSpeaks t’aide à préparer la meilleure candidature ; si elle n’est pas retenue, l’équipe SheSpeaks peut t’orienter vers un autre événement.'],
         ['En quelle langue puis-je présenter ?', 'En français, en anglais, ou les deux. Le formulaire existe aussi dans les deux langues.'],
-        ['Quels événements ?', 'Tout événement tech : talk, workshop, talk en ligne, keynote… Si tu vises un événement, indique-le dans le formulaire : l’équipe SheSpeaks complète les dates avec toi.'],
+        ['Quels événements ?', 'Ceux qui sont proposés dans le formulaire : les événements tech dont la date est confirmée (talk, workshop, talk en ligne, keynote…). L’événement que tu vises n’y figure pas ? Reviens quand il sera ajouté : l’équipe SheSpeaks tient la liste à jour.'],
       ],
     },
     final: {
@@ -326,9 +326,9 @@ const en: Dict = {
   },
   closed: {
     title: 'Applications are closed',
-    since: (date: string) => `The last day to send an interest was ${date}. It is no longer possible to start or finish the form for this edition.`,
+    since: (date: string) => `The last day to send your interest was ${date}. It is no longer possible to start or finish the form for this edition.`,
     noEvent: 'No event is open for applications right now.',
-    next: 'Applications will reopen for a next event: come back soon. If you have already been in touch with the team, simply reply to their last message.',
+    next: 'Other calls may open for future events: come back soon. If you have already been in touch with the team, simply reply to their last message.',
     home: 'Back to home',
     openUntil: (date: string) => `Applications open until ${date}`,
     lastDay: 'Last day to send your interest',
@@ -444,7 +444,7 @@ const en: Dict = {
         ['I don’t have a topic yet.', 'That’s fine. The form asks about your interests and daily work; the SheSpeaks team then suggests a selection of topic ideas and you choose together.'],
         ['Will my application definitely be accepted?', 'The organisers of each event choose the talks. SheSpeaks helps you prepare the strongest application; if it is not accepted, the SheSpeaks team can point you to another event.'],
         ['Which language can I present in?', 'French, English, or both. The form is also available in both languages.'],
-        ['Which events?', 'Any tech event: talk, workshop, online talk, keynote… If you are aiming at an event, tell us in the form: the SheSpeaks team fills in the dates with you.'],
+        ['Which events?', 'The ones offered in the form: tech events with a confirmed date (talk, workshop, online talk, keynote…). The event you are aiming at is not listed? Come back once it is added: the SheSpeaks team keeps the list up to date.'],
       ],
     },
     final: {

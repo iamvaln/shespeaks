@@ -44,13 +44,13 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
   const mailedBoxes = new Set<string>();
   const today = todayIso(now);
   const interestDeadline = await getSetting('interest_deadline');
-  const mailed = await mailedToday(today); // the calendar pass wrote to these today: one email a day, so they wait for tomorrow (nothing is claimed)
+  const mailed = await mailedToday(today); // written to today by a pass (or on the same mailbox): one email a day, so they wait for tomorrow (nothing is claimed)
 
   for (const c of rows) {
     if (c.reminders_sent >= max) continue;
     // after the last day to send an interest the form is closed to anyone the team has not admitted: nobody is urged to finish it
     if (!admissionOpen({ today, interestDeadline, admittedLate: !!c.admitted_late_at })) continue;
-    if (mailed.has(c.id)) continue;
+    if (mailed.ids.has(c.id) || (c.email && mailed.boxes.has(mailboxKey(c.email)))) continue;
     const ref = toDate(c.reminders_sent === 0 ? c.last_activity_at : (c.last_reminder_at ?? c.last_activity_at));
     const threshold = c.reminders_sent === 0 ? first : interval;
     if (hoursBetween(now, ref) < threshold) continue;
@@ -94,15 +94,15 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
  * Candidates a coach has set aside (non_retenue), without an address, or already counted as submitted are skipped.
  */
 export async function remindPendingProposals(now = new Date()): Promise<number> {
-  const due = await all<{ id: number; candidate_id: number }>(
-    `SELECT p.id, p.candidate_id FROM proposals p JOIN candidates c ON c.id = p.candidate_id
+  const due = await all<{ id: number; candidate_id: number; email: string | null }>(
+    `SELECT p.id, p.candidate_id, c.email FROM proposals p JOIN candidates c ON c.id = p.candidate_id
      WHERE p.state='envoyee' AND p.reminded_at IS NULL AND p.sent_at <= (?::timestamp - interval '48 hours')
        AND c.status <> 'non_retenue' AND c.email IS NOT NULL AND c.email <> ''`,
     now.toISOString().replace('T', ' ').slice(0, 19));
   let sent = 0;
-  const mailed = await mailedToday(todayIso(now)); // written to by the calendar pass today: the reminder waits for tomorrow, still unclaimed
+  const mailed = await mailedToday(todayIso(now)); // written to by a pass today (or her mailbox was): the reminder waits for tomorrow, still unclaimed
   for (const p of due) {
-    if (mailed.has(p.candidate_id)) continue;
+    if (mailed.ids.has(p.candidate_id) || (p.email && mailed.boxes.has(mailboxKey(p.email)))) continue;
     const claimed = await get<{ id: number }>(`UPDATE proposals SET reminded_at=(now() at time zone 'utc') WHERE id=? AND reminded_at IS NULL AND state='envoyee' RETURNING id`, p.id);
     if (!claimed) continue;
     const c = await getCandidate(p.candidate_id);

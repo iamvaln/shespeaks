@@ -139,16 +139,17 @@ Corrections :
   sont **ouverts** (date d'événement valide, non passée, postérieure à `rehearsal_date`
   quand il est réglé), sans « Autre », et c'est elle qu'utilisent le formulaire et sa
   validation. Si aucun événement n'est ouvert, le formulaire affiche « candidatures closes ».
-  Un dossier dont l'événement n'est plus proposé doit en choisir un autre pour enregistrer
-  l'écran 1. Quand le dernier événement daté passe, le formulaire se ferme seul : c'est voulu.
+  Un dossier qui existe garde l'événement qu'elle a choisi, même s'il n'est plus proposé
+  ou si c'est « Autre » : elle peut réenregistrer son profil sans en changer, mais pas passer
+  à un autre événement fermé. Quand le dernier événement daté passe, le formulaire se ferme seul : c'est voulu.
 - **Clôture** : le lendemain de `interest_deadline` (jour de Douala), `submitScreen` refuse un
   nouveau dossier et l'envoi de tout dossier non terminé, avec l'erreur `closed`, sauf si
   la coach l'a admis. Le formulaire, la reprise par lien ou par code, et la page d'accueil
   affichent « Les candidatures sont closes » avec la date.
 - **Admettre malgré la clôture** : bouton sur la fiche d'un dossier non terminé, qui
   renseigne `candidates.admitted_late_at`. Le dossier peut alors être terminé.
-- **Annonce** : un bandeau « Candidatures ouvertes jusqu'au … » sur la page d'accueil et en
-  haut du formulaire ; la FAQ publique est mise à jour (elle promet aujourd'hui n'importe
+- **Annonce** : un bandeau « Candidatures ouvertes jusqu'au … » sur la page d'accueil (tant que
+  la date n'est pas passée) ; la page du formulaire fermé porte son propre titre ; la FAQ publique est mise à jour (elle promet aujourd'hui n'importe
   quel événement saisi dans le formulaire).
 - **Relances d'un formulaire abandonné** : elles s'arrêtent après la clôture, sauf pour les
   dossiers admis.
@@ -364,10 +365,17 @@ voit les candidates sans geste dans le résumé et peut relancer sur WhatsApp.
 - **Un seul email par candidate et par jour**, pour toutes les passes : la passe du
   calendrier tourne en premier, regroupe les relances dues (la plus urgente donne le sujet,
   les autres sont listées et revendiquées). « Déjà écrite ce jour-là » = une ligne de
-  `calendar_reminders` dont `sent_at` tombe le jour de Douala courant. La passe des
-  formulaires abandonnés et `remindPendingProposals` (le rappel de 48 h) la consultent
-  **avant** de revendiquer (`claimReminder`, `proposals.reminded_at`) : une candidate sautée
-  garde son palier et son rappel pour le lendemain, rien n'est brûlé. À J-3 et J-1 de la
+  `calendar_reminders`, un rappel d'abandon (`candidates.last_reminder_at`) ou un rappel de
+  proposition (`proposals.reminded_at`) dont la date tombe le jour de Douala courant ; une
+  **boîte mail** déjà écrite ce jour-là par une passe l'est aussi pour les autres dossiers
+  qui l'utilisent. Chaque passe consulte cela **avant** de revendiquer (`claimReminder`,
+  `proposals.reminded_at`, le journal) : une candidate sautée garde son palier et son rappel
+  pour le prochain passage, rien n'est brûlé. Deux dossiers sur une même boîte se relaient
+  (à dates égales, celui qui a attendu le plus longtemps passe d'abord).
+- **Son événement** : pas de relance si l'événement de la candidate est passé ; pas de
+  relance d'échange ni de soumission si l'appel de son événement est clos (l'événement se
+  retrouve par son identifiant ou, pour « Autre », par le nom saisi, comme dans l'espace coach) ;
+  la clôture de l'appel n'est citée que si elle est encore à venir. À J-3 et J-1 de la
   clôture, la relance de clôture prend la place de la relance d'abandon du jour.
 - Pas d'email à une candidate sans adresse, au statut « Non retenue », ni après l'événement.
 - Au plus 300 candidates par passage (les envois sont espacés de 550 ms) ; le reste attend le
@@ -456,10 +464,15 @@ liste des événements change dès la livraison A. Ordre : A, B, C, D, E. Les te
 chaque livraison sont relus par l'équipe **avant sa fusion** (ils figurent dans la
 description de la PR). La livraison A comprend la procédure d'activation de
 `calendar_reminders_enabled`, pour que les relances de la date limite du 26 octobre puissent
-partir : on regarde l'aperçu du jour dans les Paramètres, puis on appelle le cron à la main
-sur la préproduction (elle n'a pas de cron ; l'appel avec le secret du cron et `?dry=1`
-puis sans, en mode sans envoi réel) et on lit le journal des emails ; ensuite seulement on
-active le réglage en production.
+partir. Procédure : (1) dans la préproduction, régler les dates (une date limite des intérêts
+à quelques jours) et **allumer `calendar_reminders_enabled`** (sans cela, un appel réel ne fait
+rien) ; avoir un dossier de test dû (formulaire inachevé, ou échange en attente) ; (2) appeler le
+cron à la main avec le secret du cron et `?dry=1` (toute forme du paramètre est un aperçu : il
+saute aussi la passe des formulaires abandonnés, qui n'a pas de mode sans envoi) et lire
+l'aperçu ; (3) l'appeler sans `dry` (pas de clé d'envoi : les emails sont seulement
+consignés) et lire dans la page Emails les lignes `calendar_closing`, `calendar_exchange`,
+`calendar_submit` ; (4) seulement ensuite, en production, regarder l'aperçu des Paramètres et
+allumer le réglage.
 
 ## Questions ouvertes (valeurs par défaut retenues)
 

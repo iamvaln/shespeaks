@@ -11,6 +11,7 @@ import { generateTracks } from './topics.ts';
 import { journeysOf } from './resume-code.ts';
 import { requestAccess } from './access.ts';
 import { admission } from './admission.ts';
+import { todayIso } from './dates.ts';
 import { emailDomainAccepts, isWhatsappNumber, mailboxKey, strictContactChecks } from './contact.ts';
 import { checkChangeRate, checkCreateEmail } from './ratelimit.ts';
 import { appUrl, candidateConfirmation, candidateStarted, coachNewDiagnostic, deferMail, sendMail } from './mail.ts';
@@ -41,7 +42,7 @@ export async function wizardState(c: Candidate): Promise<WizardState> {
   return {
     candidate: { name: c.name ?? '', branch: c.branch, current: resumeScreen(c.branch, c.current_screen), completed: !!c.completed_at, locale: c.locale },
     answers,
-    refs: await getFormRefs(),
+    refs: await getFormRefs(todayIso(), c),
     draft,
   };
 }
@@ -56,9 +57,8 @@ export type SubmitResult =
 export async function submitScreen(token: string | null, screenId: string, values: Answers, ui: Locale, ip = 'unknown', startNew = false): Promise<SubmitResult> {
   const screen = SCREENS[screenId];
   if (!screen) return { ok: false, errors: {}, fatal: 'unknown_screen' };
-  const refs = await getFormRefs();
-
   let c = token ? await get<Candidate>('SELECT * FROM candidates WHERE token=?', token) : undefined;
+  const refs = await getFormRefs(todayIso(), c); // a dossier that exists may keep the event she chose, even one no longer offered
   if (!c && screenId !== 'profile') return { ok: false, errors: {}, fatal: 'no_session' };
   if (c?.completed_at) return { ok: false, errors: {}, fatal: 'already_completed' };
   const gate = await admission(c);
@@ -176,7 +176,7 @@ export async function submitScreen(token: string | null, screenId: string, value
     await touchCandidate(id, true);
     // The last screen finishes the form in this same transaction: the « done » marker, the end date, the status and the subject row go
     // together or not at all (a failure leaves her on the last screen, never « done » without a date). The mails go out after the commit.
-    if (nextId === 'done') return { id, created, nextId, token: cur.token, finishedNow: await finalizeCandidate(id) };
+    if (nextId === 'done') return { id, created, nextId, token: cur.token, finishedNow: (await finalizeCandidate(id)) === 'notify' };
     await run('UPDATE candidates SET current_screen=? WHERE id=?', pointer, id);
     return { id, created, nextId, token: cur.token, finishedNow: false };
   });
@@ -196,13 +196,15 @@ export async function submitScreen(token: string | null, screenId: string, value
  * then the status and the subject row are written. Returns whether this call finished it. `completedAt` (a UTC timestamp) dates a dossier
  * finished late by the recovery with the moment she sent it, not the moment it was recovered.
  */
-export async function finalizeCandidate(id: number, completedAt: string | null = null): Promise<boolean> {
+export async function finalizeCandidate(id: number, completedAt: string | null = null): Promise<'notify' | 'quiet' | false> {
   const c = (await getCandidate(id))!;
   if (c.completed_at) return false;
   const a = await getAnswers(id);
   const won = await run(`UPDATE candidates SET completed_at=COALESCE(?::timestamp, now() at time zone 'utc'), current_screen='done' WHERE id=? AND completed_at IS NULL`, completedAt, id);
   if (won === 0) return false;
-  await setStatus(id, 'diagnostic_recu', 'système');
+  // A recovery can reach a dossier the team has already dealt with (set aside, say): it is finished, but its status and the mails are left alone.
+  const quiet = completedAt !== null && c.status !== 'en_cours';
+  if (!quiet) await setStatus(id, 'diagnostic_recu', 'système');
   const fmt = a['D4'] && a['D4'] !== 'ouverte' ? String(a['D4']) : null;
   if (c.branch === 'A' || c.branch === 'B') {
     // no track is made here: the coach gives her orientations first, then generates them (templates or AI) from the fiche
@@ -220,12 +222,12 @@ export async function finalizeCandidate(id: number, completedAt: string | null =
       id, String(a['D1-a'] ?? ''), String(a['D1-b'] ?? ''), String(a['D1-c'] ?? ''), fmt, String(a['D1-d'] ?? 'a_soumettre'),
     );
   }
-  return true;
+  return quiet ? 'quiet' : 'notify';
 }
 
 /** Finish the form of a dossier that is not finished (the recovery): the same steps as the last screen, mails included. */
 export async function completeDiagnostic(id: number, completedAt: string | null = null) {
-  if (await tx(() => finalizeCandidate(id, completedAt))) deferMail(() => notifyCompletion(id));
+  if ((await tx(() => finalizeCandidate(id, completedAt))) === 'notify') deferMail(() => notifyCompletion(id));
 }
 
 /** A dossier whose last screen was recorded (« done » marker) without its end date: left so by the former two-step finish. */
@@ -237,7 +239,13 @@ export const isStuck = (c: Pick<Candidate, 'current_screen' | 'completed_at'>) =
  */
 export async function healStuck(c: Candidate): Promise<Candidate> {
   if (!isStuck(c)) return c;
-  await completeDiagnostic(c.id, c.last_activity_at);
+  try {
+    await completeDiagnostic(c.id, c.last_activity_at);
+  } catch (e) {
+    // opening her link must not fail because the recovery did (a slow database is what stuck the dossier): the next opening tries again
+    console.error('[heal] could not finish dossier', c.id, e);
+    return c;
+  }
   return (await getCandidate(c.id)) ?? c;
 }
 

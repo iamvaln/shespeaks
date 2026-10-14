@@ -240,7 +240,18 @@ test('the candidate-facing form says nothing about the AI tool (the owner does n
     }
   }
   // the journey and the « find my space » screens: every string of both keys, in both languages
-  const strings = (v: unknown): string[] => typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
+  // function-valued entries (« in N days », « until <date> ») are evaluated with sample arguments, so their text is checked too
+  const strings = (v: unknown): string[] => {
+    if (typeof v === 'string') return [v];
+    if (typeof v === 'function') {
+      const out: string[] = [];
+      for (const args of [['12 octobre 2026'], [0], [3], [1, 2], [['a', 'b']]]) {
+        try { const r = (v as (...a: unknown[]) => unknown)(...args); if (typeof r === 'string') out.push(r); } catch { /* not for these arguments */ }
+      }
+      return out;
+    }
+    return v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
+  };
   for (const loc of ['fr', 'en'] as const) {
     for (const key of ['journey', 'access'] as const) {
       const all = strings(t(loc)[key]);

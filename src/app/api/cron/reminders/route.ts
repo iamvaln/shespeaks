@@ -12,7 +12,9 @@ async function handle(req: NextRequest) {
   if (!secret || secret === 'change-me' || auth !== `Bearer ${secret}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   // The calendar pass runs first: whoever it writes to is not written to again today by the other pass. `?dry=1` previews the calendar pass
   // and skips the other one, which has no preview mode (it would send for real).
-  const dry = req.nextUrl.searchParams.get('dry') === '1';
+  // any spelling of the safe flag is dry (`?dry`, `?dry=1`, `?dry=true`) unless it says no: a typo must never turn a preview into a real send
+  const dryParam = req.nextUrl.searchParams.get('dry');
+  const dry = dryParam !== null && !['0', 'false', 'no'].includes(dryParam.trim().toLowerCase());
   let calendar: unknown;
   try {
     calendar = await runCalendarReminders(new Date(), { dry });

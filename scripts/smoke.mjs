@@ -1,5 +1,6 @@
 // End-to-end API smoke test of the candidate journey (all four branches).
 // Usage: BASE=http://localhost:3000 node scripts/smoke.mjs
+// Precondition: the form must offer the event 'douala' (a dated event still ahead) and applications must not be closed (no past interest deadline).
 import crypto from 'node:crypto';
 const BASE = process.env.BASE || 'http://localhost:3000';
 let failures = 0;
@@ -47,6 +48,7 @@ async function run(branch, name, branchScreens, finalExtra) {
   r = await c.save('diag1', diag1);
   ok(r.status === 409, `${branch}: cannot skip profile`);
   r = await c.save('profile', profile(name));
+  if (!r.json?.ok && (r.json?.fatal === 'closed' || r.json?.errors?.P2)) { console.error(`smoke: the form refuses the event 'douala' (${r.json.fatal ?? 'not offered: P2 ' + r.json.errors.P2}). It must be a dated event still ahead, with applications open: see the precondition in the header of this script.`); process.exit(2); }
   ok(r.json?.ok && r.json.next === 'diag1' && c.jar.ss_token, `${branch}: profile saved, cookie set`);
   r = await c.save('diag1', diag1); ok(r.json?.next === 'diag2', `${branch}: diag1 -> diag2`);
   r = await c.save('diag2', diag2(branch)); ok(r.json?.ok, `${branch}: pivot saved`);

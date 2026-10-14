@@ -31,7 +31,9 @@ export interface CalendarInput {
   interestDeadline?: string | null;
   internalDeadline?: string | null;
   rehearsalDate?: string | null;
-  events?: { event_date?: string | null; name?: string | null }[];
+  events?: { event_date?: string | null; name?: string | null; cfp_close_date?: string | null }[];
+  /** The programme's day today: with it, the warnings about what is closed now and about events already past are given. */
+  today?: string;
 }
 
 const dayLabel = (iso: string) => iso.split('-').reverse().join('/');
@@ -43,6 +45,13 @@ export function calendarWarnings(i: CalendarInput): string[] {
   for (const [label, raw] of named) if (raw && !isoOrNull(raw)) out.push(`${label[0].toUpperCase()}${label.slice(1)} n’est pas une date lisible (AAAA-MM-JJ).`);
   const interest = isoOrNull(i.interestDeadline), internal = isoOrNull(i.internalDeadline), rehearsal = isoOrNull(i.rehearsalDate);
   if (interest && internal && interest >= internal) out.push('La date limite des intérêts devrait précéder la date interne de soumission (au plus tard la veille).');
+  if (i.today) {
+    if (interest && interest < i.today) out.push(`La date limite des intérêts (${dayLabel(interest)}) est passée : le formulaire est déjà fermé aux nouvelles candidatures.`);
+    else if (openEvents(i.events ?? [], i.today, rehearsal).length === 0) out.push('Aucun événement n’est proposé aujourd’hui (il faut une date d’événement à venir, après le jour de répétition) : le formulaire est fermé aux nouvelles candidatures.');
+    // the submission reminders aim at the internal date first: after an event's call has closed they would urge candidates for nothing
+    const closing = (i.events ?? []).filter((e) => { const c = isoOrNull(e.cfp_close_date); return !!c && !!internal && c >= i.today! && internal > c; });
+    if (closing.length) out.push(`La date interne de soumission (${dayLabel(internal!)}) est après la clôture de l’appel de ${closing.map((e) => `${e.name ?? '?'} (${dayLabel(isoOrNull(e.cfp_close_date)!)})`).join(', ')} : les candidates de ces événements seraient relancées trop tard.`);
+  }
   if (rehearsal) {
     for (const [label, d] of [['la date limite des intérêts', interest], ['la date interne de soumission', internal]] as const) {
       if (!d) continue;
@@ -52,7 +61,7 @@ export function calendarWarnings(i: CalendarInput): string[] {
         ? `Le jour de répétition (${dayLabel(rehearsal)}) tombe avant ${label} (${dayLabel(d)}) : la répétition aurait lieu avant la soumission.`
         : `Il y a ${gap} jour${gap > 1 ? 's' : ''} entre ${label} (${dayLabel(d)}) et le jour de répétition (${dayLabel(rehearsal)}) : visez ${MIN_PREP_DAYS} jours au moins.`);
     }
-    const before = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); return !!d && d <= rehearsal; });
+    const before = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); return !!d && d <= rehearsal && (!i.today || d >= i.today); });
     const close = (i.events ?? []).filter((e) => { const d = isoOrNull(e.event_date); const gap = d ? daysUntil(d, rehearsal) : null; return gap !== null && gap > 0 && gap < 7; });
     if (close.length) out.push(`${close.length === 1 ? 'Un événement a lieu' : `${close.length} événements ont lieu`} moins de 7 jours après le jour de répétition : les dernières tâches de préparation se tassent (${close.map((e) => e.name ?? '?').join(', ')}).`);
     if (before.length) out.push(`${before.length === 1 ? 'Un événement a lieu' : `${before.length} événements ont lieu`} au plus tard le jour de répétition${before.length === 1 ? '' : ' (ou avant)'} : ${before.length === 1 ? 'il n’est' : 'ils ne sont'} plus proposé${before.length === 1 ? '' : 's'} aux candidates (${before.map((e) => e.name ?? '?').join(', ')}).`);
