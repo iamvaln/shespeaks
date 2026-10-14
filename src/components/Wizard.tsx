@@ -76,6 +76,7 @@ export function Wizard({ init, locale }: { init: WizardInit; locale: Locale }) {
       const j = await r.json();
       if (!r.ok || !j.ok) {
         if (j.fatal === 'already_completed') { router.replace('/plan'); return; }
+        if (j.fatal === 'closed') { router.refresh(); return; } // the page now shows that applications are closed
         if (j.fatal === 'resume_needed') { setResume({ canStartNew: !!j.canStartNew }); setBusy(false); window.scrollTo({ top: 0 }); return; }
         setErrors(j.errors ?? {});
         const fieldErrors = j.errors && Object.keys(j.errors).length > 0;

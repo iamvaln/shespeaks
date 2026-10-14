@@ -4,7 +4,7 @@ import { all, get, run, tx } from './db.ts';
 import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
 import {
-  COMMENT_MAX, journey, parseIdeas, planLines, validateChoice, validateChoiceIdeas, validateSubject,
+  COMMENT_MAX, journey, parseIdeas, planLines, STATUS_OF_STEP, TRACKS_CLOSED_MESSAGE, tracksClosed, validateChoice, validateChoiceIdeas, validateSubject,
   type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
 } from './journey.ts';
 
@@ -55,15 +55,16 @@ export async function journeyOf(candidateId: number): Promise<Journey | null> {
 
 /**
  * Why the coach cannot touch the topic (tracks, subject, AI, deletions) right now, or null:
+ * - « soumise »: she counts as submitted (first: a status set by hand over a proposal still waiting leaves the way back open);
  * - « attente »: a choice or a subject was sent and waits for her answer;
- * - « soumise »: she counts as submitted;
  * - « approuve »: the last subject sent was approved (and the exchanges were not reopened since).
  * After « changements » or « aucune », the coach has the hand again. « Rouvrir les échanges » lifts « approuve » and « soumise ».
  */
 export type ExchangeLock = 'attente' | 'approuve' | 'soumise' | null;
 export function lockOf(c: { submitted_at?: string | null; reopened_at?: string | null; status: string }, applicationState: string | null | undefined, proposals: Proposal[]): ExchangeLock {
-  if (proposals.some((p) => p.kind !== 'photo' && p.state === 'envoyee')) return 'attente';
+  // submitted comes first: a status set by hand over a proposal still waiting must leave « Rouvrir les échanges » (the way back) available
   if (countsAsSubmitted(c, applicationState)) return 'soumise';
+  if (proposals.some((p) => p.kind !== 'photo' && p.state === 'envoyee')) return 'attente';
   const last = [...proposals].reverse().find((p) => p.kind !== 'photo' && p.state !== 'remplacee');
   if (last?.kind === 'sujet' && last.response === 'approuvee' && (!c.reopened_at || (last.answered_at ?? '') > c.reopened_at)) return 'approuve';
   return null;
@@ -74,6 +75,21 @@ export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
   const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
   return lockOf(c, state, proposals);
 }
+/** The server side of the read-only tracks: once she has chosen among those sent, nobody edits them (A and B) until the exchanges are reopened. */
+export async function mayEditTracks(candidateId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  const c = (await getCandidate(candidateId))!;
+  return tracksClosed(c, await listProposals(candidateId)) ? { ok: false, error: TRACKS_CLOSED_MESSAGE } : { ok: true };
+}
+
+/** Why the tracks cannot be written to now, or null: the exchange lock first, else her choice among those sent. The one guard for every write. */
+export async function tracksWriteRefusal(candidateId: number): Promise<string | null> {
+  const lock = await exchangeLock(candidateId);
+  if (lock) return LOCK_MESSAGE[lock];
+  const may = await mayEditTracks(candidateId);
+  return may.ok ? null : may.error;
+}
+
 /**
  * Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. It follows the
  * exchanges as the journey does (the latest choice or subject sent decides): after « aucune » to a second round of tracks she is back
@@ -127,12 +143,15 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
   const lock = await exchangeLock(candidateId);
   if (lock === 'soumise') return ALREADY_SUBMITTED;
   if (lock) return { ok: false, error: LOCK_MESSAGE[lock] };
+  const closed = await mayEditTracks(candidateId); // she already chose among the tracks sent: another series only after « Rouvrir les échanges »
+  if (!closed.ok) return closed;
   const tracks = await all<Track>(`SELECT * FROM tracks WHERE candidate_id=? AND state='retenue_coach' ORDER BY position, id`, candidateId);
   const items: ChoiceItem[] = tracks.map((t) => ({ title: t.title.trim(), format: t.format ?? 'talk', pitch: (t.pitch ?? '').trim() }));
   const error = validateChoice(items);
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'choix', { items }))) return WAITING;
   mail((m) => m.toCandidate(candidateId, 'choix'));
+  await stepBackQuietly(candidateId, () => coachName(coachId));
   return { ok: true };
 }
 
@@ -149,6 +168,7 @@ export async function sendSubject(candidateId: number, coachId: number): Promise
   if (error) return { ok: false, error };
   if (!(await send(candidateId, coachId, 'sujet', payload))) return WAITING;
   mail((m) => m.toCandidate(candidateId, 'sujet'));
+  await stepBackQuietly(candidateId, () => coachName(coachId));
   return { ok: true };
 }
 
@@ -185,6 +205,22 @@ async function advance(candidateId: number, target: string, author: string) {
   if (c && rank(c.status) < rank(target)) await setStatus(candidateId, target, author);
 }
 
+/**
+ * The exchanges go back (reopened, or a new proposal sent over an approved subject): « Sujet validé » and « Candidature soumise » follow them
+ * back, as they followed them forward (advance). « Retenue » and what comes after say what happened at the event: never touched here.
+ */
+async function stepBack(candidateId: number, author: string) {
+  const [c, j] = await Promise.all([getCandidate(candidateId), journeyOf(candidateId)]);
+  if (!c || !j || (c.status !== 'sujet_valide' && c.status !== 'candidature_soumise')) return;
+  const target = STATUS_OF_STEP[j.step];
+  if (rank(target) < rank(c.status)) await setStatus(candidateId, target, author);
+}
+/** After the proposal is stored and the mail queued: a failure here must neither lose the mail nor turn a stored proposal into an error page. */
+async function stepBackQuietly(candidateId: number, author: () => Promise<string> | string) {
+  try { await stepBack(candidateId, await author()); } catch (e) { console.error('[proposals] status step-back failed', { candidateId, error: e instanceof Error ? e.message : String(e) }); }
+}
+const coachName = async (coachId: number): Promise<string> => (await get<{ name: string }>('SELECT name FROM coaches WHERE id=?', coachId))?.name ?? 'coach';
+
 /** `ideas`: what she imagines for the track she chooses (required with « choisie », ignored otherwise). */
 export async function answerProposal(candidateId: number, proposalId: number, response: ProposalResponse, choice: number | null, comment: string, ideas?: unknown): Promise<Outcome> {
   if (!validId(proposalId)) return { ok: false, error: 'Proposition introuvable.' };
@@ -207,8 +243,15 @@ export async function answerProposal(candidateId: number, proposalId: number, re
     );
     if (!row) return false;
     if (response === 'choisie') {
-      // the chosen topic becomes the starting point of the subject the coach develops (only when nothing is written yet)
-      await run(`INSERT INTO subjects (candidate_id,title) VALUES (?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=COALESCE(NULLIF(subjects.title,''), excluded.title)`, candidateId, items[choice!].title);
+      // The chosen topic becomes the starting point of the subject the coach develops: when nothing is written yet, or when the subject still
+      // holds a topic she chose in an earlier series (the coach has not rewritten it). A title the coach wrote is never replaced.
+      const picked = items[choice!];
+      const earlier = (await all<{ payload: string; response_choice: number | null }>(`SELECT payload, response_choice FROM proposals WHERE candidate_id=? AND kind='choix' AND response='choisie' AND id<>?`, candidateId, proposalId))
+        .map((e) => (e.response_choice === null ? '' : ((JSON.parse(e.payload) as { items: ChoiceItem[] }).items[e.response_choice]?.title ?? '').trim()));
+      const now = await get<{ title: string | null }>('SELECT title FROM subjects WHERE candidate_id=?', candidateId);
+      if (!now?.title?.trim() || earlier.includes(now.title.trim())) {
+        await run(`INSERT INTO subjects (candidate_id,title,format) VALUES (?,?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=excluded.title, format=COALESCE(excluded.format, subjects.format)`, candidateId, picked.title, picked.format || null);
+      }
     }
     if (response === 'approuvee') await advance(candidateId, 'sujet_valide', 'la candidate');
     return true;
@@ -248,12 +291,14 @@ export async function confirmSubmission(candidateId: number): Promise<Outcome> {
 }
 
 /** « Rouvrir les échanges »: the coach can send again; her space shows the step the proposals lead to, and she confirms her submission again at the end. */
-export async function reopenExchanges(candidateId: number): Promise<Outcome> {
+export async function reopenExchanges(candidateId: number, author = 'système'): Promise<Outcome> {
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const lock = await exchangeLock(candidateId);
   if (lock === 'attente') return WAITING;
-  if (!lock) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
+  // the exchanges are open only when nothing locks the topic and the tracks she chose among are not closed either
+  if (!lock && (await mayEditTracks(candidateId)).ok) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
   await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
+  await stepBackQuietly(candidateId, () => author);
   return { ok: true };
 }
 
