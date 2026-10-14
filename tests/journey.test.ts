@@ -206,6 +206,8 @@ test('tracks: the latest series decides, a reopening lifts the closing until she
   assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-14 09:00:00' }, [first, second, third]), true, 'chosen again after the reopening');
   const replaced = { ...p('choix', 'remplacee'), response: null };
   assert.equal(tracksClosed(A, [answered('choisie', '2026-10-12 10:00:00'), replaced]), true, 'a replaced proposal is not a series');
+  // reopened in the very second of her answer (timestamps are kept to the second): reopened wins, so the coach is never locked out
+  assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-12 10:00:00' }, [answered('choisie', '2026-10-12 10:00:00')]), false);
   // a subject exchange does not change it
   assert.equal(tracksClosed(A, [answered('choisie', '2026-10-12 10:00:00'), p('sujet', 'envoyee')]), true);
 });

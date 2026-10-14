@@ -82,6 +82,14 @@ export async function mayEditTracks(candidateId: number): Promise<Outcome> {
   return tracksClosed(c, await listProposals(candidateId)) ? { ok: false, error: TRACKS_CLOSED_MESSAGE } : { ok: true };
 }
 
+/** Why the tracks cannot be written to now, or null: the exchange lock first, else her choice among those sent. The one guard for every write. */
+export async function tracksWriteRefusal(candidateId: number): Promise<string | null> {
+  const lock = await exchangeLock(candidateId);
+  if (lock) return LOCK_MESSAGE[lock];
+  const may = await mayEditTracks(candidateId);
+  return may.ok ? null : may.error;
+}
+
 /**
  * Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. It follows the
  * exchanges as the journey does (the latest choice or subject sent decides): after « aucune » to a second round of tracks she is back
@@ -235,8 +243,15 @@ export async function answerProposal(candidateId: number, proposalId: number, re
     );
     if (!row) return false;
     if (response === 'choisie') {
-      // the chosen topic becomes the starting point of the subject the coach develops (only when nothing is written yet)
-      await run(`INSERT INTO subjects (candidate_id,title) VALUES (?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=COALESCE(NULLIF(subjects.title,''), excluded.title)`, candidateId, items[choice!].title);
+      // The chosen topic becomes the starting point of the subject the coach develops: when nothing is written yet, or when the subject still
+      // holds a topic she chose in an earlier series (the coach has not rewritten it). A title the coach wrote is never replaced.
+      const picked = items[choice!];
+      const earlier = (await all<{ payload: string; response_choice: number | null }>(`SELECT payload, response_choice FROM proposals WHERE candidate_id=? AND kind='choix' AND response='choisie' AND id<>?`, candidateId, proposalId))
+        .map((e) => (e.response_choice === null ? '' : ((JSON.parse(e.payload) as { items: ChoiceItem[] }).items[e.response_choice]?.title ?? '').trim()));
+      const now = await get<{ title: string | null }>('SELECT title FROM subjects WHERE candidate_id=?', candidateId);
+      if (!now?.title?.trim() || earlier.includes(now.title.trim())) {
+        await run(`INSERT INTO subjects (candidate_id,title,format) VALUES (?,?,?) ON CONFLICT (candidate_id) DO UPDATE SET title=excluded.title, format=COALESCE(excluded.format, subjects.format)`, candidateId, picked.title, picked.format || null);
+      }
     }
     if (response === 'approuvee') await advance(candidateId, 'sujet_valide', 'la candidate');
     return true;

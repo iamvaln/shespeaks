@@ -772,8 +772,50 @@ test('A: once she has chosen among the tracks sent they are closed: no edit, no 
   assert.deepEqual(await P.reopenExchanges(id, 'Coach'), { ok: true });
   assert.deepEqual(await P.reopenExchanges(id, 'Coach'), { ok: false, error: 'Les échanges sont déjà ouverts.' }, 'open now: nothing to reopen');
 
-  // C and D have no tracks block
+  // C and D have no tracks block: even a « choix » answered « choisie » (it cannot happen there) closes nothing
   const c = await candidate('C');
+  await raw`insert into proposals (candidate_id, kind, payload, state, response, response_choice, answered_at) values (${c}, 'choix', '{"items":[]}', 'repondue', 'choisie', 0, now() at time zone 'utc')`;
   assert.deepEqual(await P.mayEditTracks(c), { ok: true });
   assert.deepEqual(await P.mayEditTracks(2147483647), { ok: false, error: 'Candidate introuvable' });
+});
+
+test('tracksWriteRefusal is the one guard of every write on the tracks: the exchange lock, her choice among those sent, otherwise nothing', { skip }, async () => {
+  const { TRACKS_CLOSED_MESSAGE } = await import('../../src/lib/journey.ts');
+  const id = await candidate('A');
+  await retained(id, 3);
+  assert.equal(await P.tracksWriteRefusal(id), null, 'nothing sent');
+  await P.sendChoice(id, 1);
+  assert.equal(await P.tracksWriteRefusal(id), P.LOCK_MESSAGE.attente, 'waiting for her');
+  let j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'aucune', null, 'Aucun');
+  assert.equal(await P.tracksWriteRefusal(id), null, 'none fits: the next series');
+  await P.sendChoice(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS);
+  assert.equal(await P.tracksWriteRefusal(id), TRACKS_CLOSED_MESSAGE, 'she chose');
+  assert.equal(await P.tracksWriteRefusal(2147483647), 'Candidate introuvable');
+});
+
+test('the subject follows her choice (title and format) while the coach has not rewritten it, in a later series too', { skip }, async () => {
+  const id = await candidate('A');
+  await raw`insert into tracks (candidate_id, title, format, origin, state, pitch, position) values
+    (${id}, 'Premier', 'talk', 'ia', 'retenue_coach', 'p1', 0), (${id}, 'Second', 'atelier', 'ia', 'retenue_coach', 'p2', 1)`;
+  await P.sendChoice(id, 1);
+  let j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS);
+  const subject = async () => (await raw`select title, format from subjects where candidate_id = ${id}`)[0];
+  assert.deepEqual({ ...(await subject()) }, { title: 'Premier', format: 'talk' }, 'her first choice starts the subject');
+  // she changes her mind in a later series: the subject still holds her earlier choice, so it follows
+  await P.reopenExchanges(id, 'Coach');
+  await P.sendChoice(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 1, '', IDEAS);
+  assert.deepEqual({ ...(await subject()) }, { title: 'Second', format: 'atelier' }, 'the second choice replaces the first');
+  // a title the coach wrote is never replaced
+  await raw`update subjects set title = 'Mon titre à moi' where candidate_id = ${id}`;
+  await P.reopenExchanges(id, 'Coach');
+  await P.sendChoice(id, 1);
+  j = await state(id);
+  await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS);
+  assert.equal((await subject()).title, 'Mon titre à moi');
 });

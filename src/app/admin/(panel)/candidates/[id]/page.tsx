@@ -32,12 +32,13 @@ import { UseInField } from '@/components/UseInField';
 import { initials, wordCount } from '@/lib/text';
 import { appUrl } from '@/lib/mail';
 import { admissionOpen } from '@/lib/calendar';
+import { ficheTabs, tracksInOwnTab } from '@/lib/fiche-tabs';
 import { todayIso } from '@/lib/dates';
 import { getSetting } from '@/lib/db';
 import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
 import { ideaLines, journeyState, STATUS_OF_STEP, TRACKS_CLOSED_MESSAGE, tracksClosed, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, admitLateAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  addNoteAction, admitLateAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, reopenExchangesRedirectAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
@@ -85,11 +86,14 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const lock = lockOf(c, subject?.application_state, exchanges);
   // A and B: the tracks are editable until a series is sent and she has chosen; after that (or while a proposal waits) they are for consultation
   const hasTracks = c.branch === 'A' || c.branch === 'B';
-  // the title of the track she chose in the last series she answered (the tracks are frozen once sent, so it still matches a track of the list)
+  // the title of the track she chose in the last series she answered, as it was sent
   const lastChoice = [...exchanges].reverse().find((x) => x.kind === 'choix' && x.state !== 'remplacee');
   const herChoiceTitle = lastChoice?.response === 'choisie' && lastChoice.response_choice !== null ? ((lastChoice.payload as ChoicePayload).items[lastChoice.response_choice]?.title ?? '').trim() : '';
   const closedTracks = tracksClosed(c, exchanges);
   const tracksReadOnly = !!lock || closedTracks;
+  // the tracks get their own tab only when a series was actually sent: nothing to consult otherwise
+  const tracksSent = exchanges.some((x) => x.kind === 'choix');
+  const ownTab = tracksInOwnTab({ hasTracks, tracksReadOnly, tracksSent });
   const choiceHint = retained.length > 3 ? `${retained.length} pistes retenues : il en faut 3 au plus. Écarte celles qui ne partiront pas.`
     : retained.length < 2 ? `${retained.length === 0 ? 'Aucune piste retenue' : '1 piste retenue'} : retiens-en 2 ou 3 (bouton « Retenir »).`
     : retained.some((t) => !(t.pitch ?? '').trim()) ? 'Chaque piste retenue doit avoir sa phrase pour la candidate, enregistrée (bouton « Enregistrer » de la piste).'
@@ -120,7 +124,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const wa = (c.whatsapp ?? '').replace(/[^\d]/g, '');
   const now = new Date();
 
-  const TABS: [string, string, number | null][] = [['sujet', hasTracks && !tracksReadOnly ? 'Sujet et pistes' : 'Sujet', null], ['reponses', 'Réponses', null], ...(hasTracks && tracksReadOnly ? [['pistes', 'Pistes envoyées', null] as [string, string, null]] : []), ['notes', 'Notes et historique', notes.length || null], ['photos', 'Photos', photos.length || null], ...(rm ? [['plan', 'Plan de route', null] as [string, string, null]] : [])];
+  const TABS = ficheTabs({ hasTracks, tracksReadOnly, tracksSent, hasPlan: !!rm, notes: notes.length, photos: photos.length }).map((t) => [t.id, t.label, t.count] as [string, string, number | null]);
   const tab = TABS.some(([t]) => t === one(sp.tab)) ? one(sp.tab) : 'sujet';
   const tabHref = (t: string) => `/admin/candidates/${id}${t === 'sujet' ? '' : `?tab=${t}`}`;
 
@@ -139,6 +143,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
 
   const meta = [c.role, evLabel, c.branch ? BRANCH_SHORT[c.branch] : null, c.completed_at ? `intérêt reçu le ${fmtDate(c.completed_at, 'fr', DATE_TIME)}` : `parcours en cours, inscrite le ${fmtDate(c.created_at, 'fr', DATE_TIME)}`].filter(Boolean).join(' · ');
 
+  // the same question wherever « Rouvrir les échanges » is offered (the tracks, and the subject when it is locked)
+  const REOPEN_CONFIRM = 'Rouvrir les échanges ? Les pistes et le sujet redeviennent modifiables et tu pourras de nouveau lui envoyer des propositions. Si elle avait confirmé sa soumission, elle la confirmera à nouveau à la fin. Son statut revient à ce que les échanges justifient (« Candidature soumise » redevient « Sujet validé » ou « Intérêt reçu » ; « Retenue » et les statuts suivants ne bougent pas).';
+  const canReopen = lock === 'approuve' || lock === 'soumise' || (!lock && closedTracks);
+  // the track she chose is found by its place in the series that was sent (the sent tracks are the retained ones, in their order), not by its title
+  const sentTracks = tracks.filter((t) => t.state === 'retenue_coach' || t.state === 'choisie').sort((x, y) => (x.position ?? 0) - (y.position ?? 0) || x.id - y.id);
+  const herChoiceId = lastChoice?.response === 'choisie' && lastChoice.response_choice !== null && sentTracks[lastChoice.response_choice]?.title.trim() === herChoiceTitle ? sentTracks[lastChoice.response_choice].id : null;
   // A and B: the block of tracks is editable until they are sent and she has chosen; after that it is for consultation, in its own tab
   const pistes = (
                 <Fold id="h-pistes" title="Pistes de sujet" flush bodyClassName="">
@@ -149,14 +159,16 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                         <div className="a-stack" style={{ gap: 8 }}>
                           <p className="a-muted" style={{ margin: 0 }}>
                             Consultation seulement. {lock ? LOCK_MESSAGE[lock] : TRACKS_CLOSED_MESSAGE}
-                            {herChoiceTitle ? <> Elle a choisi : <strong>{herChoiceTitle}</strong>.</> : null}
-                            {' La candidate ne voit pas cette liste : seulement ce qui lui a été envoyé (voir « Échanges avec la candidate »).'}
+                            {herChoiceTitle ? <> Son choix : <strong>{herChoiceTitle}</strong>.</> : null}
+                            {' La candidate ne voit pas cette liste : seulement ce qui lui a été envoyé, avec sa réponse, dans '}
+                            {ownTab ? <Link href={tabHref('sujet')}>Échanges avec la candidate</Link> : '« Échanges avec la candidate »'}.
                           </p>
-                          {!lock && closedTracks && (
-                            <InlineForm action={reopenExchangesAction} className="a-actions">
+                          {canReopen && ownTab && (
+                            // a plain form: the page reloads on the fiche with the confirmation, where the tracks are editable again
+                            <form action={reopenExchangesRedirectAction} className="a-actions">
                               <input type="hidden" name="cid" value={id} />
-                              <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Les pistes redeviennent modifiables et tu pourras lui envoyer une autre série. Son statut revient à ce que les échanges indiquent.">Rouvrir les échanges</PendingButton>
-                            </InlineForm>
+                              <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText={REOPEN_CONFIRM}>Rouvrir les échanges</PendingButton>
+                            </form>
                           )}
                         </div>
                       ) : (
@@ -204,7 +216,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             <span className="a-num" aria-hidden="true">{i + 1}</span>
                             <span className="a-track-summary-title">{t.title}</span>
                             <span className={`a-pill is-${TRACK_TONE[t.state] ?? 'neutral'}`}>{TRACK_STATE[t.state] ?? t.state}</span>
-                            {tracksReadOnly && herChoiceTitle && t.title.trim() === herChoiceTitle && <span className="a-pill is-green">Choisie par la candidate</span>}
+                            {tracksReadOnly && herChoiceId === t.id && <span className="a-pill is-green">Son choix</span>}
                             <span className="a-sub">{FORMATS.find((o) => o.value === t.format)?.label.fr ?? t.format ?? 'Talk'}</span>
                           </summary>
                           {tracksReadOnly ? (
@@ -360,12 +372,12 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 {jstate && <p style={{ margin: 0 }}><strong>État : {jstate.label}</strong><span className="sr-only"> ({WAITING_SR[jstate.waiting]})</span></p>}
                 {lock && <div className="a-lock-note" role="note">{LOCK_MESSAGE[lock]}</div>}
                 {!lock && closedTracks && <div className="a-lock-note" role="note">{TRACKS_CLOSED_MESSAGE}</div>}
-                {hasTracks && tracksReadOnly && <p className="a-muted" style={{ margin: 0 }}>Les pistes envoyées sont en consultation dans l’onglet <Link href={tabHref('pistes')}>Pistes envoyées</Link>.</p>}
-                {(lock === 'approuve' || lock === 'soumise' || (!lock && closedTracks)) && (
+                {ownTab && <p className="a-muted" style={{ margin: 0 }}>Les pistes envoyées sont en consultation dans l’onglet <Link href={tabHref('pistes')}>Pistes envoyées</Link>.</p>}
+                {canReopen && (
                   <InlineForm action={reopenExchangesAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />
                     <span className="a-muted">Besoin de modifier son sujet ou de lui envoyer autre chose ?</span>
-                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText="Rouvrir les échanges ? Pistes et sujet redeviennent modifiables et tu pourras de nouveau lui envoyer des propositions. Si elle avait confirmé sa soumission, elle la confirmera à nouveau à la fin. Son statut revient à ce que les échanges justifient (« Candidature soumise » redevient « Sujet validé » ou « Intérêt reçu » ; « Retenue » et les statuts suivants ne bougent pas).">Rouvrir les échanges</PendingButton>
+                    <PendingButton className="a-btn is-ghost is-sm" pendingLabel="…" confirmText={REOPEN_CONFIRM}>Rouvrir les échanges</PendingButton>
                   </InlineForm>
                 )}
                 {toHandle && (
@@ -403,7 +415,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <dl className="a-qa">{topicSummary(c.branch, a).map((q) => (<div key={q.code}><dt>{q.label.fr}</dt><dd style={{ whiteSpace: 'pre-line' }}>{fmtVal(q, a[q.code])}</dd></div>))}</dl>
                 </Fold>
               )}
-              {hasTracks && !tracksReadOnly && pistes}
+              {hasTracks && !ownTab && pistes}
 
               <Fold id="h-sujet" title="Sujet retenu et candidature">
                 <EditScope>
@@ -519,7 +531,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
             </>
           )}
 
-          {tab === 'pistes' && hasTracks && tracksReadOnly && pistes}
+          {tab === 'pistes' && ownTab && pistes}
 
           {tab === 'reponses' && (
             <Fold id="h-reponses" title="Réponses au formulaire" bodyClassName="">
