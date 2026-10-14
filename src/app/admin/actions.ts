@@ -15,7 +15,7 @@ import { sendReminderNow } from '@/lib/reminders';
 import { checkVerifyRate, requestIp } from '@/lib/ratelimit';
 import { isEmail } from '@/lib/questions';
 import { statusRefusal } from '@/lib/status';
-import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
+import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, mayEditTracks, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
 import { isoOrNull } from '@/lib/dates';
 
@@ -39,6 +39,11 @@ const reply = (f: FormData, path: string, msg: string, err = false): Reply => {
 async function lockedReply(f: FormData, id: number): Promise<Reply | null> {
   const lock = await exchangeLock(id);
   return lock ? reply(f, cpath(id), LOCK_MESSAGE[lock], true) : null;
+}
+/** The tracks are for consultation once she has chosen among those sent (server side too). */
+async function tracksClosedReply(f: FormData, id: number): Promise<Reply | null> {
+  const may = await mayEditTracks(id);
+  return may.ok ? null : reply(f, cpath(id), may.error, true);
 }
 
 // ---- auth ----------------------------------------------------------------------
@@ -138,6 +143,8 @@ export async function suggestTracksAction(f: FormData) {
   const id = num(f, 'cid');
   const locked = await lockedReply(f, id);
   if (locked) return locked;
+  const closed = await tracksClosedReply(f, id);
+  if (closed) return closed;
   const provider: AiProvider = str(f, 'provider') === 'openai' ? 'openai' : 'claude';
   const name = provider === 'openai' ? 'OpenAI' : 'Claude';
   // « Précisions pour l'IA »: kept on the fiche (every next request reuses them), saved before the call so a failure keeps them too
@@ -169,6 +176,8 @@ export async function trackAction(f: FormData) {
   const id = num(f, 'cid');
   const locked = await lockedReply(f, id);
   if (locked) return locked;
+  const closed = await tracksClosedReply(f, id);
+  if (closed) return closed;
   const op = str(f, 'op');
   const tid = num(f, 'track_id');
   const track = (await getTracks(id)).find((t) => t.id === tid);

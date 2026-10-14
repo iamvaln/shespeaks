@@ -4,7 +4,7 @@ import { all, get, run, tx } from './db.ts';
 import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
 import {
-  COMMENT_MAX, journey, parseIdeas, planLines, STATUS_OF_STEP, validateChoice, validateChoiceIdeas, validateSubject,
+  COMMENT_MAX, journey, parseIdeas, planLines, STATUS_OF_STEP, TRACKS_CLOSED_MESSAGE, tracksClosed, validateChoice, validateChoiceIdeas, validateSubject,
   type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
 } from './journey.ts';
 
@@ -75,6 +75,13 @@ export async function exchangeLock(candidateId: number): Promise<ExchangeLock> {
   const [state, proposals] = await Promise.all([applicationStateOf(candidateId), listProposals(candidateId)]);
   return lockOf(c, state, proposals);
 }
+/** The server side of the read-only tracks: once she has chosen among those sent, nobody edits them (A and B) until the exchanges are reopened. */
+export async function mayEditTracks(candidateId: number): Promise<Outcome> {
+  if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
+  const c = (await getCandidate(candidateId))!;
+  return tracksClosed(c, await listProposals(candidateId)) ? { ok: false, error: TRACKS_CLOSED_MESSAGE } : { ok: true };
+}
+
 /**
  * Start points A and B: the subject is developed from the track she chose, so it is sent only once she has chosen one. It follows the
  * exchanges as the journey does (the latest choice or subject sent decides): after « aucune » to a second round of tracks she is back
@@ -128,6 +135,8 @@ export async function sendChoice(candidateId: number, coachId: number): Promise<
   const lock = await exchangeLock(candidateId);
   if (lock === 'soumise') return ALREADY_SUBMITTED;
   if (lock) return { ok: false, error: LOCK_MESSAGE[lock] };
+  const closed = await mayEditTracks(candidateId); // she already chose among the tracks sent: another series only after « Rouvrir les échanges »
+  if (!closed.ok) return closed;
   const tracks = await all<Track>(`SELECT * FROM tracks WHERE candidate_id=? AND state='retenue_coach' ORDER BY position, id`, candidateId);
   const items: ChoiceItem[] = tracks.map((t) => ({ title: t.title.trim(), format: t.format ?? 'talk', pitch: (t.pitch ?? '').trim() }));
   const error = validateChoice(items);
@@ -271,7 +280,8 @@ export async function reopenExchanges(candidateId: number, author = 'système'):
   if (!(await candidateExists(candidateId))) return NO_CANDIDATE;
   const lock = await exchangeLock(candidateId);
   if (lock === 'attente') return WAITING;
-  if (!lock) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
+  // the exchanges are open only when nothing locks the topic and the tracks she chose among are not closed either
+  if (!lock && (await mayEditTracks(candidateId)).ok) return { ok: false, error: 'Les échanges sont déjà ouverts.' };
   await run(`UPDATE candidates SET submitted_at=NULL, reopened_at=(now() at time zone 'utc') WHERE id=?`, candidateId);
   await stepBackQuietly(candidateId, () => author);
   return { ok: true };
