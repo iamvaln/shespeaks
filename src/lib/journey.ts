@@ -35,6 +35,19 @@ export const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', 
 export const COMMENT_MAX = 1000;
 
 /**
+ * A and B: once she has chosen among the tracks sent, that series is closed. The tracks are then for consultation only (the coach can no
+ * longer edit them nor send another series) until she reopens the exchanges. A later answer « none fits » leaves the hand to the coach, who
+ * prepares the next series; a series chosen after the reopening closes it again. The proposals are in the order they were sent.
+ */
+export const TRACKS_CLOSED_MESSAGE = 'Elle a choisi parmi les pistes envoyées : elles ne sont plus modifiables. « Rouvrir les échanges » pour lui en envoyer d’autres.';
+export function tracksClosed(c: { branch: Branch | null; reopened_at?: string | null }, proposals: Proposal[]): boolean {
+  if (c.branch !== 'A' && c.branch !== 'B') return false;
+  const last = [...proposals].reverse().find((p) => p.kind === 'choix' && p.state !== 'remplacee');
+  if (last?.state !== 'repondue' || last.response !== 'choisie') return false;
+  return !c.reopened_at || (last.answered_at ?? '') > c.reopened_at;
+}
+
+/**
  * Asked in the same form as her choice, so she has little to do: how she would approach the topic (at least one), what she could
  * show or tell, the one thing to remember, what to prepare. Easier than « a plan »; the coach builds the plan from it.
  */

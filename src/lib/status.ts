@@ -44,12 +44,12 @@ export async function statusRefusal(candidateId: number, next: string): Promise<
   if (!statusChoices(c.status, !!c.completed_at, j ? STATUS_OF_STEP[j.step] : null).includes(next)) {
     if (c.status === 'non_retenue' || (c.status === 'en_cours' && !c.completed_at)) return statusHint(c.status, !!c.completed_at);
     const lock = await exchangeLock(candidateId); // the way back is named only where it exists
-    const back = lock === 'approuve' || lock === 'soumise' ? ' Pour reprendre les échanges avec elle, utilise « Rouvrir les échanges » (onglet « Sujet et pistes »).' : '';
+    const back = lock === 'approuve' || lock === 'soumise' ? ' Pour reprendre les échanges avec elle, utilise « Rouvrir les échanges » (sur la fiche, onglet du sujet).' : '';
     return `Impossible de revenir à « ${statusLabel(next)} » : ce statut est dépassé.${back}`;
   }
   if (next === 'sujet_valide') {
     const s = await getSubject(candidateId);
-    if (!s?.title?.trim() || !s?.abstract?.trim()) return 'Pour valider le sujet, renseigne d’abord le titre et le résumé dans l’onglet « Sujet et pistes ».';
+    if (!s?.title?.trim() || !s?.abstract?.trim()) return 'Pour valider le sujet, renseigne d’abord le titre et le résumé dans l’onglet du sujet.';
   }
   return null;
 }
