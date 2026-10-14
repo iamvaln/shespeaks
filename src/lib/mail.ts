@@ -255,7 +255,9 @@ export function candidateClosingReminder(c: { name: string }, resumeUrl: string,
         heading: `${first(c.name)}, il est encore temps`,
         paragraphs: [
           `Tu as commencé ton formulaire d’intérêt SheSpeaks (écran ${i.step.done} sur ${i.step.total}) sans le terminer.`,
-          `Les candidatures ferment après le ${i.deadline} (${inDays(n, loc)}) : passé ce jour, plus aucun formulaire ne pourra être envoyé.`,
+          n <= 0
+            ? `Les candidatures ferment ce soir (${i.deadline}) : ensuite, plus aucun formulaire ne pourra être envoyé.`
+            : `Les candidatures sont ouvertes jusqu’au ${i.deadline} inclus (${inDays(n, loc)}) : ensuite, plus aucun formulaire ne pourra être envoyé.`,
           'Tes réponses sont déjà enregistrées : il te reste quelques minutes.',
         ],
         cta: { label: 'Reprendre là où je me suis arrêtée', url: resumeUrl },
@@ -264,7 +266,9 @@ export function candidateClosingReminder(c: { name: string }, resumeUrl: string,
         heading: `${first(c.name)}, there is still time`,
         paragraphs: [
           `You started your SheSpeaks interest form (screen ${i.step.done} of ${i.step.total}) without finishing it.`,
-          `Applications close after ${i.deadline} (${inDays(n, loc)}): after that day, no form can be sent any more.`,
+          n <= 0
+            ? `Applications close tonight (${i.deadline}): after that, no form can be sent any more.`
+            : `Applications are open until ${i.deadline} inclusive (${inDays(n, loc)}): after that, no form can be sent any more.`,
           'Your answers are already saved: it only takes a few minutes.',
         ],
         cta: { label: 'Pick up where I left off', url: resumeUrl },
@@ -276,8 +280,8 @@ export function candidateExchangeReminder(name: string, url: string, loc: Locale
   const fr = { choix: ['Ta coach attend ton choix de sujet', 'Ta coach t’a proposé des sujets : choisis celui que tu préfères depuis ton espace.'], sujet: ['Ta coach attend ta réponse sur ton sujet', 'Ta coach t’a envoyé ton sujet ajusté : approuve-le, ou demande des changements, depuis ton espace.'], photo: ['Ta coach attend ta photo', 'Ta coach attend ta photo de speaker : ajoute-la depuis ton espace.'] }[i.what];
   const en = { choix: ['Your coach is waiting for your choice of topic', 'Your coach suggested topics: pick the one you prefer from your space.'], sujet: ['Your coach is waiting for your answer on your topic', 'Your coach sent you your adjusted topic: approve it, or ask for changes, from your space.'], photo: ['Your coach is waiting for your photo', 'Your coach is waiting for your speaker photo: add it from your space.'] }[i.what];
   return loc === 'fr'
-    ? build(fr[0], { heading: `${first(name)}, on compte sur toi`, paragraphs: [fr[1], `La date interne de soumission est le ${i.deadline} (${inDays(i.daysLeft, loc)}) : plus tôt tu réponds, plus vite vous finalisez ta candidature ensemble.`], cta: { label: 'Ouvrir mon espace', url } })
-    : build(en[0], { heading: `${first(name)}, we are counting on you`, paragraphs: [en[1], `The internal submission date is ${i.deadline} (${inDays(i.daysLeft, loc)}): the sooner you answer, the sooner you finalise your application together.`], cta: { label: 'Open my space', url } });
+    ? build(fr[0], { heading: `${first(name)}, on compte sur toi`, paragraphs: [fr[1], `La date limite SheSpeaks est le ${i.deadline} (${inDays(i.daysLeft, loc)}) : plus tôt tu réponds, plus vite vous finalisez ta candidature ensemble.`], cta: { label: 'Ouvrir mon espace', url } })
+    : build(en[0], { heading: `${first(name)}, we are counting on you`, paragraphs: [en[1], `The SheSpeaks deadline is ${i.deadline} (${inDays(i.daysLeft, loc)}): the sooner you answer, the sooner you finalise your application together.`], cta: { label: 'Open my space', url } });
 }
 
 /**
@@ -294,7 +298,7 @@ export function candidateSubmitReminder(name: string, url: string, loc: Locale, 
         paragraphs: [
           'Ton sujet est approuvé et ta photo validée : il ne reste qu’à soumettre ta candidature à l’appel à speakers.',
           i.kind === 'internal'
-            ? `La date interne de soumission est le ${i.date} (${when})${i.callCloses ? ` : elle laisse à l’équipe le temps de relire avant la clôture de l’appel, le ${i.callCloses}` : ''}.`
+            ? `La date limite SheSpeaks est le ${i.date} (${when})${i.callCloses ? ` : elle laisse à l’équipe le temps de relire avant la clôture de l’appel, le ${i.callCloses}` : ''}.`
             : `L’appel à speakers ferme le ${i.date} (${when}).`,
           'Une fois soumise, confirme-le dans ton espace.',
         ],
@@ -306,7 +310,7 @@ export function candidateSubmitReminder(name: string, url: string, loc: Locale, 
         paragraphs: [
           'Your topic is approved and your photo validated: all that is left is to submit your application to the call for speakers.',
           i.kind === 'internal'
-            ? `The internal submission date is ${i.date} (${when})${i.callCloses ? `: it leaves the team time to proofread before the call closes on ${i.callCloses}` : ''}.`
+            ? `The SheSpeaks deadline is ${i.date} (${when})${i.callCloses ? `: it leaves the team time to proofread before the call closes on ${i.callCloses}` : ''}.`
             : `The call for speakers closes on ${i.date} (${when}).`,
           'Once submitted, confirm it in your space.',
         ],
