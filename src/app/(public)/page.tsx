@@ -6,6 +6,10 @@ import { LANDING } from '@/content/landing';
 import './landing.css';
 import { SiteHeader } from '@/components/SiteHeader';
 import { Icon, type IconName } from '@/components/LandingIcons';
+import { admission } from '@/lib/admission';
+import { getSetting } from '@/lib/db';
+import { fmtDate } from '@/lib/i18n';
+import { isoOrNull, todayIso } from '@/lib/dates';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
@@ -45,7 +49,15 @@ export default async function Home() {
   const locale = await getLocale();
   const d = t(locale).home;
   const c = await getCandidateFromCookie();
-  const cta = c ? (c.completed_at ? { href: '/plan', label: d.hero.seePlan, short: d.hero.seePlanShort } : { href: '/interet', label: d.hero.resume, short: d.hero.resumeShort }) : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
+  // who may still apply: before the last day to send an interest (or admitted late); the button says so once it is closed
+  const gate = c?.completed_at ? ({ open: true } as const) : await admission(c);
+  const interestDeadline = isoOrNull(await getSetting('interest_deadline'));
+  const closedText = t(locale).closed;
+  const cta = c?.completed_at ? { href: '/plan', label: d.hero.seePlan, short: d.hero.seePlanShort }
+    : !gate.open ? { href: '/interet', label: closedText.cta, short: closedText.ctaShort }
+    : c ? { href: '/interet', label: d.hero.resume, short: d.hero.resumeShort }
+    : { href: '/interet', label: d.hero.cta, short: d.hero.ctaShort };
+  const deadlineNote = !c?.completed_at && gate.open && interestDeadline && interestDeadline >= todayIso() ? (interestDeadline === todayIso() ? closedText.lastDay : closedText.openUntil(fmtDate(interestDeadline, locale))) : null;
   const navLinks: [string, string][] = [['#qui', d.nav.who], ['#comment', d.nav.how], ['#formats', d.nav.formats], ['#faq', d.nav.faq]];
 
   return (
@@ -66,6 +78,7 @@ export default async function Home() {
               <p className="lp-eyebrow">{d.hero.eyebrow}</p>
               <h1 id="h1" className="lp-h1">{withAccent(d.hero.h1, d.hero.h1Accent)}</h1>
               <p className="lp-lead">{d.hero.lead}</p>
+              {deadlineNote && <p className="lp-deadline" role="status">{deadlineNote}</p>}
               <div className="lp-actions">
                 <Link className="lp-btn lp-btn-amber" href={cta.href}>{cta.label} <Icon name="arrow" size={18} /></Link>
                 <a className="lp-btn lp-btn-outline" href="#comment">{d.hero.secondary}</a>

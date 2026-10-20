@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { accessOutcome } from '../src/lib/access-outcome.ts';
-import { IDEA_MAX, ideaLines, journey, journeySteps, journeyState, parseIdeas, pitchToSave, planLines, validateChoice, validateChoiceIdeas, validateSubject, WAITING_SR, type Proposal } from '../src/lib/journey.ts';
+import { IDEA_MAX, ideaLines, journey, journeySteps, journeyState, tracksClosed, parseIdeas, pitchToSave, planLines, validateChoice, validateChoiceIdeas, validateSubject, WAITING_SR, type Proposal } from '../src/lib/journey.ts';
 
 let n = 0;
 const p = (kind: Proposal['kind'], state: Proposal['state'], response: Proposal['response'] = null): Proposal => ({
@@ -180,4 +180,34 @@ test('her ideas with the choice: at least one way to approach it; unknown approa
   assert.deepEqual(parseIdeas(JSON.stringify(v.value)), v.value);
   assert.equal(parseIdeas('not json'), null);
   assert.equal(parseIdeas(null), null);
+});
+
+// ---- the tracks are for consultation once she has chosen among those sent ------------------------------------------------------------
+const answered = (response: Proposal['response'], at: string): Proposal => ({ ...p('choix', 'repondue', response), answered_at: at });
+test('tracks: closed once she chose among those sent; open when nothing was sent, after « none fits », or for C and D', () => {
+  const A = { branch: 'A' as const };
+  assert.equal(tracksClosed(A, []), false, 'nothing sent');
+  assert.equal(tracksClosed(A, [p('choix', 'envoyee')]), false, 'waiting: the existing lock covers it');
+  assert.equal(tracksClosed(A, [answered('choisie', '2026-10-12 10:00:00')]), true, 'she chose');
+  assert.equal(tracksClosed(A, [answered('aucune', '2026-10-12 10:00:00')]), false, 'none fits: the coach prepares the next series');
+  assert.equal(tracksClosed({ branch: 'B' }, [answered('choisie', '2026-10-12 10:00:00')]), true);
+  for (const branch of ['C', 'D', null] as const) assert.equal(tracksClosed({ branch }, [answered('choisie', '2026-10-12 10:00:00')]), false, String(branch));
+});
+
+test('tracks: the latest series decides, a reopening lifts the closing until she chooses again', () => {
+  const A = { branch: 'A' as const };
+  const first = answered('aucune', '2026-10-12 10:00:00');
+  const second = answered('choisie', '2026-10-13 10:00:00');
+  assert.equal(tracksClosed(A, [first, second]), true, 'the second series she chose from');
+  assert.equal(tracksClosed(A, [first, second, p('choix', 'envoyee')]), false, 'a third series is out: waiting');
+  assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-14 09:00:00' }, [first, second]), false, 'reopened after her choice');
+  assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-12 09:00:00' }, [first, second]), true, 'reopened before her choice: closed');
+  const third = answered('choisie', '2026-10-15 10:00:00');
+  assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-14 09:00:00' }, [first, second, third]), true, 'chosen again after the reopening');
+  const replaced = { ...p('choix', 'remplacee'), response: null };
+  assert.equal(tracksClosed(A, [answered('choisie', '2026-10-12 10:00:00'), replaced]), true, 'a replaced proposal is not a series');
+  // reopened in the very second of her answer (timestamps are kept to the second): reopened wins, so the coach is never locked out
+  assert.equal(tracksClosed({ ...A, reopened_at: '2026-10-12 10:00:00' }, [answered('choisie', '2026-10-12 10:00:00')]), false);
+  // a subject exchange does not change it
+  assert.equal(tracksClosed(A, [answered('choisie', '2026-10-12 10:00:00'), p('sujet', 'envoyee')]), true);
 });

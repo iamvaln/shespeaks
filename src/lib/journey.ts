@@ -29,7 +29,23 @@ export interface Proposal {
 export type Step = 'choix' | 'sujet' | 'photo' | 'soumission' | 'soumise';
 export type Journey = { step: Step; steps: Step[]; waiting: 'coach' | 'candidate' | 'none'; pending: Proposal | null };
 
+/** The status each step of the exchanges stands for: the statuses the exchanges drive (« Intérêt reçu », « Sujet validé », « Candidature soumise »). */
+export const STATUS_OF_STEP: Record<Step, string> = { choix: 'diagnostic_recu', sujet: 'diagnostic_recu', photo: 'sujet_valide', soumission: 'sujet_valide', soumise: 'candidature_soumise' };
+
 export const COMMENT_MAX = 1000;
+
+/**
+ * A and B: once she has chosen among the tracks sent, that series is closed. The tracks are then for consultation only (the coach can no
+ * longer edit them nor send another series) until she reopens the exchanges. A later answer « none fits » leaves the hand to the coach, who
+ * prepares the next series; a series chosen after the reopening closes it again. The proposals are in the order they were sent.
+ */
+export const TRACKS_CLOSED_MESSAGE = 'Elle a choisi parmi les pistes envoyées : elles ne sont plus modifiables. « Rouvrir les échanges » pour lui en envoyer d’autres.';
+export function tracksClosed(c: { branch: Branch | null; reopened_at?: string | null }, proposals: Proposal[]): boolean {
+  if (c.branch !== 'A' && c.branch !== 'B') return false;
+  const last = [...proposals].reverse().find((p) => p.kind === 'choix' && p.state !== 'remplacee');
+  if (last?.state !== 'repondue' || last.response !== 'choisie') return false;
+  return !c.reopened_at || (last.answered_at ?? '') > c.reopened_at;
+}
 
 /**
  * Asked in the same form as her choice, so she has little to do: how she would approach the topic (at least one), what she could

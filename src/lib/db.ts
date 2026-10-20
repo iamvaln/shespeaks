@@ -218,6 +218,13 @@ export const nowSql = () => new Date().toISOString().replace('T', ' ').slice(0, 
 export const SETTING_DEFAULTS = {
   notification_email: '',
   internal_deadline: '2026-10-26',
+  // the common calendar (empty = not set): the last day an interest is accepted, the rehearsal day shared by all candidates, and a free note about it
+  interest_deadline: '',
+  rehearsal_date: '',
+  rehearsal_info: '',
+  // the calendar reminders (form closing, exchanges, submission, preparation) are off until the team switches them on
+  calendar_reminders_enabled: 'false',
+  coach_digest_last: '',
   show_tracks_to_candidates: 'false',
   reminders_enabled: 'true',
   reminder_first_hours: '24',
