@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addDays, dayOf, dayStartUtc, isoOrNull, todayIso } from '../src/lib/dates.ts';
-import { admissionOpen, calendarWarnings, openEvents, pickTier, reminderDue, rehearsalFor, urgency } from '../src/lib/calendar.ts';
+import { admissionOpen, calendarWarnings, CLOSE_BEFORE_CFP_DAYS, lastOfferDay, openEvents, pickTier, reminderDue, rehearsalFor, urgency } from '../src/lib/calendar.ts';
 
 test('isoOrNull accepts real days only', () => {
   assert.equal(isoOrNull('2026-10-26'), '2026-10-26');
@@ -124,4 +124,14 @@ test('warnings about what is closed now, and an internal date after an event\'s 
   const past = [{ event_date: '2025-11-21', name: 'Douala 2025' }, { event_date: '2026-11-21', name: 'Yaoundé' }];
   assert.ok(!/Douala 2025/.test(calendarWarnings({ ...ok, events: past, today: '2026-10-13' }).join('|')));
   assert.match(calendarWarnings({ ...ok, events: past }).join('|'), /Douala 2025/, 'without a day, every dated event is listed (the former behaviour)');
+});
+
+test('an event leaves the form a week before its call for speakers closes (the last day is the close minus 7 days)', () => {
+  const ev = [{ city: 'yaounde', event_date: '2026-11-21', cfp_close_date: '2026-10-31' }, { city: 'douala', event_date: '2026-11-28', cfp_close_date: '2026-11-01' }, { city: 'kribi', event_date: '2026-12-05' }];
+  assert.equal(lastOfferDay(ev[0]), '2026-10-24');
+  assert.equal(lastOfferDay(ev[2]), null, 'no call date: no such limit');
+  assert.deepEqual(openEvents(ev, '2026-10-24').map((e) => e.city), ['yaounde', 'douala', 'kribi'], 'the last day itself, up to 23:59');
+  assert.deepEqual(openEvents(ev, '2026-10-25').map((e) => e.city), ['douala', 'kribi']);
+  assert.deepEqual(openEvents(ev, '2026-10-26').map((e) => e.city), ['kribi']);
+  assert.equal(CLOSE_BEFORE_CFP_DAYS, 7);
 });

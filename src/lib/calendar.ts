@@ -15,15 +15,24 @@ export function admissionOpen(i: { today: string; interestDeadline?: string | nu
   return !d || i.today <= d;
 }
 
+/** An event leaves the form this many days before its call for speakers closes: she needs that week to prepare and submit. */
+export const CLOSE_BEFORE_CFP_DAYS = 7;
+/** The last day an event is offered for a new interest (its call's close minus a week), or null when its call has no date. */
+export function lastOfferDay(e: { cfp_close_date?: string | null }): string | null {
+  const c = isoOrNull(e.cfp_close_date);
+  return c ? addDays(c, -CLOSE_BEFORE_CFP_DAYS) : null;
+}
+
 /**
- * The events a new candidate may choose: a real event day, not yet past, and after the rehearsal day when there is one.
- * « Autre » and events without a date are never offered.
+ * The events a new candidate may choose: a real event day, not yet past, after the rehearsal day when there is one, and up to a week
+ * before its call for speakers closes. « Autre » and events without a date are never offered.
  */
-export function openEvents<T extends { event_date?: string | null }>(events: T[], today: string, rehearsalDate?: string | null): T[] {
+export function openEvents<T extends { event_date?: string | null; cfp_close_date?: string | null }>(events: T[], today: string, rehearsalDate?: string | null): T[] {
   const r = isoOrNull(rehearsalDate);
   return events.filter((e) => {
     const d = isoOrNull(e.event_date);
-    return !!d && d >= today && (!r || d > r);
+    const last = lastOfferDay(e);
+    return !!d && d >= today && (!r || d > r) && (!last || today <= last);
   });
 }
 
