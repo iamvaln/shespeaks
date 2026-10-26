@@ -330,6 +330,17 @@ export function candidateAccessLinks(entries: { event: string; date: string; url
     ? build(code ? `Ton code SheSpeaks : ${code}` : 'Ton lien pour retrouver ton espace', { heading: 'Retrouve ton espace SheSpeaks', paragraphs: [...codeLines, 'Voici ton lien personnel. Ne le partage pas : il ouvre ton espace sans mot de passe.', ...lines], cta: { label: 'Ouvrir mon espace', url: entries[0].url } })
     : build(code ? `Your SheSpeaks code: ${code}` : 'Your link to get back to your space', { heading: 'Get back to your SheSpeaks space', paragraphs: [...codeLines, 'Here is your personal link. Don’t share it: it opens your space without a password.', ...lines], cta: { label: 'Open my space', url: entries[0].url } });
 }
+/** Her coach wrote to her (a reply under an exchange, or a message on its own): the text, and her space to answer. */
+export function candidateCoachMessage(name: string, url: string, loc: Locale, body: string): Built {
+  return loc === 'fr'
+    ? build('Ta coach t’a écrit', { heading: `Bonjour ${first(name)},`, paragraphs: ['Ta coach SheSpeaks t’a écrit :', body, 'Tu peux lui répondre depuis ton espace.'], cta: { label: 'Répondre dans mon espace', url } })
+    : build('Your coach wrote to you', { heading: `Hello ${first(name)},`, paragraphs: ['Your SheSpeaks coach wrote to you:', body, 'You can answer her from your space.'], cta: { label: 'Answer in my space', url } });
+}
+/** The candidate wrote to the coaches; `about`: the exchange she answers under, if any. */
+export function coachCandidateMessage(c: { name: string }, body: string, ficheUrl: string, about: string | null = null): Built {
+  const line = `${c.name} t’a écrit`;
+  return build(`${c.name} a écrit un message`, { heading: line, paragraphs: [...(about ? [`À propos de : ${about}`] : []), 'Son message :', body], cta: { label: 'Répondre sur sa fiche', url: ficheUrl }, footer: 'SheSpeaks · espace coach' });
+}
 const ANSWER_LABEL: Record<string, string> = {
   choisie: 'a choisi un sujet', aucune: 'ne retient aucun des sujets proposés', approuvee: 'approuve son sujet', changements: 'demande des changements sur son sujet',
   photo_deposee: 'a déposé une nouvelle photo', soumise: 'a soumis sa candidature',

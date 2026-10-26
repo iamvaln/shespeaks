@@ -447,3 +447,10 @@
 .a-notices li { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 12px 24px; border-top: 1px solid var(--surface-sunken); }
 .a-notices li a { font-weight: 600; color: inherit; flex: 1 1 320px; min-width: 0; }
 .a-notices li.is-todo { background: #FFF8EA; box-shadow: inset 4px 0 0 #F5A524; }
+
+/* conversations on the fiche: her messages on the left, the coach's indented, then the answer field */
+.a-thread { display: grid; gap: 8px; margin-top: 8px; }
+.a-msg { padding: 8px 12px; border-radius: 10px; background: var(--surface-sunken); }
+.a-msg.is-coach { margin-left: 24px; background: #EFF3FB; }
+.a-reply > summary { cursor: pointer; list-style: none; display: inline; }
+.a-reply > summary::-webkit-details-marker { display: none; }

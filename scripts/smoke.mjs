@@ -337,6 +337,11 @@ else {
   ok((await fetch(BASE + '/acces')).status === 200, 'access: the page answers');
 }
 
+// writing to the coach needs her session
+{
+  const r = await fetch(BASE + '/api/espace/message', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'Bonjour' }) });
+  ok(r.status === 401, 'messages: writing to the coach needs a session');
+}
 // the candidate's answers need her session, and refuse a proposal that is not hers
 {
   const r = await fetch(BASE + '/api/espace/repondre', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ proposalId: 1, response: 'approuvee' }) });

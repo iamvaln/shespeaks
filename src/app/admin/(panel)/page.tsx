@@ -28,7 +28,7 @@ export default async function Dashboard() {
   const today = todayIso(now);
   const [rows, answers, notices] = await Promise.all([candidateRows(), answersToHandle(), recentNotices()]);
   // a notice whose candidate still waits for the coach is shown as « à traiter »
-  const coachHand = new Set(rows.filter((r) => r.journey?.waiting === 'coach').map((r) => r.id));
+  const coachHand = new Set(rows.filter((r) => r.journey?.waiting === 'coach' || r.message_to_handle).map((r) => r.id));
   const events = await listEvents();
   const deadline = await getSetting('internal_deadline');
 

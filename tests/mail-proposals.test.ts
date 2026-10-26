@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { candidateAccessLinks, candidateChoiceSent, candidateClosingReminder, candidateExchangeReminder, candidateSubmitReminder, candidatePhotoRequested, candidateProposalReminder, candidateReadyToSubmit, candidateSubjectSent, coachCandidateAnswered } from '../src/lib/mail.ts';
+import { candidateCoachMessage, coachCandidateMessage, candidateAccessLinks, candidateChoiceSent, candidateClosingReminder, candidateExchangeReminder, candidateSubmitReminder, candidatePhotoRequested, candidateProposalReminder, candidateReadyToSubmit, candidateSubjectSent, coachCandidateAnswered } from '../src/lib/mail.ts';
 
 const url = 'https://shespeaks.test/reprendre/tok';
 const ai = /\bIA\b|\bAI\b|intelligence artificielle|artificial intelligence|Claude|OpenAI|GPT/i;
@@ -56,4 +56,17 @@ test('the calendar reminders say how many days are left, in both languages', () 
   const submit = candidateSubmitReminder('Aïcha', url, 'fr', { daysLeft: 3, date: '26 octobre 2026', kind: 'internal', callCloses: '31 octobre 2026', where: 'Sessionize' });
   assert.ok(submit.text.includes('31 octobre 2026') && submit.text.includes('Sessionize'));
   assert.ok(!candidateSubmitReminder('Aïcha', url, 'fr', { daysLeft: 3, date: '31 octobre 2026', kind: 'cfp', callCloses: null, where: null }).text.includes('Où soumettre'));
+});
+
+test('message emails: hers to the coaches, the coach\'s to her (FR/EN, her link, no AI wording), the text escaped', () => {
+  const ai = /\bIA\b|\bAI\b|intelligence artificielle|artificial intelligence|Claude|OpenAI|GPT/i;
+  for (const loc of ['fr', 'en'] as const) {
+    const m = candidateCoachMessage('Awa Test', 'https://x.test/reprendre/tok', loc, 'Bonne question <b>!</b>');
+    assert.ok(m.text.includes('https://x.test/reprendre/tok'));
+    assert.ok(!ai.test(m.subject + m.text), loc);
+    assert.ok(m.html.includes('&lt;b&gt;!&lt;/b&gt;') && !m.html.includes('<b>!</b>'));
+  }
+  const c = coachCandidateMessage({ name: 'Awa' }, 'Je peux changer de format ?', 'https://x.test/admin/candidates/3', 'le sujet proposé');
+  assert.match(c.subject, /Awa a écrit un message/);
+  assert.match(c.text, /À propos de\s?: le sujet proposé/u);
 });
