@@ -61,7 +61,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   );
   const counts = new Map<string, number>();
   for (const r of base) counts.set(r.status, (counts.get(r.status) ?? 0) + 1);
-  const rows = base.filter((r) => !status || (status === TODO ? r.journey?.waiting === 'coach' : r.status === status)).sort((a, b) => COLS[orderCol](a, b) * (orderDir === 'asc' ? 1 : -1) || a.id - b.id); // ties: by id, so a page never repeats or skips a row
+  const rows = base.filter((r) => !status || (status === TODO ? r.journey?.waiting === 'coach' || r.message_to_handle : r.status === status)).sort((a, b) => COLS[orderCol](a, b) * (orderDir === 'asc' ? 1 : -1) || a.id - b.id); // ties: by id, so a page never repeats or skips a row
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const page = Math.min(pages, Math.max(1, Math.floor(Number(sp.page)) || 1));
@@ -79,7 +79,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   const aria = (c: string): 'ascending' | 'descending' | undefined => (order === `${c}-asc` ? 'ascending' : order === `${c}-desc` ? 'descending' : undefined);
   const arrow = (c: string) => (order === `${c}-asc` ? ' ↑' : order === `${c}-desc` ? ' ↓' : '');
 
-  const tabs = [{ id: '', label: 'Toutes', n: base.length }, { id: TODO, label: 'À traiter', n: base.filter((r) => r.journey?.waiting === 'coach').length }, ...STATUSES.filter((s) => (counts.get(s.id) ?? 0) > 0 || s.id === status || s.id === 'diagnostic_recu' || s.id === 'en_cours').map((s) => ({ id: s.id, label: s.label, n: counts.get(s.id) ?? 0 }))];
+  const tabs = [{ id: '', label: 'Toutes', n: base.length }, { id: TODO, label: 'À traiter', n: base.filter((r) => r.journey?.waiting === 'coach' || r.message_to_handle).length }, ...STATUSES.filter((s) => (counts.get(s.id) ?? 0) > 0 || s.id === status || s.id === 'diagnostic_recu' || s.id === 'en_cours').map((s) => ({ id: s.id, label: s.label, n: counts.get(s.id) ?? 0 }))];
 
   return (
     <div className="a-page" style={{ gap: 20 }}>
@@ -137,7 +137,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
             {shown.map((r) => {
               const p = r.status === 'en_cours' ? screenProgress(r) : null;
               return (
-                <div role="row" className={`a-tr is-cand${r.journey ? ` wait-${r.journey.waiting}` : ''}`} key={r.id}>
+                <div role="row" className={`a-tr is-cand${r.message_to_handle ? ' wait-coach' : r.journey ? ` wait-${r.journey.waiting}` : ''}`} key={r.id}>
                   <div role="cell" className="a-cell-name c-name">
                     <span className="a-avatar-c" aria-hidden="true">{initials(r.name ?? '')}</span>
                     <span style={{ minWidth: 0 }}>

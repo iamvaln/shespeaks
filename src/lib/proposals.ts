@@ -3,6 +3,7 @@
 import { all, get, run, tx } from './db.ts';
 import { getCandidate, setStatus, type Track } from './data.ts';
 import { STATUSES } from './db.ts';
+import { markMessagesHandled } from './messages.ts';
 import {
   COMMENT_MAX, journey, parseIdeas, planLines, STATUS_OF_STEP, TRACKS_CLOSED_MESSAGE, tracksClosed, validateChoice, validateChoiceIdeas, validateSubject,
   type ChoiceItem, type Journey, type Proposal, type ProposalKind, type ProposalResponse, type SubjectPayload,
@@ -305,4 +306,5 @@ export async function reopenExchanges(candidateId: number, author = 'système'):
 export async function markHandled(candidateId: number): Promise<void> {
   if (!validId(candidateId)) return;
   await run(`UPDATE proposals SET handled_at=(now() at time zone 'utc') WHERE candidate_id=? AND state='repondue' AND handled_at IS NULL`, candidateId);
+  await markMessagesHandled(candidateId); // her messages too
 }

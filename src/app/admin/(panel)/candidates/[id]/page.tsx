@@ -15,6 +15,7 @@ import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
 import { InlineForm } from '@/components/InlineForm';
+import { listMessages, threadOf } from '@/lib/messages';
 import { FoldAll } from '@/components/FoldAll';
 import { Fold } from '@/components/Fold';
 import { OpenOnHash } from '@/components/OpenOnHash';
@@ -38,7 +39,7 @@ import { getSetting } from '@/lib/db';
 import { CHOOSE_AFTER_HER, journeyOf, listProposals, lockOf, LOCK_MESSAGE, needsChoice, NEEDS_CHOICE } from '@/lib/proposals';
 import { ideaLines, journeyState, STATUS_OF_STEP, TRACKS_CLOSED_MESSAGE, tracksClosed, WAITING_SR, type ChoicePayload, type PhotoPayload, type Proposal, type SubjectPayload } from '@/lib/journey';
 import {
-  addNoteAction, admitLateAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, remindNowAction, reopenExchangesAction, reopenExchangesRedirectAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
+  addNoteAction, admitLateAction, deleteCandidateAction, followUpAction, improveSubjectAction, markHandledAction, messageAction, remindNowAction, reopenExchangesAction, reopenExchangesRedirectAction, requestPhotoAction, saveSubjectAction, selectPhotoAction,
   sendChoiceAction, sendSubjectAction, suggestTracksAction, trackAction, validatePhotoAction,
 } from '../../../actions';
 
@@ -70,9 +71,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const id = Number(rawId);
   const c = await getCandidate(id);
   if (!c || !c.name) notFound();
-  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, journeyNow, exchanges] = await Promise.all([
+  const [a, refs, subject, tracks, photos, allCoaches, ev, coach, journeyNow, exchanges, messages] = await Promise.all([
     getAnswers(id), getRefs(), getSubject(id), getTracks(id), getPhotos(id), listCoaches(), eventFor(c), getCoach(c.coach_id),
-    journeyOf(id), listProposals(id),
+    journeyOf(id), listProposals(id), listMessages(id),
   ]);
   const retained = tracks.filter((t) => t.state === 'retenue_coach');
   // after the last day to send an interest, an unfinished form is closed unless the team admits it
@@ -109,7 +110,31 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
   const jstate = journeyNow ? journeyState(journeyNow, exchanges, photos.length) : null; // the same wording as the list
   const statusOptions = statusChoices(c.status, !!c.completed_at, journeyNow ? STATUS_OF_STEP[journeyNow.step] : null); // what « Suivi » offers: the current status, the ones ahead, and the one the exchanges stand for if the status is ahead of them
-  const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at);
+  const toHandle = exchanges.some((x) => x.state === 'repondue' && !x.handled_at) || messages.some((m) => m.author === 'candidate' && !m.handled_at);
+  const coachName = (cid: number | null) => allCoaches.find((x) => x.id === cid)?.name ?? 'La coach';
+  // a conversation: her messages and the coach's, oldest first, then a field to answer (under one exchange, or on its own)
+  const thread = (proposalId: number | null, cta: string) => {
+    const list = threadOf(messages, proposalId);
+    return (
+      <div className="a-thread">
+        {list.map((m) => (
+          <div key={m.id} className={`a-msg is-${m.author}`}>
+            <span className="a-sub">{m.author === 'candidate' ? c.name : coachName(m.coach_id)} · {fmtDate(m.created_at, 'fr', DATE_TIME)}{m.author === 'candidate' && !m.handled_at ? ' · à traiter' : ''}</span>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+          </div>
+        ))}
+        <details className="a-reply" open={proposalId === null && list.length === 0 ? undefined : list.some((m) => m.author === 'candidate' && !m.handled_at) || undefined}>
+          <summary className="a-link-btn">{cta}</summary>
+          <InlineForm action={messageAction} className="a-stack" style={{ gap: 6, marginTop: 6 }} resetOnSuccess>
+            <input type="hidden" name="cid" value={id} />
+            {proposalId !== null && <input type="hidden" name="proposal_id" value={proposalId} />}
+            <textarea className="a-textarea" name="body" required maxLength={2000} rows={3} aria-label={cta} />
+            <div><PendingButton className="a-btn is-sm" pendingLabel="Envoi…">Envoyer</PendingButton></div>
+          </InlineForm>
+        </details>
+      </div>
+    );
+  };
   const exchangesNewestFirst = [...exchanges].reverse();
   const evLabel = await eventLabelFor(c, c.locale);
   const startSubject = c.branch ? currentSubject(c.branch, a, subject ?? null) : null;
@@ -383,7 +408,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 {toHandle && (
                   <InlineForm action={markHandledAction} className="a-actions">
                     <input type="hidden" name="cid" value={id} />
-                    <span className="a-muted">Elle a répondu : cette réponse compte dans « à traiter ».</span>
+                    <span className="a-muted">Elle a répondu ou écrit : cela compte dans « à traiter » jusqu’à ta réponse.</span>
                     <button className="a-btn is-sm">Marquer comme traité</button>
                   </InlineForm>
                 )}
@@ -402,10 +427,16 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                             {x.candidate_comment && <div style={{ whiteSpace: 'pre-wrap' }}>« {x.candidate_comment} »</div>}
                           </div>
                         )}
+                        {thread(x.id, x.candidate_comment ? 'Répondre à son message' : 'Lui écrire à propos de cet échange')}
                       </li>
                     ))}
                   </ul>
                 )}
+                <div className="a-stack" style={{ gap: 6 }}>
+                  <h3 className="a-eyebrow" style={{ margin: 0 }}>Messages</h3>
+                  <p className="a-muted" style={{ margin: 0 }}>Une question, une précision, en dehors des étapes : elle reçoit un email et répond depuis son espace.</p>
+                  {thread(null, 'Écrire à la candidate')}
+                </div>
               </Fold>
               {c.branch && (
                 <Fold id="h-repondu" title="Ce qu’elle a répondu" bodyClassName="">

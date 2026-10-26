@@ -8,6 +8,7 @@ import { PlanPhotos } from '@/components/PlanPhotos';
 import { getSetting } from '@/lib/db';
 import { t, fmtDate } from '@/lib/i18n';
 import { journeyOf, listProposals } from '@/lib/proposals';
+import { listMessages } from '@/lib/messages';
 import type { SubjectPayload } from '@/lib/journey';
 import { JourneyPanel } from '@/components/JourneyPanel';
 import { appUrl } from '@/lib/mail';
@@ -24,7 +25,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   if (!c) redirect('/acces');
   if (!c.completed_at || !c.branch) redirect('/interet');
   const d = t(locale).plan;
-  const [answers, sub, photos, ev, j, proposals] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id), eventFor(c), journeyOf(c.id), listProposals(c.id)]);
+  const [answers, sub, photos, ev, j, proposals, messages] = await Promise.all([getAnswers(c.id), getSubject(c.id), getPhotos(c.id), eventFor(c), journeyOf(c.id), listProposals(c.id), listMessages(c.id)]);
   const rm = buildRoadmap({
     answers, branch: c.branch, locale,
     subjectTitle: sub?.title, event: ev, eventName: await eventLabelFor(c, locale),
@@ -48,7 +49,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           </div>
         </div>
 
-        {j && <JourneyPanel j={j} proposals={proposals} locale={locale} d={t(locale).journey} photoCount={photos.length} submit={{
+        {j && <JourneyPanel j={j} proposals={proposals} messages={messages} locale={locale} d={t(locale).journey} photoCount={photos.length} submit={{
           title: approved?.title ?? '', abstract: approved?.abstract ?? '', photoUrl: validated ? `/api/photos/${validated.id}` : null,
           cfpUrl: ev?.submission_url ?? null, cfpLabel: ev?.submission_label ?? null, deadline: ev?.cfp_close_date ? fmtDate(ev.cfp_close_date, locale) : null,
         }} />}

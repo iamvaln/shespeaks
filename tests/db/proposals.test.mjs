@@ -819,3 +819,36 @@ test('the subject follows her choice (title and format) while the coach has not 
   await P.answerProposal(id, j.pending.id, 'choisie', 0, '', IDEAS);
   assert.equal((await subject()).title, 'Mon titre à moi');
 });
+
+test('messages: under one of her exchanges or on their own; checked; her message waits for the coach until she answers; rate limited', { skip }, async () => {
+  const M = await import('../../src/lib/messages.ts');
+  const admin = await import('../../src/lib/admin-data.ts');
+  const id = await candidate('C');
+  await raw`update candidates set status = 'sujet_valide', coach_id = 1 where id = ${id}`; // not a new interest: only the message can count; her coach is emailed
+  await subjectFor(id);
+  await P.sendSubject(id, 1);
+  const pid = (await state(id)).pending.id;
+  const other = await candidate('C');
+  assert.deepEqual(await M.postMessage({ candidateId: id, author: 'candidate', body: '   ' }), { ok: false, error: 'Écris ton message.' });
+  assert.equal((await M.postMessage({ candidateId: id, author: 'candidate', body: 'x'.repeat(2001) })).ok, false);
+  assert.deepEqual(await M.postMessage({ candidateId: other, author: 'candidate', proposalId: pid, body: 'pas le mien' }), { ok: false, error: 'Échange introuvable.' });
+  const before = await admin.countToProcess();
+  assert.deepEqual(await M.postMessage({ candidateId: id, author: 'candidate', proposalId: pid, body: 'Je peux changer de format ?' }), { ok: true });
+  assert.equal(await admin.countToProcess(), before + 1, 'her message waits for the coach');
+  assert.ok((await admin.candidateRows()).find((r) => r.id === id).message_to_handle);
+  assert.equal((await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = 'coach_message'`)[0].n >= 1, true, 'the coaches are emailed');
+  assert.ok((await admin.recentNotices(50)).some((n) => n.candidate_id === id && n.kind === 'coach_message'), 'it shows in the dashboard notifications');
+  assert.deepEqual(await M.postMessage({ candidateId: id, author: 'coach', coachId: 1, proposalId: pid, body: 'Oui, bien sûr.' }), { ok: true });
+  assert.equal(await admin.countToProcess(), before, 'answered: no longer waiting');
+  assert.equal((await raw`select count(*)::int as n from email_log where candidate_id = ${id} and kind = 'candidate_message'`)[0].n, 1, 'she is emailed');
+  assert.deepEqual(M.threadOf(await M.listMessages(id), pid).map((m) => m.author), ['candidate', 'coach']);
+  await M.postMessage({ candidateId: id, author: 'candidate', body: 'Une autre question, hors étape' });
+  assert.equal(M.threadOf(await M.listMessages(id), null).length, 1);
+  await M.postMessage({ candidateId: id, author: 'coach', coachId: 1, proposalId: pid, body: 'Encore sur le sujet' });
+  assert.equal(await admin.countToProcess(), before + 1, 'an answer under the exchange leaves her message on its own waiting');
+  await P.markHandled(id);
+  assert.equal(await admin.countToProcess(), before, '« Marquer comme traité » covers her messages');
+  let limited = false;
+  for (let k = 0; k < 12 && !limited; k++) limited = !(await M.postMessage({ candidateId: id, author: 'candidate', body: `m${k}` })).ok;
+  assert.ok(limited, 'a candidate cannot flood the coaches');
+});
