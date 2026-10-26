@@ -1,15 +1,25 @@
 import type { Journey, Proposal, ChoicePayload, SubjectPayload, PhotoPayload, Step } from '@/lib/journey';
 import { ProposalAnswer } from './ProposalAnswer';
+import { MessageForm } from './MessageForm';
+import type { Message } from '@/lib/messages';
 import { CopyButton, SubmittedButton } from './SubmitPanel';
 import { fmtDate, type Dict } from '@/lib/i18n';
 import { FORMATS, type Locale } from '@/lib/questions';
 
 type Props = {
   j: Journey; proposals: Proposal[]; locale: Locale; d: Dict['journey']; photoCount: number;
+  /** Her conversations with the coach: under one exchange (proposal_id) or on their own (null). */
+  messages: Message[];
   submit: { title: string; abstract: string; photoUrl: string | null; cfpUrl: string | null; cfpLabel: string | null; deadline: string | null };
 };
 
-export function JourneyPanel({ j, proposals, locale, d, submit, photoCount }: Props) {
+export function JourneyPanel({ j, proposals, locale, d, submit, photoCount, messages }: Props) {
+  const thread = (proposalId: number | null) => messages.filter((m) => m.proposal_id === proposalId).map((m) => (
+    <div key={m.id} className={`msg is-${m.author}`}>
+      <span className="small">{m.author === 'candidate' ? d.messages.you : d.messages.coach} · {fmtDate(m.created_at, locale)}</span>
+      <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{m.body}</p>
+    </div>
+  ));
   const p = j.pending;
   // a photo request can wait while the topic is still being discussed: it is shown whatever the step
   const photoAsk = [...proposals].reverse().find((x) => x.kind === 'photo' && x.state === 'envoyee') ?? null;
@@ -84,13 +94,26 @@ export function JourneyPanel({ j, proposals, locale, d, submit, photoCount }: Pr
                   </>}
                   {x.kind === 'choix' && <ol>{(x.payload as ChoicePayload).items.map((it, k) => <li key={k}>{it.title}</li>)}</ol>}
                   {x.kind === 'photo' && <p>{(x.payload as PhotoPayload).comment}</p>}
-                  {x.candidate_comment && <p>« {x.candidate_comment} »</p>}
                 </details>
+                {/* the conversation under this exchange stays visible: her comment first, then the answers */}
+                {x.candidate_comment && (
+                  <div className="msg is-candidate"><span className="small">{d.messages.you} · {fmtDate(x.answered_at ?? x.sent_at, locale)}</span><p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{x.candidate_comment}</p></div>
+                )}
+                {thread(x.id)}
+                {(x.candidate_comment || messages.some((m) => m.proposal_id === x.id)) && (
+                  <details className="msg-reply"><summary>{d.messages.reply}</summary><MessageForm proposalId={x.id} label={d.messages.reply} d={d.messages} /></details>
+                )}
               </li>
             ))}
           </ul>
         </section>
       )}
+      <section className="card card-lg stack-sm" aria-labelledby="h-messages" id="messages">
+        <h2 id="h-messages" className="title" style={{ fontSize: 22 }}>{d.messages.write}</h2>
+        <p className="small">{d.messages.writeIntro}</p>
+        {thread(null)}
+        <MessageForm proposalId={null} label={d.messages.write} d={d.messages} />
+      </section>
     </>
   );
 }

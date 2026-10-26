@@ -17,6 +17,7 @@ import { isEmail } from '@/lib/questions';
 import { statusRefusal } from '@/lib/status';
 import { exchangeLock, LOCK_MESSAGE, markHandled, mayChooseTrack, tracksWriteRefusal, reopenExchanges, requestPhoto, sendChoice, sendSubject, validatePhoto } from '@/lib/proposals';
 import { pitchToSave } from '@/lib/journey';
+import { postMessage } from '@/lib/messages';
 import { isoOrNull } from '@/lib/dates';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
@@ -421,4 +422,14 @@ export async function markHandledAction(f: FormData) {
   if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
   await markHandled(id);
   return reply(f, cpath(id), 'Réponse marquée comme traitée');
+}
+
+/** The coach writes to the candidate: under one exchange (`proposal_id`) or on its own. She is emailed; her messages are then handled. */
+export async function messageAction(f: FormData) {
+  const coach = await requireCoach();
+  const id = num(f, 'cid');
+  if (!validCid(id)) return back('/admin/candidates', 'Candidate introuvable', true);
+  const raw = str(f, 'proposal_id');
+  const r = await postMessage({ candidateId: id, author: 'coach', coachId: coach.id, proposalId: raw ? Number(raw) : null, body: String(f.get('body') ?? '') });
+  return r.ok ? reply(f, cpath(id), 'Message envoyé : elle est prévenue par email') : r.error === 'Candidate introuvable' ? back('/admin/candidates', r.error, true) : reply(f, cpath(id), r.error, true);
 }

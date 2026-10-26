@@ -499,3 +499,24 @@ test('« written to today » follows the programme day: a row at 22:59 UTC the d
   await raw`insert into calendar_reminders (candidate_id, key, sent_at) values (${id}, 'closing:a:1', ${stamp(start + 60_000)})`;
   assert.equal((await journalMod.mailedToday(day(0))).ids.has(id), true, 'one minute after');
 });
+
+test('a week before her event\'s call for speakers closes, the event leaves the form and a started form closes, unless the team admitted her', { skip }, async () => {
+  await reset();
+  await raw`update devfest_events set cfp_close_date = null where city = 'ouvert'`; // the reminder tests above leave a call date on it
+  const { box, ip } = fresh();
+  const started = await diag.submitScreen(null, 'profile', profile(box, 'ouvert'), 'fr', ip);
+  assert.equal(started.ok, true, JSON.stringify(started));
+  const { admission } = await import('../../src/lib/admission.ts');
+  const her = async () => (await raw`select * from candidates where token = ${started.token}`)[0];
+  assert.deepEqual(await admission(await her()), { open: true });
+  await raw`update devfest_events set cfp_close_date = ${day(6)} where city = 'ouvert'`; // its last day was yesterday
+  assert.ok(!(await data.getFormRefs()).events.some((e) => e.value === 'ouvert'), 'no longer offered to a new candidate');
+  assert.deepEqual(await admission(await her()), { open: false, closedOn: day(-1) });
+  assert.equal((await diag.submitScreen(started.token, 'diag1', { D1: 'premiere', D2: 2, D3: ['trac'] }, 'fr')).fatal, 'closed');
+  await raw`update candidates set admitted_late_at = now() at time zone 'utc' where token = ${started.token}`;
+  assert.deepEqual(await admission(await her()), { open: true }, 'admitted by the team');
+  await raw`update devfest_events set cfp_close_date = ${day(7)} where city = 'ouvert'`;
+  assert.ok((await data.getFormRefs()).events.some((e) => e.value === 'ouvert'), 'the last day itself is open');
+  await raw`update devfest_events set cfp_close_date = null where city = 'ouvert'`;
+  await reset();
+});
