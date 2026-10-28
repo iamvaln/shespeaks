@@ -107,3 +107,15 @@ test('candidates parked on one mailbox get one reminder email per run, and every
   const again = await reminders.runReminders();
   assert.ok(![a, b, c].some((id) => again.due.some((d) => d.id === id)), 'none of them is due again right away');
 });
+
+test('a manual reminder counts as a reminder: the automatic run does not mail her again right after, and a second one the same day is refused (#47)', { skip }, async () => {
+  const id = await candidate();
+  assert.equal(await reminders.sendReminderNow(id), 'logged');
+  const r = await row(id);
+  assert.equal(r.reminders_sent, 1, 'it counts');
+  assert.ok(r.last_reminder_at, 'and is dated');
+  await reminders.runReminders(new Date());
+  assert.deepEqual(await mails(id), ['candidate_reminder_manual'], 'no automatic reminder 35 s later');
+  assert.equal(await reminders.sendReminderNow(id), 'today', 'one email a day');
+  assert.deepEqual(await mails(id), ['candidate_reminder_manual']);
+});
