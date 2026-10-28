@@ -393,16 +393,19 @@ export interface StalledItem {
   hoursIdle: number;
   tier: number;
   url: string;
+  /** A prefilled WhatsApp nudge to finish the form (null without a number). */
+  waUrl?: string | null;
 }
 export function coachStalledDigest(recipientName: string, items: StalledItem[], proposalReminders = 0): Built {
   const n = items.length;
-  return build(n === 1 ? `Relance à faire : ${items[0].name} n’a pas fini son formulaire` : `Relances à faire : ${n} candidates n’ont pas fini leur formulaire`, {
+  // the subject used to read « Relance à faire », which sounded like a reminder addressed to the coach (#47): it is a list to follow
+  return build(n === 1 ? `À suivre : ${items[0].name} n’a pas fini son formulaire` : `À suivre : ${n} candidates n’ont pas fini leur formulaire`, {
     heading: n === 1 ? 'Une candidate n’a pas terminé son formulaire' : `${n} candidates n’ont pas terminé leur formulaire`,
     paragraphs: [
-      `Bonjour ${first(recipientName)}, ${n === 1 ? 'cette candidate a commencé le parcours puis s’est arrêtée' : 'ces candidates ont commencé le parcours puis se sont arrêtées'}. Un message WhatsApp personnel est souvent le meilleur coup de pouce${items.some((i) => i.email) ? (n === 1 ? ' ; un email de rappel lui a été envoyé' : ' ; un email de rappel leur a été envoyé lorsqu’elles avaient laissé une adresse') : ''}.`,
+      `Bonjour ${first(recipientName)}, ${n === 1 ? 'cette candidate a commencé le parcours puis s’est arrêtée' : 'ces candidates ont commencé le parcours puis se sont arrêtées'}.${items.some((i) => i.email) ? (n === 1 ? ' Elle a reçu un rappel automatique par email ce matin.' : ' Celles qui ont laissé une adresse ont reçu un rappel automatique par email ce matin.') : ''} Un message WhatsApp personnel est souvent le meilleur coup de pouce : le lien ci-dessous l’ouvre avec un message prêt à envoyer.`,
       ...items.map(
         (i) =>
-          `• ${i.name} — ${i.eventLabel} — arrêtée à « ${i.screenLabel} » depuis ${i.hoursIdle < 48 ? `${i.hoursIdle} h` : `${Math.round(i.hoursIdle / 24)} jours`} (relance n° ${i.tier})\n  WhatsApp : ${i.whatsapp}${i.email ? ` · ${i.email}` : ''}\n  Fiche : ${i.url}`,
+          `• ${i.name} — ${i.eventLabel} — arrêtée à « ${i.screenLabel} » depuis ${i.hoursIdle < 48 ? `${i.hoursIdle} h` : `${Math.round(i.hoursIdle / 24)} jours`} (relance n° ${i.tier})${i.waUrl ? `\n  Relancer sur WhatsApp : ${i.waUrl}` : `\n  WhatsApp : ${i.whatsapp}`}${i.email ? `\n  Email : ${i.email}` : ''}\n  Fiche : ${i.url}`,
       ),
       ...(proposalReminders > 0 ? [`Propositions relancées ce matin : ${proposalReminders}`] : []),
     ],

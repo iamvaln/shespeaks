@@ -247,6 +247,7 @@ export async function remindNowAction(f: FormData) {
   if (sent === 'sent') return back(cpath(id, tab), 'Rappel envoyé par email');
   if (sent === 'logged') return back(cpath(id, tab), 'Rappel non envoyé : l’envoi d’emails n’est pas configuré, il est seulement enregistré dans la page Emails. Écris-lui sur WhatsApp.', true);
   if (sent === 'failed') return back(cpath(id, tab), 'Le rappel n’est pas parti : l’envoi a échoué (détail dans la page Emails). Écris-lui sur WhatsApp.', true);
+  if (sent === 'today') return back(cpath(id, tab), 'Déjà relancée par email aujourd’hui : un seul email par jour. Écris-lui sur WhatsApp si besoin.', true);
   if (sent === 'closed') return back(cpath(id, tab), 'Les candidatures sont closes pour ce dossier : son lien ne mènerait qu’à la page « candidatures closes ». Admets-la d’abord (bouton « Admettre malgré la clôture »), puis renvoie le rappel.', true);
   return back(cpath(id, tab), 'Impossible : pas d’email ou formulaire déjà terminé', true);
 }

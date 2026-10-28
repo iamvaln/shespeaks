@@ -15,6 +15,8 @@ import { Icon } from '@/components/admin-icons';
 import { AutoGrowTextarea } from '@/components/AutoGrowTextarea';
 import { PendingButton } from '@/components/PendingButton';
 import { InlineForm } from '@/components/InlineForm';
+import { finishFormWhatsApp } from '@/lib/whatsapp';
+import { admission } from '@/lib/admission';
 import { listMessages, threadOf } from '@/lib/messages';
 import { FoldAll } from '@/components/FoldAll';
 import { Fold } from '@/components/Fold';
@@ -25,7 +27,7 @@ import { aiConfigured, openaiConfigured } from '@/lib/ai-topics';
 import { CurrentIntoView } from '@/components/CurrentIntoView';
 import { fmtDate } from '@/lib/i18n';
 import { BRANCH_LABEL } from '@/lib/diagnostic';
-import { screenProgress } from '@/lib/reminders';
+import { screenLabelFor, screenProgress } from '@/lib/reminders';
 import { BRANCH_SHORT, elapsed, one, topicSummary } from '@/lib/admin-format';
 import { currentSubject } from '@/lib/ai-subject';
 import { getSubjectProposal } from '@/lib/ai-subject-store';
@@ -105,6 +107,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const chosenWithIdeas = [...exchanges].reverse().find((x) => x.kind === 'choix' && x.response === 'choisie');
   const herIdeas = chosenWithIdeas?.response_data
     ? { title: (chosenWithIdeas.payload as ChoicePayload).items[chosenWithIdeas.response_choice ?? -1]?.title ?? '', ideas: chosenWithIdeas.response_data }
+    : null;
+  // her form is not finished and still open: the coach can nudge her on WhatsApp with a message ready to send (#47)
+  const nudgeUrl = !c.completed_at && (await admission(c)).open
+    ? finishFormWhatsApp({ whatsapp: c.whatsapp, name: c.name, locale: c.locale, screenLabel: screenLabelFor(c), resumeUrl: `${appUrl()}/reprendre/${c.token}` })
     : null;
   const subjectReady = !!subject?.title?.trim() && !!subject?.abstract?.trim();
   const waitsForChoice = needsChoice(c.branch, exchanges); // A and B: « Choisir » and the send of the subject are greyed until she has chosen one of the tracks sent
@@ -347,6 +353,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <button className="a-btn is-ghost">Envoyer un rappel</button>
             </form>
           )}
+          {nudgeUrl && <a className="a-btn is-ghost" href={nudgeUrl} target="_blank" rel="noopener noreferrer"><Icon name="message" />Relancer sur WhatsApp</a>}
         </div>
       </header>
 
@@ -369,7 +376,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
       {c.status === 'en_cours' && progress && (
         <Fold id="h-parcours-ec" title={`Parcours en cours · écran ${progress.done} sur ${progress.total}`} aside={<span className="a-pill is-soft">En cours</span>} bodyClassName="a-stack">
           <div className="a-bar" role="img" aria-label={`Écran ${progress.done} sur ${progress.total}`}><i style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} /></div>
-          <span className="a-sub" style={{ whiteSpace: 'normal' }}>S’est arrêtée à « {progress.label} » · inactive depuis {elapsed(c.last_activity_at, now)} · {c.reminders_sent} relance{c.reminders_sent > 1 ? 's' : ''} automatique{c.reminders_sent > 1 ? 's' : ''}</span>
+          <span className="a-sub" style={{ whiteSpace: 'normal' }}>S’est arrêtée à « {progress.label} » · inactive depuis {elapsed(c.last_activity_at, now)} · {c.reminders_sent} relance{c.reminders_sent > 1 ? 's' : ''} par email (automatiques et manuelles)</span>
         </Fold>
       )}
       {c.status === 'en_cours' && !progress && (

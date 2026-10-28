@@ -1,6 +1,6 @@
 // Reminder engine: unfinished diagnostics → email to the candidate (if she left an address) AND alert to the coach(es).
 // Idempotent: a candidate is "claimed" (counter bumped) before any email goes out, so overlapping runs never double-send.
-import { all, get, getSetting } from './db.ts';
+import { all, get, getSetting, run } from './db.ts';
 import { claimReminder, eventLabel, getCandidate, listEvents, type Candidate } from './data.ts';
 import { appUrl, candidateProposalReminder, candidateReminder, coachStalledDigest, sendMail, type StalledItem } from './mail.ts';
 import { SCREENS, flowFor, resumeScreen } from './questions.ts';
@@ -11,6 +11,7 @@ import { admission } from './admission.ts';
 import { admissionOpen } from './calendar.ts';
 import { todayIso } from './dates.ts';
 import { mailedToday } from './calendar-journal.ts';
+import { finishFormWhatsApp } from './whatsapp.ts';
 
 const toDate = (s: string) => new Date(s.replace(' ', 'T') + 'Z');
 const hoursBetween = (a: Date, b: Date) => (a.getTime() - b.getTime()) / 3_600_000;
@@ -28,6 +29,12 @@ export function screenProgress(c: Pick<Candidate, 'branch' | 'current_screen'>) 
   const current = resumeScreen(c.branch, c.current_screen);
   const idx = Math.max(0, flow.indexOf(current));
   return { done: idx + 1, total: (c.branch ? flow.length : 5) + 1, label: SCREENS[current]?.title.fr ?? current };
+}
+
+/** The screen where she stopped, in her language (for what is written to her). */
+export function screenLabelFor(c: Pick<Candidate, 'branch' | 'current_screen' | 'locale'>): string {
+  const current = resumeScreen(c.branch, c.current_screen);
+  return SCREENS[current]?.title[c.locale] ?? current;
 }
 
 export async function runReminders(now = new Date()): Promise<ReminderReport> {
@@ -73,6 +80,7 @@ export async function runReminders(now = new Date()): Promise<ReminderReport> {
     const item: StalledItem = {
       name: c.name ?? '', eventLabel: eventLabel(c, events), whatsapp: c.whatsapp ?? '', email: c.email, screenLabel: prog.label,
       hoursIdle: Math.round(hoursBetween(now, toDate(c.last_activity_at))), tier, url: `${appUrl()}/admin/candidates/${c.id}`,
+      waUrl: finishFormWhatsApp({ whatsapp: c.whatsapp, name: c.name, locale: c.locale, screenLabel: screenLabelFor(c), resumeUrl: `${appUrl()}/reprendre/${c.token}` }),
     };
     for (const r of await coachRecipients(c)) {
       const g = byRecipient.get(r.email) ?? { name: r.name, items: [] };
@@ -117,10 +125,18 @@ export async function remindPendingProposals(now = new Date()): Promise<number> 
 }
 
 /** Manual reminder from the coach's fiche (does not touch the automatic counter). 'unavailable' = no address or form already done. */
-export async function sendReminderNow(candidateId: number): Promise<'sent' | 'logged' | 'failed' | 'unavailable' | 'closed'> {
+export async function sendReminderNow(candidateId: number): Promise<'sent' | 'logged' | 'failed' | 'unavailable' | 'closed' | 'today'> {
   const c = await getCandidate(candidateId);
   if (!c || !c.email || c.completed_at) return 'unavailable';
   if (!(await admission(c)).open) return 'closed'; // her link would only lead to the « applications are closed » page: admit her first
+  // one email a day: an automatic pass (or another manual reminder) already wrote to her or to her mailbox today
+  const mailed = await mailedToday(todayIso());
+  if (mailed.ids.has(c.id) || mailed.boxes.has(mailboxKey(c.email))) return 'today';
   const m = candidateReminder({ name: c.name ?? '' }, `${appUrl()}/reprendre/${c.token}`, c.locale, screenProgress(c));
-  return sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });
+  const status = await sendMail({ ...m, to: c.email, kind: 'candidate_reminder_manual', candidateId });
+  // it counts as a reminder (#47): the automatic run waits the usual interval after it instead of mailing her again a minute later
+  if (status === 'sent' || status === 'logged') {
+    await run(`UPDATE candidates SET reminders_sent = reminders_sent + 1, last_reminder_at = (now() at time zone 'utc') WHERE id=?`, c.id);
+  }
+  return status;
 }
